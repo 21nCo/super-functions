@@ -123,18 +123,58 @@ function expand(value: string, field: string, lookup: (name: string) => [string,
 }
 
 function rejectCredentialArgument(value: string, field: string): void {
-  for (const argument of value.matchAll(/(?:^|\s)--([A-Za-z][A-Za-z0-9_-]*)(?==|\s|$)/g)) {
-    if (isCredentialKey(argument[1])) {
-      invalid(field, "credential-bearing argv must use the secret channel.");
+  // Percent encoding is data to the resolver, but many command-line clients
+  // decode it before sending a header or URL. Inspect both representations.
+  for (const checked of decodedVariants(value)) {
+    for (const argument of checked.matchAll(/(?:^|\s)--([A-Za-z][A-Za-z0-9_-]*)(?==|\s|$)/g)) {
+      if (isCredentialKey(argument[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+    }
+    // Template fragments can assemble an otherwise hidden credential header.
+    for (const header of checked.matchAll(/(?:^|[^A-Za-z0-9_-])([A-Za-z][A-Za-z0-9_-]*)\s*:/g)) {
+      if (isCredentialKey(header[1])) invalid(field, "credential-bearing header must use the secret channel.");
     }
   }
-  // Template fragments can assemble an otherwise hidden credential header.
-  for (const header of value.matchAll(/(?:^|[^A-Za-z0-9_-])([A-Za-z][A-Za-z0-9_-]*)\s*:/g)) {
-    if (isCredentialKey(header[1])) invalid(field, "credential-bearing header must use the secret channel.");
+  rejectCredentialVector([value], field);
+}
+
+function decodedVariants(value: string): string[] {
+  const variants = [value];
+  for (let depth = 0; depth < 2; depth += 1) {
+    try {
+      const decoded = decodeURIComponent(variants.at(-1)!);
+      if (decoded === variants.at(-1)) break;
+      variants.push(decoded);
+    } catch { break; }
+  }
+  return variants;
+}
+
+/** Check options that become credential-bearing only with their value. */
+function rejectCredentialVector(values: readonly string[], field: string): void {
+  // Package scripts are one string; native commands and health probes are
+  // vectors. Split only for inspection, never for execution or argv output.
+  const variants = values.map(decodedVariants);
+  for (let depth = 0; depth <= 2; depth += 1) {
+    const tokens = variants.flatMap((items) => (items[depth] ?? items.at(-1)!).match(/\S+/g) ?? []);
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index].replace(/^["']|["']$/g, "");
+      const option = token.match(/^(--(?:proxy-)?user(?:name)?|-u|-U)(?:=(.*))?$/i);
+      const shortAttached = option ? null : token.match(/^-[uU](.+)$/);
+      if (!option && !shortAttached) continue;
+      const raw = option ? option[2] ?? tokens[index + 1] : shortAttached![1];
+      if (raw === undefined) continue;
+      for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
+        if (candidate.includes(":")) invalid(field, "credential-bearing argv must use the secret channel.");
+      }
+    }
   }
 }
 
 function rejectUrlCredentials(value: string, field: string): void {
+  for (const checked of decodedVariants(value)) rejectUrlCredentialsDecoded(checked, field);
+}
+
+function rejectUrlCredentialsDecoded(value: string, field: string): void {
   for (const match of value.matchAll(/[?&#]([^=?#&]+)=([^&#]*)/g)) {
     const key = new URLSearchParams(`${match[1]}=x`).keys().next().value ?? match[1];
     if (isCredentialKey(key)) {
@@ -287,23 +327,29 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
       if (!Object.prototype.hasOwnProperty.call(nodeEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
       return [nodeEnvironment.values[key], nodeEnvironment.checked[key]];
     };
-    const argv = (item: string, location: string): string => {
-      const value = expand(item, location, lookup)[0];
+    const argv = (item: string, location: string): [string, string] => {
+      const [value, checked] = expand(item, location, lookup);
       if (value.length === 0) invalid(location, "argv value cannot be empty.");
-      return value;
+      return [value, checked];
     };
-    const command = processSpec?.command?.map((item, index) => argv(item, `${field}.command[${index}]`));
-    const script = processSpec?.script !== undefined ? argv(processSpec.script, `${field}.script`) : undefined;
+    const commandPairs = processSpec?.command?.map((item, index) => argv(item, `${field}.command[${index}]`));
+    if (commandPairs) rejectCredentialVector(commandPairs.map((pair) => pair[1]), `${field}.command`);
+    const command = commandPairs?.map((pair) => pair[0]);
+    const scriptPair = processSpec?.script !== undefined ? argv(processSpec.script, `${field}.script`) : undefined;
+    if (scriptPair) rejectCredentialVector([scriptPair[1]], `${field}.script`);
+    const script = scriptPair?.[0];
     const healthLookup = (key: string): [string, string] => {
       if (!Object.prototype.hasOwnProperty.call(readinessEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
       return [readinessEnvironment.values[key], readinessEnvironment.checked[key]];
     };
-    const healthCommand = spec.health?.type === "command" ? spec.health.command.map((item, index) => {
+    const healthPairs = spec.health?.type === "command" ? spec.health.command.map((item, index): [string, string] => {
       const location = `${field}.health.command[${index}]`;
-      const value = expand(item, location, healthLookup)[0];
+      const [value, checked] = expand(item, location, healthLookup);
       if (!value.length) invalid(location, "argv value cannot be empty.");
-      return value;
+      return [value, checked];
     }) : undefined;
+    if (healthPairs) rejectCredentialVector(healthPairs.map((pair) => pair[1]), `${field}.health.command`);
+    const healthCommand = healthPairs?.map((pair) => pair[0]);
     try {
       if (processSpec) createProcessEnvironment({ ...processSpec, env: nodeEnvironment.values });
       else createComposeEnvironment({ ...config.services![node.name], env: nodeEnvironment.values });

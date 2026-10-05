@@ -243,6 +243,49 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it("rejects credential pairs in split, equals, short, script and health argv before mutation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-vector-"));
+    const stateDir = path.join(root, "state");
+    const marker = "synthetic-sentinel";
+    const vectors = [
+      ["curl", "--user", `alice:${marker}`],
+      ["curl", `--user=alice:${marker}`],
+      ["curl", "-u", `alice:${marker}`],
+      ["curl", `-ualice:${marker}`],
+      ["curl", "-U", `alice%3A${marker}`],
+      ["curl", `--user%3Dalice%3A${marker}`],
+      ["curl", "--proxy-user", `alice:${marker}`],
+      ["curl", "-H", `Authorization%3A%20Bearer%20${marker}`],
+      ["curl", `https%3A%2F%2Falice%3A${marker}%40example.test`],
+    ];
+    try {
+      for (const vector of vectors) {
+        for (const source of ["command", "health"] as const) {
+          const config = fixture();
+          if (source === "command") config.processes!.worker.command = vector;
+          else config.processes!.worker.health = { type: "command", command: vector };
+          const resolve = () => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+          expect(resolve).toThrow(/secret channel/);
+          const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+          expect(error).toMatch(/secret channel/);
+          expect(error).not.toContain(marker);
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+      }
+      const config = fixture();
+      config.processes!.worker.adapter = "npm";
+      config.processes!.worker.script = `start --user alice:${marker}`;
+      expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+      const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+      expect(error).not.toContain(marker);
+      await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+
+      const ordinary = fixture();
+      ordinary.processes!.worker.command = ["curl", "--user", "alice", "--header", "X-Request-Id: fixture"];
+      expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(ordinary.processes!.worker.command);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("rejects PostgreSQL credential names and assembled header values before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-assembled-secret-"));
     const stateDir = path.join(root, "state");
