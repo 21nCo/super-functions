@@ -20,7 +20,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@apifn/core": "0.0.2"
+    "@apifn/core": "0.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
