@@ -1,0 +1,34 @@
+apifn/README.md
+  h_bdc5b81c173ee9 20-32
+apifn/admin/package.json
+  h_bdc5b81c173ee9 36
+apifn/cli/package.json
+  h_bdc5b81c173ee9 27
+apifn/collections/package.json
+  h_bdc5b81c173ee9 23
+apifn/core/package.json
+  h_bdc5b81c173ee9 3
+apifn/docsfn/package.json
+  h_bdc5b81c173ee9 3,32-34
+apifn/mock/package.json
+  h_bdc5b81c173ee9 23
+apifn/react/package.json
+  h_bdc5b81c173ee9 3,22
+apifn/snippets/package.json
+  h_bdc5b81c173ee9 23
+apifn/svelte/package.json
+  h_bdc5b81c173ee9 3,50
+package-lock.json
+  h_bdc5b81c173ee9 82,100,123,246,295,298-300,335,346,349,715,726,729
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25c24f789c0d01c45f71df6f3a166820c938769e",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
