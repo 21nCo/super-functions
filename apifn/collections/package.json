@@ -20,7 +20,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@apifn/core": "0.0.2",
+    "@apifn/core": "0.0.3",
     "dotenv": "^16.6.1",
     "glob": "^11.0.3",
     "yaml": "^2.8.1"
