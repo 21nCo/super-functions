@@ -221,6 +221,9 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
         ["--data-urlencode", "password=synthetic-sentinel"], ["--data-urlencode=password%3Dsynthetic-sentinel"], ["-F", "api_token=synthetic-sentinel"],
         ["--data-raw", '{"pass\\u0077ord":"synthetic-sentinel"}'], ["--data-raw", '{"payload":[{"api_token":"synthetic-sentinel"}]}'],
         ["--data-raw", '<request xmlns:x="urn:x" note=">" x:password="synthetic-sentinel"/>'],
+        ["--data-raw", '{"note":"<!--"}<request><password>synthetic-sentinel</password></request>'],
+        ["https://outer.example.test/?next=https://alice:synthetic-sentinel@inner.example.test/path"],
+        ["https://outer.example.test/?next=https%3A%2F%2Falice%3Asynthetic-sentinel%40inner.example.test%2Fpath"],
         ["X-Config:password=synthetic-sentinel"], ["{password=synthetic-sentinel}"], ["FOO=PGPASSWORD=synthetic-sentinel"],
         ["--env", "PHPSESSID=synthetic-sentinel"], ["--env", "GITHUB_PAT"], ["--build-arg", "DB_PASSWORD"]]) {
         config.processes!.native.command!.push(...vector);

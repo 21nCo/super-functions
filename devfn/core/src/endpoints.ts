@@ -199,13 +199,15 @@ function rejectXmlCredentialFields(value: string, field: string, jsonStrings: re
   let stringIndex = 0;
   for (let index = 0; index < value.length; index += 1) {
     if (value[index] !== "<") continue;
+    while (stringIndex < jsonStrings.length && jsonStrings[stringIndex][1] < index) stringIndex += 1;
+    // A comment opener inside JSON data is not an XML comment. Skipping it
+    // would hide any real element that follows the string.
+    if (stringIndex < jsonStrings.length && jsonStrings[stringIndex][0] <= index) continue;
     if (value.startsWith("<!--", index)) {
       const close = value.indexOf("-->", index + 4);
       index = close < 0 ? value.length : close + 2;
       continue;
     }
-    while (stringIndex < jsonStrings.length && jsonStrings[stringIndex][1] < index) stringIndex += 1;
-    const insideJsonString = stringIndex < jsonStrings.length && jsonStrings[stringIndex][0] <= index;
     const start = index;
     let quote = "";
     const unquoted: string[] = [];
@@ -226,13 +228,12 @@ function rejectXmlCredentialFields(value: string, field: string, jsonStrings: re
       }
     }
     const tag = unquoted.join("");
-    if (insideJsonString) continue;
     let cursor = 1;
     while (cursor < tag.length && /\s|\//.test(tag[cursor])) cursor += 1;
     if (!/[A-Za-z_]/.test(tag[cursor] ?? "")) continue;
     const elementStart = cursor;
     while (cursor < tag.length && /[A-Za-z0-9_.:-]/.test(tag[cursor])) cursor += 1;
-    if (!insideJsonString && isCredentialKey(tag.slice(elementStart, cursor))) invalid(field, "credential-bearing structured argv must use the secret channel.");
+    if (isCredentialKey(tag.slice(elementStart, cursor))) invalid(field, "credential-bearing structured argv must use the secret channel.");
     while (cursor < tag.length) {
       if (!/\s/.test(tag[cursor])) { cursor += 1; continue; }
       while (cursor < tag.length && /\s/.test(tag[cursor])) cursor += 1;
@@ -541,25 +542,24 @@ function rejectUrlCredentialsDecoded(value: string, field: string): void {
       invalid(field, "credential-bearing URL must use the secret channel.");
     }
   }
-  // Quotes can occur inside URL userinfo, so they cannot delimit a candidate.
+  // Scan every scheme, including URLs embedded in an outer URL's query or
+  // fragment. Only the authority is needed for userinfo; stopping there also
+  // keeps a token with many nested URLs bounded instead of reparsing each
+  // remaining suffix. Query and fragment keys are checked above.
   for (let cursor = 0; cursor < value.length;) {
     const schemeEnd = value.indexOf("://", cursor);
     if (schemeEnd < 0) break;
     let start = schemeEnd;
-    while (start > cursor && /[A-Za-z0-9+.-]/.test(value[start - 1])) start -= 1;
+    while (start > 0 && /[A-Za-z0-9+.-]/.test(value[start - 1])) start -= 1;
     if (!/[A-Za-z]/.test(value[start] ?? "")) { cursor = schemeEnd + 3; continue; }
     let end = schemeEnd + 3;
-    while (end < value.length && !/\s|[<>]/.test(value[end])) end += 1;
+    while (end < value.length && !/\s|[<>/?#&]/.test(value[end])) end += 1;
     let candidate = value.slice(start, end);
-    cursor = end;
+    cursor = schemeEnd + 3;
     while (candidate) {
       try {
-        const url = new URL(candidate);
-        const fragment = url.hash.slice(1);
-        const fragmentParameters = new URLSearchParams(fragment.includes("?") ? fragment.slice(fragment.indexOf("?") + 1) : fragment);
-        const sensitiveQueryKey = [...url.searchParams.keys(), ...fragmentParameters.keys()].some((key) =>
-          isCredentialKey(key));
-        if (url.username || url.password || sensitiveQueryKey) invalid(field, "credential-bearing URL must use the secret channel.");
+        const url = new URL(`${candidate}/`);
+        if (url.username || url.password) invalid(field, "credential-bearing URL must use the secret channel.");
         break;
       } catch (error) {
         if (error instanceof DevFnError) throw error;

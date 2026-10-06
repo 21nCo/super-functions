@@ -55,12 +55,16 @@ export class ComposeError extends Error {
 
 /** The effective Docker Compose namespace shared by startup and endpoint resolution. */
 export function composeProjectName(prefix: string, instanceId: string): string {
-  const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 20);
-  const suffix = `o-${digest}`;
-  const normalizedPrefix = prefix.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "") || "d";
+  const ownerDigest = createHash("sha256").update(instanceId).digest("hex").slice(0, 20);
+  // The readable prefix is lossy (punctuation and length are normalized).
+  // Include its original case-folded bytes in the namespace identity so two
+  // accepted prefixes cannot alias merely because they render alike.
+  const prefixIdentity = prefix.toLowerCase();
+  const prefixDigest = createHash("sha256").update(prefixIdentity).digest("hex").slice(0, 12);
+  const suffix = `p-${prefixDigest}-o-${ownerDigest}`;
+  const normalizedPrefix = prefixIdentity.replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "") || "d";
   const budget = 48 - suffix.length - 1;
-  const safePrefix = normalizedPrefix.length <= budget ? normalizedPrefix :
-    `${normalizedPrefix.slice(0, budget - 13)}-${createHash("sha256").update(normalizedPrefix).digest("hex").slice(0, 12)}`;
+  const safePrefix = normalizedPrefix.slice(0, budget);
   return `${safePrefix}-${suffix}`;
 }
 

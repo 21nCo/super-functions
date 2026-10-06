@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { validateDevFnConfig, type DevFnConfig } from "@devfn/config";
+import { composeProjectName } from "@devfn/compose";
 import { checkReadinessNow, waitForReadiness } from "@devfn/processes";
 import { describe, expect, it, vi } from "vitest";
 
@@ -238,6 +239,23 @@ describe("endpoint and template contract", () => {
       await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow(/no shared effective Compose network/);
       await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("does not publish sibling DNS across prefixes that only differ before Compose normalization", () => {
+    const config = fixture();
+    config.profiles.default.environment = {};
+    config.ports!.web = {};
+    config.services = {
+      web: { adapter: "compose", service: "web", projectName: "team.alpha", ports: { web: 8080 }, health: { type: "http", port: "web" } },
+      consumer: { adapter: "compose", service: "consumer", projectName: "team-alpha", dependsOn: ["web"], env: { UPSTREAM: "{{env.DEVFN_URL_WEB}}" } },
+    };
+    config.profiles.default.services = ["consumer"];
+    const ownerId = "opaque/owner";
+    const producerNetwork = `${composeProjectName("team.alpha", ownerId)}_default`;
+    const consumerNetwork = `${composeProjectName("team-alpha", ownerId)}_default`;
+    expect(producerNetwork).not.toBe(consumerNetwork);
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId, ports: { api: 4101, worker: 4102, web: 4103 },
+      composeNetworks: { web: [producerNetwork], consumer: [consumerNetwork] } })).toThrow(/no shared effective Compose network/);
   });
 
   it("allows independent Compose projects without publishing unreachable sibling URLs", () => {
@@ -747,6 +765,77 @@ describe("endpoint and template contract", () => {
         const config = fixture();
         config.profiles.default.environment = { PAYLOAD: value };
         expect(() => resolve(config)).not.toThrow();
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
+  it("keeps JSON comment text as data while rejecting a later real XML credential field", async () => {
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-mixed-structured-"));
+    const stateDir = path.join(root, "state");
+    const sensitive = `{"note":"<!--"}<request page="2"><password>${marker}</password></request>`;
+    const ordinary = '{"note":"<!-- <password>ordinary</password>"}<request page="2"/>';
+    const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    const configure = (source: "profile" | "process-env" | "command" | "script" | "health" | "compose-health", value: string): DevFnConfig => {
+      const config = fixture();
+      if (source === "profile") config.profiles.default.environment = { PAYLOAD: value };
+      if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, PAYLOAD: value };
+      if (source === "command") config.processes!.worker.command = ["tool", value];
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    try {
+      for (const source of ["profile", "process-env", "command", "script", "health", "compose-health"] as const) {
+        expect(() => resolve(configure(source, ordinary)), source).not.toThrow();
+        const config = configure(source, sensitive);
+        expect(() => resolve(config), source).toThrow(/secret channel/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
+  it("rejects nested and encoded URL userinfo across literal and argv consumers", async () => {
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-nested-url-"));
+    const stateDir = path.join(root, "state");
+    const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    const configure = (source: "profile" | "process-env" | "command" | "script" | "health" | "compose-health", value: string): DevFnConfig => {
+      const config = fixture();
+      if (source === "profile") config.profiles.default.environment = { TARGET: value };
+      if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, TARGET: value };
+      if (source === "command") config.processes!.worker.command = ["tool", value];
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    try {
+      for (const source of ["profile", "process-env", "command", "script", "health", "compose-health"] as const) {
+        const ordinary = "https://outer.example.test/?next=https://inner.example.test/path";
+        expect(() => resolve(configure(source, ordinary)), source).not.toThrow();
+        for (const nested of [`https://alice:${marker}@inner.example.test/path`, `https%3A%2F%2Falice%3A${marker}%40inner.example.test%2Fpath`]) {
+          const config = configure(source, `https://outer.example.test/?next=${nested}`);
+          expect(() => resolve(config), source).toThrow(/secret channel/);
+          const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+          expect(failure).toMatch(/secret channel/);
+          expect(failure).not.toContain(marker);
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
       }
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);

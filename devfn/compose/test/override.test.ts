@@ -53,6 +53,7 @@ describe("ComposeController", () => {
     expect(composeProjectName("blue", "Owner")).toBe(composeProjectName("BLUE", "Owner"));
     expect(composeProjectName("blue", "--token=synthetic-sentinel")).not.toContain("synthetic-sentinel");
     expect(composeProjectName("abcdefghijklmnopqrstuvwxy-one", "owner")).not.toBe(composeProjectName("abcdefghijklmnopqrstuvwxy-two", "owner"));
+    expect(composeProjectName("team.alpha", "owner")).not.toBe(composeProjectName("team-alpha", "owner"));
   });
 
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("isolates simultaneous case-distinct owners through stop and retry", async () => {
