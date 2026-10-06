@@ -13,9 +13,10 @@ const COMPACT_QUALIFIERS = new Set([
 ]);
 
 function words(name: string): string[] {
+  // Numbered copies of a credential field retain the field's meaning.
   return name.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
-    .split(/[^A-Za-z0-9]+/).filter(Boolean).map((word) => word.toLowerCase());
+    .split(/[^A-Za-z0-9]+/).map((word) => word.replace(/[0-9]+$/, "").toLowerCase()).filter(Boolean);
 }
 
 function compactCredential(name: string, qualifiers = 0): boolean {

@@ -384,6 +384,58 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects numbered credential names and clustered curl options before mutation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-numbered-cluster-"));
+    const stateDir = path.join(root, "state");
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const vectors = [
+      [`--password1=${marker}`],
+      [`https://example.test/?api_token2=${marker}`],
+      [`-sHAuthorization: Bearer ${marker}`],
+      ["-sH", `Authorization2: Bearer ${marker}`],
+      [`-sHAuthorization%32%3A%20Bearer%20${marker}`],
+      [`-sualice:${marker}`],
+      ["-su", `alice:${marker}`],
+      [`-sdpassword=${marker}`],
+      [`-sdapi_token2=${marker}`],
+      [`-sFpassword=${marker}`],
+      ["-b", `sessionid=${marker}`],
+      [`-bsessionid=${marker}`],
+      [`-sbsession%69d%32=${marker}`],
+      ["--cookie", `other=x; sessionid=${marker}`],
+      [`--cookie=other=x; sessionid=${marker}`],
+      [`-bother=x; sessionid=${marker}`],
+      [`-sHAuthorization2: Bearer ${marker}`],
+    ];
+    try {
+      for (const vector of vectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
+        const config = fixture();
+        if (source === "command") config.processes!.worker.command = ["curl", ...vector];
+        if (source === "script") {
+          config.processes!.worker.adapter = "npm";
+          config.processes!.worker.script = `start curl ${vector.join(" ")}`;
+        }
+        if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
+        if (source === "compose-health") {
+          config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
+          config.profiles.default.services = ["web"];
+          config.profiles.default.processes = [];
+          config.profiles.default.environment = {};
+        }
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      const ordinary = fixture();
+      ordinary.processes!.worker.command = ["curl", "-sHX-Request-Id: fixture", "-sdpage=2", "-b", "page=2"];
+      ordinary.processes!.worker.envAllowlist = ["API_TOKEN2"];
+      ordinary.processes!.worker.secretEnv = ["API_TOKEN2"];
+      expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(ordinary.processes!.worker.command);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("rejects credential-named form and query argv across command, script and health before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-form-"));
     const stateDir = path.join(root, "state");

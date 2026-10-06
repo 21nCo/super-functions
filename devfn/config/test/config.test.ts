@@ -26,6 +26,20 @@ describe("DevFn configuration", () => {
     }
     for (const ordinary of ["PGPORT", "PGHOST", "PGDATABASE", "PGUSER", "PAGE", "PAGING"]) expect(isCredentialKey(ordinary)).toBe(false);
   });
+
+  it("classifies numbered credential keys without treating ordinary numbered keys as secrets", () => {
+    for (const key of ["PASSWORD1", "API_TOKEN2", "AUTHORIZATION2", "DB_PASS3", "DBSIG4", "session-id_5"]) {
+      expect(isCredentialKey(key)).toBe(true);
+    }
+    for (const key of ["PAGE1", "DB_MODE2", "PGPORT3", "REQUEST_ID4"]) expect(isCredentialKey(key)).toBe(false);
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["PASSWORD1", "API_TOKEN2", "AUTHORIZATION2"]) {
+      expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, services: { app: { adapter: "compose", service: "app", env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
+    }
+  });
   it("validates named ports, processes, services, profiles, and hostnames", () => {
     const config = validateDevFnConfig({
       version: 1,

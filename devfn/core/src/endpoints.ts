@@ -202,6 +202,28 @@ function decodedVariants(value: string): string[] {
   return variants;
 }
 
+/** Curl permits no-value switches before a value-taking short option. */
+function curlShortValueOption(token: string): { option: "H" | "u" | "U" | "d" | "F" | "b"; attached: string } | undefined {
+  if (!token.startsWith("-") || token.startsWith("--")) return undefined;
+  for (let index = 1; index < token.length; index += 1) {
+    const option = token[index];
+    if (option === "H" || option === "u" || option === "U" || option === "d" || option === "F" || option === "b") {
+      return { option, attached: token.slice(index + 1).replace(/^=/, "") };
+    }
+    if (!"sSLkfiINO".includes(option)) return undefined;
+  }
+  return undefined;
+}
+
+function rejectCredentialCookies(raw: string, field: string): void {
+  for (const candidate of decodedVariants(raw.replace(/["'`]/g, ""))) {
+    for (const cookie of candidate.split(/[;&]/)) {
+      const assignment = cookie.trim().match(/^([^=\s]+)=/);
+      if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing cookie must use the secret channel.");
+    }
+  }
+}
+
 /** Check options that become credential-bearing only with their value. */
 function rejectCredentialVector(values: readonly string[], field: string): void {
   // Package scripts are one string; native commands and health probes are
@@ -211,22 +233,21 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
     const tokens = variants.flatMap((items) => (items[depth] ?? items.at(-1)!).match(/\S+/g) ?? []);
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index].replace(/^["']|["']$/g, "");
+      const short = curlShortValueOption(token);
       // curl accepts both -Hname:value and -H name:value, as well as long
       // header options. A short attached header has no word boundary before
       // its name, so the general header scan above cannot identify it.
       const headerOption = token.match(/^--(?:proxy-)?header(?:=(.*))?$/i);
-      const shortHeader = headerOption ? null : token.match(/^-H(.*)$/);
-      if (headerOption || shortHeader) {
-        const raw = headerOption ? headerOption[1] ?? tokens[index + 1] : shortHeader![1] || tokens[index + 1];
+      if (headerOption || short?.option === "H") {
+        const raw = headerOption ? headerOption[1] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
         if (raw !== undefined) {
           const name = raw.replace(/["'`]/g, "").trimStart().match(/^([A-Za-z][A-Za-z0-9_-]*)\s*:/)?.[1];
           if (name && isCredentialKey(name)) invalid(field, "credential-bearing header must use the secret channel.");
         }
       }
       const option = token.match(/^(--(?:proxy-)?user(?:name)?|-u|-U)(?:=(.*))?$/i);
-      const shortAttached = option ? null : token.match(/^-[uU](.+)$/);
-      if (option || shortAttached) {
-        const raw = option ? option[2] ?? tokens[index + 1] : shortAttached![1];
+      if (option || short?.option === "u" || short?.option === "U") {
+        const raw = option ? option[2] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
         if (raw !== undefined) for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
           if (candidate.includes(":")) invalid(field, "credential-bearing argv must use the secret channel.");
         }
@@ -234,14 +255,22 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       // Form and query options carry name=value data that may be decoded by
       // the client after DevFn has already persisted the resolved argv.
       const formOption = token.match(/^(--(?:data(?:-ascii|-binary|-raw|-urlencode)?|form(?:-string)?|url-query)|-[dF])(?:=(.*))?$/i);
-      const shortForm = formOption ? null : token.match(/^-[dF](.+)$/);
-      if (formOption || shortForm) {
-        const raw = formOption ? formOption[2] ?? tokens[index + 1] : shortForm![1];
+      if (formOption || short?.option === "d" || short?.option === "F") {
+        const raw = formOption ? formOption[2] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
         if (raw === undefined) continue;
         for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, "").replace(/^\+/, ""))) {
           const assignment = candidate.match(/^([^=:@\s]+)(?:=|:=|@)/);
           if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
         }
+      }
+      const cookieOption = token.match(/^--cookie(?:=(.*))?$/i);
+      if (cookieOption || short?.option === "b") {
+        // Quoted cookie lists may have been split for inspection at spaces.
+        const following = tokens.slice(index + 1);
+        const nextOption = following.findIndex((item) => /^--?[A-Za-z]/.test(item));
+        const raw = [cookieOption ? cookieOption[1] ?? "" : short!.attached,
+          ...following.slice(0, nextOption < 0 ? undefined : nextOption)].join(" ");
+        if (raw) rejectCredentialCookies(raw, field);
       }
     }
   }
