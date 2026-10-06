@@ -339,6 +339,51 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it("rejects attached header options across argv consumers before mutation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-header-"));
+    const stateDir = path.join(root, "state");
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const headerVectors = [
+      [`-Hauthorization: Bearer ${marker}`],
+      [`-HAuthorization%3A%20Bearer%20${marker}`],
+      [`-HAuthor'ization: Bearer ${marker}`],
+      [`--header=Author%69zation: Bearer ${marker}`],
+      ["-H", `Authorization: Bearer ${marker}`],
+      [`--header=Authorization: Bearer ${marker}`],
+      ["--proxy-header", `Authorization: Bearer ${marker}`],
+    ];
+    try {
+      for (const vector of headerVectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
+        const config = fixture();
+        if (source === "command") config.processes!.worker.command = ["curl", ...vector];
+        if (source === "script") {
+          config.processes!.worker.adapter = "npm";
+          config.processes!.worker.script = `start curl ${vector.join(" ")}`;
+        }
+        if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
+        if (source === "compose-health") {
+          config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
+          config.profiles.default.services = ["web"];
+          config.profiles.default.environment = { MODE: "profile" };
+        }
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+        const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+        expect(error).toMatch(/secret channel/);
+        expect(error).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      const assembled = fixture();
+      assembled.processes!.worker.env = { ...assembled.processes!.worker.env, HEADER_NAME: "Authorization", HEADER_VALUE: `Bearer ${marker}` };
+      assembled.processes!.worker.command = ["curl", "-H{{env.HEADER_NAME}}: {{env.HEADER_VALUE}}"];
+      expect(() => resolveEndpointTemplates({ config: assembled, plan: createPlan(assembled), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+      const ordinary = fixture();
+      ordinary.processes!.worker.command = ["curl", "-HX-Request-Id: fixture", "--header=X-Trace: value"];
+      ordinary.processes!.worker.envAllowlist = ["API_TOKEN"];
+      ordinary.processes!.worker.secretEnv = ["API_TOKEN"];
+      expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(ordinary.processes!.worker.command);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("rejects credential-named form and query argv across command, script and health before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-form-"));
     const stateDir = path.join(root, "state");

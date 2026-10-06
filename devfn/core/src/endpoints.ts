@@ -211,6 +211,18 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
     const tokens = variants.flatMap((items) => (items[depth] ?? items.at(-1)!).match(/\S+/g) ?? []);
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index].replace(/^["']|["']$/g, "");
+      // curl accepts both -Hname:value and -H name:value, as well as long
+      // header options. A short attached header has no word boundary before
+      // its name, so the general header scan above cannot identify it.
+      const headerOption = token.match(/^--(?:proxy-)?header(?:=(.*))?$/i);
+      const shortHeader = headerOption ? null : token.match(/^-H(.*)$/);
+      if (headerOption || shortHeader) {
+        const raw = headerOption ? headerOption[1] ?? tokens[index + 1] : shortHeader![1] || tokens[index + 1];
+        if (raw !== undefined) {
+          const name = raw.replace(/["'`]/g, "").trimStart().match(/^([A-Za-z][A-Za-z0-9_-]*)\s*:/)?.[1];
+          if (name && isCredentialKey(name)) invalid(field, "credential-bearing header must use the secret channel.");
+        }
+      }
       const option = token.match(/^(--(?:proxy-)?user(?:name)?|-u|-U)(?:=(.*))?$/i);
       const shortAttached = option ? null : token.match(/^-[uU](.+)$/);
       if (option || shortAttached) {
