@@ -134,18 +134,60 @@ function rejectCredentialArgument(value: string, field: string): void {
       // checked with the same credential grammar after argv is assembled.
       if (argument[1].toLowerCase() !== "cookie" && isCredentialKey(argument[1])) invalid(field, "credential-bearing argv must use the secret channel.");
     }
-    // Template fragments can assemble an otherwise hidden credential header.
-    for (const header of checked.matchAll(/(?:^|[^A-Za-z0-9_-])([A-Za-z][A-Za-z0-9_-]*)\s*:/g)) {
-      if (isCredentialKey(header[1])) invalid(field, "credential-bearing header must use the secret channel.");
-    }
+    // An option, header, object-like field or nested assignment can wrap a
+    // credential declaration. A single cursor keeps malformed long operands
+    // bounded, unlike a regex that retries a long whitespace suffix at each
+    // character.
+    scanEmbeddedCredentialNames(checked, field);
   }
   rejectCredentialVector([value], field);
 }
 
-/** Inspect XML names outside quoted attribute values, including incomplete tags. */
-function rejectXmlCredentialFields(value: string, field: string): void {
+function scanEmbeddedCredentialNames(value: string, field: string): void {
+  let inTag = false;
+  let tagQuote = "";
+  for (let index = 0; index < value.length;) {
+    if (value.startsWith("<!--", index)) {
+      const close = value.indexOf("-->", index + 4);
+      index = close < 0 ? value.length : close + 3;
+      inTag = false;
+      tagQuote = "";
+      continue;
+    }
+    if (value[index] === "<" && !tagQuote) { inTag = true; index += 1; continue; }
+    if (inTag && (value[index] === '"' || value[index] === "'")) {
+      if (!tagQuote) tagQuote = value[index];
+      else if (tagQuote === value[index]) tagQuote = "";
+      index += 1;
+      continue;
+    }
+    if (tagQuote) { index += 1; continue; }
+    if (value[index] === ">" && inTag) { inTag = false; index += 1; continue; }
+    if (!/[A-Za-z_]/.test(value[index])) { index += 1; continue; }
+    if (index > 0 && /[A-Za-z0-9_.-]/.test(value[index - 1])) { index += 1; continue; }
+    const start = index;
+    while (index < value.length && /[A-Za-z0-9_.-]/.test(value[index])) index += 1;
+    const name = value.slice(start, index);
+    let next = index;
+    while (next < value.length && /\s/.test(value[next])) next += 1;
+    if (isCredentialKey(name) && (value[next] === "=" || value[next] === "@" || value[next] === ":")) {
+      invalid(field, "credential-bearing argv must use the secret channel.");
+    }
+  }
+}
+
+/** Inspect XML names outside comments and quoted attribute values, including incomplete tags. */
+function rejectXmlCredentialFields(value: string, field: string, jsonStrings: readonly [number, number][]): void {
+  let stringIndex = 0;
   for (let index = 0; index < value.length; index += 1) {
     if (value[index] !== "<") continue;
+    if (value.startsWith("<!--", index)) {
+      const close = value.indexOf("-->", index + 4);
+      index = close < 0 ? value.length : close + 2;
+      continue;
+    }
+    while (stringIndex < jsonStrings.length && jsonStrings[stringIndex][1] < index) stringIndex += 1;
+    const insideJsonString = stringIndex < jsonStrings.length && jsonStrings[stringIndex][0] <= index;
     const start = index;
     let quote = "";
     const unquoted: string[] = [];
@@ -166,11 +208,22 @@ function rejectXmlCredentialFields(value: string, field: string): void {
       }
     }
     const tag = unquoted.join("");
-    const element = tag.match(/^<\s*\/?\s*([A-Za-z_][A-Za-z0-9_.:-]*)/);
-    if (!element) continue;
-    if (isCredentialKey(element[1])) invalid(field, "credential-bearing structured argv must use the secret channel.");
-    for (const attribute of tag.matchAll(/\s+([A-Za-z_][A-Za-z0-9_.:-]*)\s*=/g)) {
-      if (isCredentialKey(attribute[1])) invalid(field, "credential-bearing structured argv must use the secret channel.");
+    let cursor = 1;
+    while (cursor < tag.length && /\s|\//.test(tag[cursor])) cursor += 1;
+    if (!/[A-Za-z_]/.test(tag[cursor] ?? "")) continue;
+    const elementStart = cursor;
+    while (cursor < tag.length && /[A-Za-z0-9_.:-]/.test(tag[cursor])) cursor += 1;
+    if (!insideJsonString && isCredentialKey(tag.slice(elementStart, cursor))) invalid(field, "credential-bearing structured argv must use the secret channel.");
+    while (cursor < tag.length) {
+      if (!/\s/.test(tag[cursor])) { cursor += 1; continue; }
+      while (cursor < tag.length && /\s/.test(tag[cursor])) cursor += 1;
+      if (!/[A-Za-z_]/.test(tag[cursor] ?? "")) continue;
+      const nameStart = cursor;
+      while (cursor < tag.length && /[A-Za-z0-9_.:-]/.test(tag[cursor])) cursor += 1;
+      while (cursor < tag.length && /\s/.test(tag[cursor])) cursor += 1;
+      if (tag[cursor] === "=" && isCredentialKey(tag.slice(nameStart, cursor).trim())) {
+        invalid(field, "credential-bearing structured argv must use the secret channel.");
+      }
     }
   }
 }
@@ -213,10 +266,8 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
     candidates.push(unquoted);
   }
   for (const candidate of candidates) {
-    // Body arguments can be XML as well as JSON. Quoted '>' is attribute
-    // data, while only unquoted names inside a tag can declare credentials.
-    rejectXmlCredentialFields(candidate, field);
     const stack: Array<{ delimiter: "{" | "["; expectsKey: boolean }> = [];
+    const jsonStrings: Array<[number, number]> = [];
     let start = -1;
     let stringStart = -1;
     let quote = "";
@@ -234,6 +285,7 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
         else if (char === quote) {
           const closedQuote = quote;
           quote = "";
+          if (stack.length) jsonStrings.push([stringStart, end]);
           // Inspect a key even when the object cannot be parsed. A missing
           // comma leaves expectsKey false, so hold the quoted token until the
           // next significant character establishes whether it is a key.
@@ -303,6 +355,9 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
         }
       }
     }
+    // Body arguments can be XML as well as JSON. A JSON string containing an
+    // XML-shaped word is data; an actual XML attribute remains a declaration.
+    rejectXmlCredentialFields(candidate, field, jsonStrings);
   }
 }
 

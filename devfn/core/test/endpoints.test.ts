@@ -705,6 +705,67 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("classifies embedded credential assignments without treating comments or JSON strings as XML", async () => {
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-context-credential-"));
+    const stateDir = path.join(root, "state");
+    const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    const configure = (source: "command" | "script" | "health" | "compose-health", value: string) => {
+      const config = fixture();
+      if (source === "command") config.processes!.worker.command = ["tool", value];
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    try {
+      const sources = ["command", "script", "health", "compose-health"] as const;
+      for (const source of sources) {
+        for (const value of [`X-Config:password=${marker}`, `{password=${marker}}`, `FOO=PGPASSWORD=${marker}`, `FOO=DB_PASSWORD=${marker}`]) {
+          const config = configure(source, value);
+          expect(() => resolve(config), `${source}: ${value}`).toThrow(/secret channel/);
+          const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+          expect(error).toMatch(/secret channel/);
+          expect(error).not.toContain(marker);
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+        for (const value of ["X-Config:theme=dark", "{theme=dark}", "FOO=NODE_ENV=development", "<!-- <password>ordinary</password> -->", '{"note":"<password>ordinary</password>"}', "literal $HOME `id` ; & |"] ) {
+          expect(() => resolve(configure(source, value)), `${source}: ${value}`).not.toThrow();
+        }
+      }
+      for (const value of [`X-Config:password=${marker}`, `{password=${marker}}`, `FOO=PGPASSWORD=${marker}`]) {
+        const config = fixture();
+        config.profiles.default.environment = { PAYLOAD: value };
+        expect(() => resolve(config)).toThrow(/secret channel/);
+      }
+      for (const value of ["<!-- <password>ordinary</password> -->", '{"note":"<password>ordinary</password>"}']) {
+        const config = fixture();
+        config.profiles.default.environment = { PAYLOAD: value };
+        expect(() => resolve(config)).not.toThrow();
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
+  it("bounds preflight work for long plain and incomplete XML arguments", () => {
+    const measure = (length: number, prefix: string) => {
+      const config = fixture();
+      config.processes!.worker.command = ["tool", `${prefix}${" ".repeat(length)}`];
+      const started = performance.now();
+      resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+      return performance.now() - started;
+    };
+    for (const prefix of ["plain", "<request"]) {
+      const short = measure(5_000, prefix);
+      const long = measure(40_000, prefix);
+      expect(long, `${prefix}: ${short.toFixed(1)}ms vs ${long.toFixed(1)}ms`).toBeLessThan(short * 10 + 200);
+    }
+  });
+
   it("rejects credential-named form and query argv across command, script and health before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-form-"));
     const stateDir = path.join(root, "state");
