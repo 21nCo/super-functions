@@ -57,7 +57,10 @@ export class ComposeError extends Error {
 export function composeProjectName(prefix: string, instanceId: string): string {
   const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 20);
   const suffix = `o-${digest}`;
-  const safePrefix = prefix.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "").slice(0, 48 - suffix.length - 1) || "d";
+  const normalizedPrefix = prefix.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "") || "d";
+  const budget = 48 - suffix.length - 1;
+  const safePrefix = normalizedPrefix.length <= budget ? normalizedPrefix :
+    `${normalizedPrefix.slice(0, budget - 13)}-${createHash("sha256").update(normalizedPrefix).digest("hex").slice(0, 12)}`;
   return `${safePrefix}-${suffix}`;
 }
 

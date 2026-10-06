@@ -146,7 +146,25 @@ function rejectCredentialArgument(value: string, field: string): void {
 function scanEmbeddedCredentialNames(value: string, field: string): void {
   let inTag = false;
   let tagQuote = "";
+  let jsonDepth = 0;
+  let jsonQuote = "";
+  let jsonEscape = false;
   for (let index = 0; index < value.length;) {
+    // Structured field names are checked by rejectStructuredCredentialPayload.
+    // Text inside a JSON string is data, even if it resembles an XML tag or
+    // assignment; it must not be reinterpreted by this embedded-name scan.
+    if (jsonQuote) {
+      if (jsonEscape) jsonEscape = false;
+      else if (value[index] === "\\") jsonEscape = true;
+      else if (value[index] === jsonQuote) jsonQuote = "";
+      index += 1;
+      continue;
+    }
+    if (!inTag && jsonDepth > 0 && (value[index] === '"' || value[index] === "'")) {
+      jsonQuote = value[index]; index += 1; continue;
+    }
+    if (!inTag && (value[index] === "{" || value[index] === "[")) jsonDepth += 1;
+    else if (!inTag && jsonDepth > 0 && (value[index] === "}" || value[index] === "]")) jsonDepth -= 1;
     if (value.startsWith("<!--", index)) {
       const close = value.indexOf("-->", index + 4);
       index = close < 0 ? value.length : close + 3;
@@ -208,6 +226,7 @@ function rejectXmlCredentialFields(value: string, field: string, jsonStrings: re
       }
     }
     const tag = unquoted.join("");
+    if (insideJsonString) continue;
     let cursor = 1;
     while (cursor < tag.length && /\s|\//.test(tag[cursor])) cursor += 1;
     if (!/[A-Za-z_]/.test(tag[cursor] ?? "")) continue;
@@ -399,13 +418,35 @@ function rejectCredentialCookies(raw: string, field: string): void {
   }
 }
 
+/** Hide JSON string data from option/assignment token inspection; structured keys are checked separately. */
+function maskJsonStrings(value: string): string {
+  const chars = [...value];
+  let depth = 0;
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < chars.length; index += 1) {
+    const char = chars[index];
+    if (quote) {
+      chars[index] = " ";
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = "";
+      continue;
+    }
+    if (depth > 0 && (char === '"' || char === "'")) { quote = char; chars[index] = " "; continue; }
+    if (char === "{" || char === "[") depth += 1;
+    else if (depth > 0 && (char === "}" || char === "]")) depth -= 1;
+  }
+  return chars.join("");
+}
+
 /** Check options that become credential-bearing only with their value. */
 function rejectCredentialVector(values: readonly string[], field: string): void {
   // Package scripts are one string; native commands and health probes are
   // vectors. Split only for inspection, never for execution or argv output.
   const variants = values.map(decodedVariants);
   for (let depth = 0; depth <= 2; depth += 1) {
-    const tokens = variants.flatMap((items) => (items[depth] ?? items.at(-1)!).match(/\S+/g) ?? []);
+    const tokens = variants.flatMap((items) => maskJsonStrings(items[depth] ?? items.at(-1)!).match(/\S+/g) ?? []);
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index].replace(/^["']|["']$/g, "");
       // `env`, `cross-env`, make and shells accept assignment operands with
@@ -421,6 +462,11 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
         ?.replace(/^["'`]+|["'`]+$/g, "");
       const attachedAssignment = longOptionValue?.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/);
       if (attachedAssignment && isCredentialKey(attachedAssignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+      if (/^--(?:env|build-arg)$/i.test(token)) {
+        const next = tokens[index + 1]?.replace(/^["'`]+|["'`]+$/g, "");
+        const assignment = next?.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/);
+        if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+      }
       const short = curlShortValueOption(token);
       // Curl and JVM both allow attached values on short options. A value
       // that declares a credential key is sensitive regardless of the option
@@ -496,7 +542,16 @@ function rejectUrlCredentialsDecoded(value: string, field: string): void {
     }
   }
   // Quotes can occur inside URL userinfo, so they cannot delimit a candidate.
-  for (let candidate of value.match(/[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>]+/g) ?? []) {
+  for (let cursor = 0; cursor < value.length;) {
+    const schemeEnd = value.indexOf("://", cursor);
+    if (schemeEnd < 0) break;
+    let start = schemeEnd;
+    while (start > cursor && /[A-Za-z0-9+.-]/.test(value[start - 1])) start -= 1;
+    if (!/[A-Za-z]/.test(value[start] ?? "")) { cursor = schemeEnd + 3; continue; }
+    let end = schemeEnd + 3;
+    while (end < value.length && !/\s|[<>]/.test(value[end])) end += 1;
+    let candidate = value.slice(start, end);
+    cursor = end;
     while (candidate) {
       try {
         const url = new URL(candidate);

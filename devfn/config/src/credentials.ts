@@ -3,7 +3,7 @@ const CREDENTIAL_ALIASES = new Set([
   "accesskey", "accesskeyid", "accesstoken", "apikey", "auth", "authkey", "authorization", "authtoken",
   "bearer", "clientsecret", "cookie", "cred", "credential", "credentials", "creds", "key", "passwd", "password",
   "pass", "passcode", "passkey", "passphrase", "privatekey", "pwd", "refreshtoken", "secret", "secretkey", "sessionid", "sessiontoken",
-  "sig", "signature", "token", "xamzcredential", "xamzsignature", "xgoogcredential", "xgoogsignature",
+  "sig", "signature", "token", "pat", "phpsessid", "xamzcredential", "xamzsignature", "xgoogcredential", "xgoogsignature",
 ]);
 
 // Compact names have no word boundary. Support known qualifier + alias pairs;

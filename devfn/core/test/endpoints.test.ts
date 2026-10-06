@@ -764,7 +764,64 @@ describe("endpoint and template contract", () => {
       const long = measure(40_000, prefix);
       expect(long, `${prefix}: ${short.toFixed(1)}ms vs ${long.toFixed(1)}ms`).toBeLessThan(short * 10 + 200);
     }
+    const plainToken = (length: number) => {
+      const config = fixture();
+      config.processes!.worker.command = ["tool", "a".repeat(length)];
+      const started = performance.now();
+      resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+      return performance.now() - started;
+    };
+    const short = plainToken(5_000);
+    const long = plainToken(40_000);
+    expect(long, `plain token: ${short.toFixed(1)}ms vs ${long.toFixed(1)}ms`).toBeLessThan(short * 10 + 200);
   });
+
+  it("rejects credential aliases and split environment option names in every argv consumer", async () => {
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-alias-"));
+    const stateDir = path.join(root, "state");
+    try {
+      for (const source of ["command", "script", "health", "compose-health"] as const) {
+        for (const vector of [["--env", `PHPSESSID=${marker}`], ["--env", "GITHUB_PAT"], ["--build-arg", "DB_PASSWORD"], [`--env=GITHUB_PAT=${marker}`]]) {
+          const config = fixture();
+          config.processes!.worker.envAllowlist = ["DB_PASSWORD", "GITHUB_PAT", "PHPSESSID"];
+          config.processes!.worker.secretEnv = ["DB_PASSWORD", "GITHUB_PAT", "PHPSESSID"];
+          if (source === "command") config.processes!.worker.command = ["tool", ...vector];
+          if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start ${vector.join(" ")}`; }
+          if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", ...vector] };
+          if (source === "compose-health") {
+            config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", ...vector] } } };
+            config.profiles.default.services = ["web"];
+            config.profiles.default.environment = {};
+          }
+          expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }), `${source}: ${vector.join(" ")}`).toThrow(/secret channel/);
+          const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+          expect(error).toMatch(/secret channel/);
+          expect(error).not.toContain(marker);
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+        const ordinary = fixture();
+        const value = '{"note":"<request password=ordinary> and password=ordinary"}';
+        if (source === "command") ordinary.processes!.worker.command = ["tool", value];
+        if (source === "script") { ordinary.processes!.worker.adapter = "npm"; ordinary.processes!.worker.script = `start ${value}`; }
+        if (source === "health") ordinary.processes!.worker.health = { type: "command", command: ["tool", value] };
+        if (source === "compose-health") {
+          ordinary.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
+          ordinary.profiles.default.services = ["web"];
+          ordinary.profiles.default.environment = {};
+        }
+        expect(() => resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).not.toThrow();
+      }
+      const profile = fixture();
+      profile.profiles.default.environment = { PAYLOAD: '{"note":"<request password=ordinary>"}' };
+      expect(() => resolveEndpointTemplates({ config: profile, plan: createPlan(profile), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).not.toThrow();
+      for (const key of ["PHPSESSID", "GITHUB_PAT"]) {
+        const sensitive = fixture();
+        sensitive.profiles.default.environment = { [key]: marker };
+        expect(() => resolveEndpointTemplates({ config: sensitive, plan: createPlan(sensitive), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret|credential/);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
 
   it("rejects credential-named form and query argv across command, script and health before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-form-"));
@@ -1256,6 +1313,9 @@ describe("endpoint and template contract", () => {
     expect(resolved.nodes.consumer.environment.UPSTREAM).toBe("http://web:8080");
     config.services.consumer.projectName = "green";
     expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "Owner", ports: { api: 4101, worker: 4102, web: 4103 } })).toThrow(/no shared effective Compose network/);
+    config.services.web.projectName = "abcdefghijklmnopqrstuvwxy-one";
+    config.services.consumer.projectName = "abcdefghijklmnopqrstuvwxy-two";
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "Owner", ports: { api: 4101, worker: 4102, web: 4103 }, composeNetworks: { web: ["shared"], consumer: ["shared"] } })).toThrow(/no shared effective Compose network/);
   });
 
   it("rejects invalid shadowed literals before creating state", async () => {

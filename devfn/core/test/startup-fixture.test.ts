@@ -194,7 +194,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(JSON.stringify(await readReceipt(config, root, owner))).not.toContain("synthetic-sentinel");
       expect(await readFile(receipt.environmentOutputs[0], "utf8")).not.toContain("synthetic-sentinel");
       expect(await readFile(receipt.processes[0].logPath, "utf8")).not.toContain("synthetic-sentinel");
-      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey", "DB_PASS", "DBSIG", "DBSig", "DbSig", "apiPass", "USER_SIG", "PGPASSWORD"]) {
+      for (const key of ["DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey", "DB_PASS", "DBSIG", "DBSig", "DbSig", "apiPass", "USER_SIG", "PGPASSWORD", "PHPSESSID", "GITHUB_PAT"]) {
         config.processes!.native.env![key] = "synthetic-sentinel";
         expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
         const failedRetry = await orchestrator.up({ config, root, stateDir: path.join(root, "state") }).then(() => "", (error: Error) => error.message);
@@ -221,7 +221,8 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
         ["--data-urlencode", "password=synthetic-sentinel"], ["--data-urlencode=password%3Dsynthetic-sentinel"], ["-F", "api_token=synthetic-sentinel"],
         ["--data-raw", '{"pass\\u0077ord":"synthetic-sentinel"}'], ["--data-raw", '{"payload":[{"api_token":"synthetic-sentinel"}]}'],
         ["--data-raw", '<request xmlns:x="urn:x" note=">" x:password="synthetic-sentinel"/>'],
-        ["X-Config:password=synthetic-sentinel"], ["{password=synthetic-sentinel}"], ["FOO=PGPASSWORD=synthetic-sentinel"]]) {
+        ["X-Config:password=synthetic-sentinel"], ["{password=synthetic-sentinel}"], ["FOO=PGPASSWORD=synthetic-sentinel"],
+        ["--env", "PHPSESSID=synthetic-sentinel"], ["--env", "GITHUB_PAT"], ["--build-arg", "DB_PASSWORD"]]) {
         config.processes!.native.command!.push(...vector);
         const status = await orchestrator.status({ config, root });
         expect(status).toMatchObject({ ok: false, state: "degraded", urls: {} });
