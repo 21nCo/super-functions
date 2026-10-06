@@ -1,0 +1,22 @@
+devfn/config/src/credentials.ts
+  h_bdc5b81c173ee9 15-23,51
+devfn/config/test/config.test.ts
+  h_bdc5b81c173ee9 43-53
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 166,178-193,196,229
+devfn/core/test/endpoints.test.ts
+  h_bdc5b81c173ee9 437-474
+devfn/docs/configuration.md
+  h_bdc5b81c173ee9 42,73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b9a9b273243248d2014af7a32fc5a14d3a1fa30b",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
