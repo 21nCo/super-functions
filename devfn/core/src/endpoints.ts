@@ -532,7 +532,34 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
 }
 
 function rejectUrlCredentials(value: string, field: string): void {
-  for (const checked of decodedVariants(value)) rejectUrlCredentialsDecoded(checked, field);
+  // Commands and environment literals can contain JSON rather than a URL
+  // directly. JSON escapes (including \\/ and \\u002f) are decoded by the
+  // eventual consumer, so inspect each decoded string as a value. Limit the
+  // number of decoding layers and scan each layer once to keep preflight
+  // bounded even for malformed or very long input.
+  let layer = [value];
+  for (let depth = 0; depth < 3 && layer.length; depth += 1) {
+    const next: string[] = [];
+    for (const item of layer) {
+      for (const checked of decodedVariants(item)) rejectUrlCredentialsDecoded(checked, field);
+      if (depth === 2) continue;
+      let start = -1;
+      let escaped = false;
+      for (let index = 0; index < item.length; index += 1) {
+        const char = item[index];
+        if (start < 0) { if (char === '"') start = index; continue; }
+        if (escaped) { escaped = false; continue; }
+        if (char === "\\") { escaped = true; continue; }
+        if (char !== '"') continue;
+        try {
+          const decoded = JSON.parse(item.slice(start, index + 1)) as unknown;
+          if (typeof decoded === "string") next.push(decoded);
+        } catch { /* A malformed quoted value cannot hide later strings. */ }
+        start = -1;
+      }
+    }
+    layer = next;
+  }
 }
 
 function rejectUrlCredentialsDecoded(value: string, field: string): void {
@@ -542,16 +569,14 @@ function rejectUrlCredentialsDecoded(value: string, field: string): void {
       invalid(field, "credential-bearing URL must use the secret channel.");
     }
   }
-  // Userinfo appears before the first authority delimiter. Inspect that span
-  // directly, including scheme-relative links nested in query values. This
-  // avoids repeatedly reparsing a malformed long authority while trimming
-  // punctuation one byte at a time. Decoded variants cover encoded links.
+  // Any // can start a scheme-relative authority, including in a query,
+  // bracketed value, or after punctuation. Inspect the authority itself,
+  // rather than guessing which preceding separator permits a URL. A single
+  // cursor avoids reparsing malformed long authorities.
   for (let index = 0; index + 1 < value.length; index += 1) {
     if (value[index] !== "/" || value[index + 1] !== "/") continue;
-    const before = index === 0 ? "" : value[index - 1];
-    if (before !== ":" && before !== "" && !/[\s=(&?#"'`]/.test(before)) continue;
     let end = index + 2;
-    while (end < value.length && !/[\s/?#&]/.test(value[end])) {
+    while (end < value.length && !/[\s\\/?#&]/.test(value[end])) {
       if (value[end] === "@") invalid(field, "credential-bearing URL must use the secret channel.");
       end += 1;
     }

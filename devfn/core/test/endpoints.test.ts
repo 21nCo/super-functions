@@ -840,6 +840,51 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects decoded JSON URL values and credential authorities in any surrounding text", async () => {
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-json-url-"));
+    const stateDir = path.join(root, "state");
+    const sources = ["profile", "process-env", "command", "script", "health", "compose-health"] as const;
+    const configure = (source: typeof sources[number], value: string): DevFnConfig => {
+      const config = fixture();
+      if (source === "profile") config.profiles.default.environment = { TARGET: value };
+      if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, TARGET: value };
+      if (source === "command") config.processes!.worker.command = ["tool", value];
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    const secret = `//alice:${marker}@inner.example.test/path`;
+    const sensitive = [
+      `{"next":"https:\\/\\/alice:${marker}@inner.example.test/path"}`,
+      `{"next":"https:\\u002f\\u002falice:${marker}@inner.example.test/path"}`,
+      ...[";", ",", "[", "]", "(", "|"].map((separator) => `before${separator}${secret}`),
+      `https://outer.example.test/?next=${encodeURIComponent(secret)}`,
+    ];
+    try {
+      for (const source of sources) {
+        for (const value of sensitive) expect(() => resolve(configure(source, value)), `${source}: ${value}`).toThrow(/secret channel/);
+        const config = configure(source, sensitive[0]);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        for (const value of [
+          '{"next":"https:\\/\\/inner.example.test/path"}',
+          '{"next":"https:\\u002f\\u002finner.example.test/path", "note":"<password>"}',
+          "before;//inner.example.test/path", "\\\\server\\share", "literal $HOME `id` ; & |",
+        ]) expect(() => resolve(configure(source, value)), `${source}: ${value}`).not.toThrow();
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("bounds preflight work for long plain and incomplete XML arguments", () => {
     const measure = (length: number, prefix: string) => {
       const config = fixture();
@@ -876,6 +921,21 @@ describe("endpoint and template contract", () => {
     const short = measure(5_000);
     const long = measure(40_000);
     expect(long, `${short.toFixed(1)}ms vs ${long.toFixed(1)}ms`).toBeLessThan(short * 10 + 200);
+  });
+
+  it("bounds decoded JSON URL inspection for long and incomplete values", () => {
+    const measure = (length: number, complete: boolean) => {
+      const config = fixture();
+      config.processes!.worker.command = ["tool", `{"next":"${"a".repeat(length)}${complete ? '"}' : ""}`];
+      const started = performance.now();
+      resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+      return performance.now() - started;
+    };
+    for (const complete of [true, false]) {
+      const short = measure(5_000, complete);
+      const long = measure(40_000, complete);
+      expect(long, `${complete}: ${short.toFixed(1)}ms vs ${long.toFixed(1)}ms`).toBeLessThan(short * 10 + 200);
+    }
   });
 
   it("rejects credential aliases and split environment option names in every argv consumer", async () => {
