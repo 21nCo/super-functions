@@ -1,0 +1,33 @@
+devfn/core/README.md
+  s_c21fd820d3c09f::t_8cc3307f41b5d7 16
+devfn/core/src/endpoints.ts
+  s_8c309e5920245a::t_d79d9f993681ec 145-177,216-218
+devfn/core/test/endpoints.test.ts
+  s_8c309e5920245a::t_f2d8997884129a 669-707
+devfn/core/test/startup-fixture.test.ts
+  s_8c309e5920245a::t_65751e42da9c0f 222-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e0c2000a16209d213f9eb239db188cce30473f0a",
+  "prompts": {},
+  "sessions": {
+    "s_8c309e5920245a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "03c59b51-04b3-4128-8634-e8ade45b4a4e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_c21fd820d3c09f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f828-b1f7-7171-a758-1b4c085d88f7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
