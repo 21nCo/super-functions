@@ -666,6 +666,45 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects namespaced XML credentials after a quoted angle bracket in every argv consumer", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-xml-credential-"));
+    const stateDir = path.join(root, "state");
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const bodies = [
+      `<request xmlns:x="urn:x" note=">" x:password="${marker}"/>`,
+      `<request xmlns:x='urn:x' note='>' x:password='${marker}'/>`,
+    ];
+    const ordinary = '<request xmlns:x="urn:x" note="> x:password=ordinary" x:page="2"/>';
+    const sources = ["command", "script", "health", "compose-health"] as const;
+    const configure = (source: typeof sources[number], xml: string): DevFnConfig => {
+      const config = fixture();
+      const command = ["curl", "--data-raw", xml];
+      if (source === "command") config.processes!.worker.command = command;
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start curl --data-raw ${xml}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    try {
+      for (const source of sources) for (const body of bodies) {
+        const config = configure(source, body);
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }), source).toThrow(/secret channel/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        const safeConfig = configure(source, ordinary);
+        const resolved = resolveEndpointTemplates({ config: safeConfig, plan: createPlan(safeConfig), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+        expect(JSON.stringify(resolved)).toContain(JSON.stringify(ordinary).slice(1, -1));
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("rejects credential-named form and query argv across command, script and health before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-form-"));
     const stateDir = path.join(root, "state");

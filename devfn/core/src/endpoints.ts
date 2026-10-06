@@ -142,6 +142,39 @@ function rejectCredentialArgument(value: string, field: string): void {
   rejectCredentialVector([value], field);
 }
 
+/** Inspect XML names outside quoted attribute values, including incomplete tags. */
+function rejectXmlCredentialFields(value: string, field: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== "<") continue;
+    const start = index;
+    let quote = "";
+    const unquoted: string[] = [];
+    for (; index < value.length; index += 1) {
+      const char = value[index];
+      if (quote) {
+        if (char === quote) quote = "";
+        unquoted.push(" ");
+      } else if (char === '"' || char === "'") {
+        quote = char;
+        unquoted.push(" ");
+      } else if (char === "<" && index !== start) {
+        index -= 1; // A malformed tag must not hide the next one.
+        break;
+      } else {
+        unquoted.push(char);
+        if (char === ">") break;
+      }
+    }
+    const tag = unquoted.join("");
+    const element = tag.match(/^<\s*\/?\s*([A-Za-z_][A-Za-z0-9_.:-]*)/);
+    if (!element) continue;
+    if (isCredentialKey(element[1])) invalid(field, "credential-bearing structured argv must use the secret channel.");
+    for (const attribute of tag.matchAll(/\s+([A-Za-z_][A-Za-z0-9_.:-]*)\s*=/g)) {
+      if (isCredentialKey(attribute[1])) invalid(field, "credential-bearing structured argv must use the secret channel.");
+    }
+  }
+}
+
 /** Inspect JSON bodies as data, including JSON escapes in field names. */
 function rejectStructuredCredentialPayload(value: string, field: string): void {
   const rejectKey = (raw: string, quote: string): void => {
@@ -180,16 +213,9 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
     candidates.push(unquoted);
   }
   for (const candidate of candidates) {
-    // Body arguments can be XML as well as JSON. Inspect names only inside
-    // tags so ordinary text content remains literal argv data.
-    for (const tag of candidate.match(/<[^>]*(?:>|$)/g) ?? []) {
-      const element = tag.match(/^<\s*\/?\s*([A-Za-z_][A-Za-z0-9_.:-]*)/);
-      if (!element) continue;
-      if (isCredentialKey(element[1])) invalid(field, "credential-bearing structured argv must use the secret channel.");
-      for (const attribute of tag.matchAll(/\s+([A-Za-z_][A-Za-z0-9_.:-]*)\s*=/g)) {
-        if (isCredentialKey(attribute[1])) invalid(field, "credential-bearing structured argv must use the secret channel.");
-      }
-    }
+    // Body arguments can be XML as well as JSON. Quoted '>' is attribute
+    // data, while only unquoted names inside a tag can declare credentials.
+    rejectXmlCredentialFields(candidate, field);
     const stack: Array<{ delimiter: "{" | "["; expectsKey: boolean }> = [];
     let start = -1;
     let stringStart = -1;
