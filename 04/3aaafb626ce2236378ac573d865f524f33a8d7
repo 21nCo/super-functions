@@ -1,0 +1,19 @@
+devfn/core/src/endpoints.ts
+  s_8c309e5920245a::t_209ea4f8a305d6 334-342
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "043aaafb626ce2236378ac573d865f524f33a8d7",
+  "prompts": {},
+  "sessions": {
+    "s_8c309e5920245a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "03c59b51-04b3-4128-8634-e8ade45b4a4e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
