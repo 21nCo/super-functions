@@ -70,6 +70,16 @@ describe("DevFn configuration", () => {
     }
     for (const key of ["GITHUBISSUE", "SECRETKEYSTONE", "ACCESSKEYBOARD", "PAGE2"]) expect(isCredentialKey(key)).toBe(false);
   });
+  it("treats passkeys as credentials in literals and inherited secret declarations", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["PASSKEY", "MY_PASSKEY", "GITHUBPASSKEY2"]) {
+      expect(isCredentialKey(key)).toBe(true);
+      expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
+    }
+    for (const key of ["COMPASS", "PASSAGE", "NODE_ENV"]) expect(isCredentialKey(key)).toBe(false);
+  });
   it("validates named ports, processes, services, profiles, and hostnames", () => {
     const config = validateDevFnConfig({
       version: 1,

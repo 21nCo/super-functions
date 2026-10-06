@@ -798,6 +798,76 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects bare commented credential fields and flagless assignments in every argv consumer", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-bare-credential-"));
+    const stateDir = path.join(root, "state");
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const sources = ["command", "script", "health", "compose-health"] as const;
+    const configure = (source: typeof sources[number], operand: string): DevFnConfig => {
+      const config = fixture();
+      if (source === "command") config.processes!.worker.command = ["env", operand];
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start ${operand}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: ["env", operand] };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["env", operand] } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    try {
+      for (const operand of [
+        `{page:1,password/*comment*/:"${marker}"}`,
+        `{page:1,passkey // comment\n: "${marker}"}`,
+        `PGPASSWORD=${marker}`,
+        `DB_PASSWORD=${marker}`,
+        `API_KEY=${marker}`,
+      ]) for (const source of sources) {
+        const config = configure(source, operand);
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      for (const operand of [
+        `{page:1,label/*comment*/:"password"}`,
+        `NODE_ENV=development`,
+        `theme=dark`,
+        `literal-$HOME-\`id\`-;&|`,
+        `C:\\work\\file`,
+      ]) for (const source of sources) {
+        const config = configure(source, operand);
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).not.toThrow();
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
+  it("rejects PASSKEY in profile literals, URLs, headers and structured arguments", () => {
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const variants = [
+      (config: DevFnConfig) => { config.profiles.default.environment = { PASSKEY: marker }; },
+      (config: DevFnConfig) => { config.processes!.worker.env = { PASSKEY: marker }; },
+      (config: DevFnConfig) => { config.profiles.default.environment = { PAYLOAD: `{page:1,password/*comment*/:"${marker}"}` }; },
+      (config: DevFnConfig) => { config.processes!.worker.env = { PAYLOAD: `{page:1,password/*comment*/:"${marker}"}` }; },
+      (config: DevFnConfig) => { config.profiles.default.environment = { ENDPOINT: `http://example.test/?PASSKEY=${marker}` }; },
+      (config: DevFnConfig) => { config.processes!.worker.command = ["curl", "-H", `PASSKEY: ${marker}`]; },
+      (config: DevFnConfig) => { config.processes!.worker.command = ["curl", "--data-raw", `{"PASSKEY":"${marker}"}`]; },
+    ];
+    for (const configure of variants) {
+      const config = fixture();
+      configure(config);
+      try {
+        resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+        expect.fail("credential-bearing literal reached the resolved plan");
+      } catch (error) {
+        expect((error as Error).message).toMatch(/secret|credential/);
+        expect((error as Error).message).not.toContain(marker);
+      }
+    }
+  });
+
   it("checks deeply nested structured argv in bounded time before startup mutation", async () => {
     const depth = 20_000;
     const nested = (key: string) => `${"[".repeat(depth)}{"${key}":"synthetic-sentinel"}${"]".repeat(depth)}`;

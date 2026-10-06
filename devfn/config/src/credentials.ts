@@ -2,7 +2,7 @@
 const CREDENTIAL_ALIASES = new Set([
   "accesskey", "accesskeyid", "accesstoken", "apikey", "auth", "authkey", "authorization", "authtoken",
   "bearer", "clientsecret", "cookie", "cred", "credential", "credentials", "creds", "key", "passwd", "password",
-  "pass", "passcode", "passphrase", "privatekey", "pwd", "refreshtoken", "secret", "secretkey", "sessionid", "sessiontoken",
+  "pass", "passcode", "passkey", "passphrase", "privatekey", "pwd", "refreshtoken", "secret", "secretkey", "sessionid", "sessiontoken",
   "sig", "signature", "token", "xamzcredential", "xamzsignature", "xgoogcredential", "xgoogsignature",
 ]);
 
@@ -17,7 +17,7 @@ const COMPACT_QUALIFIERS = new Set([
 // Short ambiguous suffixes such as key, pass and sig still require a known
 // qualifier or a word boundary, so MONKEY and COMPASS remain ordinary names.
 const UNAMBIGUOUS_SUFFIXES = [
-  "password", "passwd", "passphrase", "passcode", "secret", "token", "credential", "credentials",
+  "password", "passwd", "passphrase", "passcode", "passkey", "secret", "token", "credential", "credentials",
   "apikey", "accesskey",
   "secretkey", "accesskeyid",
   "privatekey", "sessionid", "sessiontoken", "authorization",

@@ -237,6 +237,34 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
         if (char === ":") rejectKey(pendingKey.raw, pendingKey.quote);
         pendingKey = undefined;
       }
+      // Permissive object syntaxes also allow bare field names. Inspect the
+      // field before its value even when a comment separates it from ':';
+      // the eventual JSON.parse failure must not turn it into unchecked argv.
+      if (stack.at(-1)?.delimiter === "{" && /[A-Za-z_]/.test(char)) {
+        let bareEnd = end + 1;
+        while (bareEnd < candidate.length && /[A-Za-z0-9_.-]/.test(candidate[bareEnd])) bareEnd += 1;
+        const bare = candidate.slice(end, bareEnd);
+        if (bare) {
+          let after = bareEnd;
+          while (after < candidate.length) {
+            if (/\s/.test(candidate[after])) { after += 1; continue; }
+            if (candidate.startsWith("/*", after)) {
+              const close = candidate.indexOf("*/", after + 2);
+              after = close < 0 ? candidate.length : close + 2;
+              continue;
+            }
+            if (candidate.startsWith("//", after)) {
+              const newline = candidate.indexOf("\n", after + 2);
+              after = newline < 0 ? candidate.length : newline + 1;
+              continue;
+            }
+            break;
+          }
+          if (candidate[after] === ":") rejectKey(bare, "");
+          end = bareEnd - 1;
+          continue;
+        }
+      }
       if (char === '"' || char === "'") { quote = char; stringStart = end; continue; }
       if (char === "{" || char === "[") stack.push({ delimiter: char, expectsKey: char === "{" });
       else if (char === ":" && stack.at(-1)?.delimiter === "{") stack.at(-1)!.expectsKey = false;
@@ -299,6 +327,10 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
     const tokens = variants.flatMap((items) => (items[depth] ?? items.at(-1)!).match(/\S+/g) ?? []);
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index].replace(/^["']|["']$/g, "");
+      // `env`, `cross-env`, make and shells accept assignment operands with
+      // no flag at all. They are still persisted in resolved command plans.
+      const assignmentOperand = token.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=)/);
+      if (assignmentOperand && isCredentialKey(assignmentOperand[1])) invalid(field, "credential-bearing argv must use the secret channel.");
       const short = curlShortValueOption(token);
       // Curl and JVM both allow attached values on short options. A value
       // that declares a credential key is sensitive regardless of the option
