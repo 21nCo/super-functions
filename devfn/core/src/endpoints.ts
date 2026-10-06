@@ -159,26 +159,6 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
       key = decoded;
     }
   };
-  const followsKey = (body: string, offset: number): boolean => {
-    let next = offset;
-    while (next < body.length) {
-      if (/\s/.test(body[next])) { next += 1; continue; }
-      if (body.startsWith("/*", next)) {
-        const end = body.indexOf("*/", next + 2);
-        if (end < 0) return false;
-        next = end + 2;
-        continue;
-      }
-      if (body.startsWith("//", next)) {
-        const end = body.indexOf("\n", next + 2);
-        if (end < 0) return false;
-        next = end + 1;
-        continue;
-      }
-      return body[next] === ":";
-    }
-    return false;
-  };
   const inspect = (root: unknown): void => {
     const pending: unknown[] = [root];
     while (pending.length) {
@@ -200,7 +180,7 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
     candidates.push(unquoted);
   }
   for (const candidate of candidates) {
-    const stack: string[] = [];
+    const stack: Array<{ delimiter: "{" | "["; expectsKey: boolean }> = [];
     let start = -1;
     let stringStart = -1;
     let quote = "";
@@ -220,16 +200,18 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
           // A body with an incomplete closing delimiter still has a real
           // credential field. Inspect object keys as they close, before the
           // whole-body JSON parse, with one pass over the input.
-          if (stack.at(-1) === "{") {
-            if (followsKey(candidate, end + 1)) rejectKey(candidate.slice(stringStart + 1, end), closedQuote);
-          }
+          // A quoted member name is a credential even if the body ends in a
+          // comment or omits the colon. Waiting for valid JSON would leak it.
+          if (stack.at(-1)?.delimiter === "{" && stack.at(-1)?.expectsKey) rejectKey(candidate.slice(stringStart + 1, end), closedQuote);
         }
         continue;
       }
       if (char === '"' || char === "'") { quote = char; stringStart = end; continue; }
-      if (char === "{" || char === "[") stack.push(char);
+      if (char === "{" || char === "[") stack.push({ delimiter: char, expectsKey: char === "{" });
+      else if (char === ":" && stack.at(-1)?.delimiter === "{") stack.at(-1)!.expectsKey = false;
+      else if (char === "," && stack.at(-1)?.delimiter === "{") stack.at(-1)!.expectsKey = true;
       else if (char === "}" || char === "]") {
-        if (stack.pop() !== (char === "}" ? "{" : "[")) { stack.length = 0; quote = ""; continue; }
+        if (stack.pop()?.delimiter !== (char === "}" ? "{" : "[")) { stack.length = 0; quote = ""; continue; }
         if (stack.length === 0) {
           try { inspect(JSON.parse(candidate.slice(start, end + 1)) as unknown); }
           catch (error) { if (error instanceof DevFnError) throw error; }
@@ -251,15 +233,19 @@ function decodedVariants(value: string): string[] {
   return variants;
 }
 
+const CURL_OTHER_SHORT_VALUE_OPTIONS = new Set("E K C c D P h m o x Q r e X Y y t z T A w".split(" "));
+
 /** Curl permits no-value switches before a value-taking short option. */
 function curlShortValueOption(token: string): { option: "H" | "u" | "U" | "d" | "F" | "b"; attached: string } | undefined {
   if (!token.startsWith("-") || token.startsWith("--")) return undefined;
+  // Stop at an earlier option that consumes the rest of the token. Other
+  // short switches (including -g, -4 and -6) can prefix a sensitive option.
   for (let index = 1; index < token.length; index += 1) {
     const option = token[index];
     if (option === "H" || option === "u" || option === "U" || option === "d" || option === "F" || option === "b") {
       return { option, attached: token.slice(index + 1).replace(/^=/, "") };
     }
-    if (!"vsSLkfiINO".includes(option)) return undefined;
+    if (CURL_OTHER_SHORT_VALUE_OPTIONS.has(option)) return undefined;
   }
   return undefined;
 }

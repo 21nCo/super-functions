@@ -19,6 +19,7 @@ const COMPACT_QUALIFIERS = new Set([
 const UNAMBIGUOUS_SUFFIXES = [
   "password", "passwd", "passphrase", "passcode", "secret", "token", "credential", "credentials",
   "apikey", "accesskey",
+  "secretkey", "accesskeyid",
   "privatekey", "sessionid", "sessiontoken", "authorization",
 ];
 

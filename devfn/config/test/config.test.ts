@@ -62,6 +62,14 @@ describe("DevFn configuration", () => {
     }
     for (const key of ["MONKEY", "APIKEYSTONE", "ACCESSKEYBOARD", "GITHUBISSUE", "PAGE2"]) expect(isCredentialKey(key)).toBe(false);
   });
+  it("classifies compact secret keys and access key IDs before accepting literals", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["GITHUBSECRETKEY", "githubSecretKey2", "GITHUBACCESSKEYID", "githubAccessKeyId3"]) {
+      expect(isCredentialKey(key)).toBe(true);
+      expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+    }
+    for (const key of ["GITHUBISSUE", "SECRETKEYSTONE", "ACCESSKEYBOARD", "PAGE2"]) expect(isCredentialKey(key)).toBe(false);
+  });
   it("validates named ports, processes, services, profiles, and hostnames", () => {
     const config = validateDevFnConfig({
       version: 1,

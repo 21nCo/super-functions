@@ -545,6 +545,66 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects compact secret keys, curl clusters and malformed structured keys before mutation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-shared-credential-grammar-"));
+    const stateDir = path.join(root, "state");
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const bad = [
+      [`--GITHUBSECRETKEY=${marker}`],
+      [`https://example.test/?GITHUBACCESSKEYID=${marker}`],
+      [`-gHAuthorization:Bearer-${marker}`],
+      ["-4u", `alice:${marker}`],
+      [`-gbSESSIONID=${marker}`],
+      [`-4gdpassword=${marker}`],
+      ["--data-raw", `{"password"/*unterminated ${marker}`],
+      ["--data-raw", `{"password" "${marker}"}`],
+      ["--data-raw", `{'pass\\u0077ord'/*unterminated ${marker}`],
+    ];
+    const configure = (source: "command" | "script" | "health" | "compose-health", vector: string[]): DevFnConfig => {
+      const config = fixture();
+      if (source === "command") config.processes!.worker.command = ["curl", ...vector];
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start curl ${vector.join(" ")}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    try {
+      for (const vector of bad) for (const source of ["command", "script", "health", "compose-health"] as const) {
+        const config = configure(source, vector);
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }), JSON.stringify({ source, vector })).toThrow(/secret channel/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      for (const location of ["profile", "process", "compose", "url", "http-health"] as const) {
+        const config = fixture();
+        if (location === "profile") config.profiles.default.environment = { GITHUBSECRETKEY: marker };
+        if (location === "process") config.processes!.worker.env = { GITHUBACCESSKEYID: marker };
+        if (location === "compose") {
+          config.services = { web: { adapter: "compose", service: "web", env: { GITHUBSECRETKEY: marker } } };
+          config.profiles.default.services = ["web"];
+        }
+        if (location === "url") config.profiles.default.environment = { ENDPOINT: `https://example.test/?GITHUBACCESSKEYID=${marker}` };
+        if (location === "http-health") config.processes!.api.health = { type: "http", port: "api", path: `/health?GITHUBSECRETKEY=${marker}` };
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }), location).toThrow(/secret/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      for (const vector of [["-4gHX-Request-Id: fixture"], ["-4u", "alice"], ["-gbtheme=dark"], ["--data-raw", '{"payload":{"page":2}}']]) {
+        const config = configure("command", vector);
+        expect(resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(["curl", ...vector]);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("rejects credential-named form and query argv across command, script and health before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-form-"));
     const stateDir = path.join(root, "state");
