@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { validateDevFnConfig, type DevFnConfig } from "@devfn/config";
-import { describe, expect, it } from "vitest";
+import { checkReadinessNow, waitForReadiness } from "@devfn/processes";
+import { describe, expect, it, vi } from "vitest";
 
 import { createPlan, DevFnOrchestrator, resolveEndpointTemplates, resolveLocalHostname } from "../src/index.js";
 
@@ -96,6 +97,58 @@ describe("endpoint and template contract", () => {
     const direct = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
     expect(direct.directUrls.api).toBe("https://127.0.0.1:4101");
     expect(direct.nodes.api.healthUrl).toBe("https://127.0.0.1:4101/health?ready=1");
+  });
+
+  it("keeps the leased port when HTTPS proxy readiness becomes direct HTTP", () => {
+    for (const port of [443, 4101]) {
+      for (const kind of ["process", "service"] as const) {
+        const config = fixture();
+        config.profiles.default.proxy = true;
+        config.hostnames = { api: { target: "api", hostname: "api.localhost", tls: "internal" } };
+        if (kind === "process") config.processes!.api.health = { type: "http", port: "api", url: "https://api.localhost/health?ready=1" };
+        else {
+          config.processes = {};
+          config.services = { api: { adapter: "compose", service: "api", ports: { api: 8080 }, health: { type: "http", port: "api", url: "https://api.localhost/health?ready=1" } } };
+          config.profiles.default.processes = [];
+          config.profiles.default.services = ["api"];
+          config.profiles.default.environment = {};
+        }
+        const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: port, worker: 4102 }, composeNetworks: { api: ["fixture_default"] } });
+        expect(resolved.nodes.api.healthUrl).toBe(`http://127.0.0.1:${port}/health?ready=1`);
+        expect(resolved.directUrls.api).toBe(`http://127.0.0.1:${port}`);
+      }
+    }
+  });
+
+  it("probes the same direct leased endpoint in startup, status and retry contracts", async () => {
+    const originalFetch = globalThis.fetch;
+    const observed: string[] = [];
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      observed.push(String(input));
+      return { status: 200 } as Response;
+    }) as typeof fetch;
+    try {
+      for (const port of [443, 4101]) for (const kind of ["process", "service"] as const) {
+        const config = fixture();
+        config.profiles.default.proxy = true;
+        config.hostnames = { api: { target: "api", hostname: "api.localhost", tls: "internal" } };
+        if (kind === "process") config.processes!.api.health = { type: "http", port: "api", url: "https://api.localhost/health?ready=1" };
+        else {
+          config.processes = {};
+          config.services = { api: { adapter: "compose", service: "api", ports: { api: 8080 }, health: { type: "http", port: "api", url: "https://api.localhost/health?ready=1" } } };
+          config.profiles.default.processes = [];
+          config.profiles.default.services = ["api"];
+          config.profiles.default.environment = {};
+        }
+        const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: port, worker: 4102 }, composeNetworks: { api: ["fixture_default"] } });
+        const health = { type: "http" as const, url: resolved.nodes.api.healthUrl!, timeoutMs: 1000 };
+        const input = { health, ports: { api: port }, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true };
+        await waitForReadiness(input);
+        expect(await checkReadinessNow(input)).toBe(true);
+        await waitForReadiness(input);
+        expect(observed.splice(0)).toEqual(Array(3).fill(`http://127.0.0.1:${port}/health?ready=1`));
+      }
+    } finally { globalThis.fetch = originalFetch; }
   });
 
   it("gives Compose siblings network URLs while retaining host URLs for native nodes", () => {
@@ -362,6 +415,32 @@ describe("endpoint and template contract", () => {
       expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(ordinary.processes!.worker.command);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
+
+  it("checks deeply nested structured argv in bounded time before startup mutation", async () => {
+    const depth = 20_000;
+    const nested = (key: string) => `${"[".repeat(depth)}{"${key}":"synthetic-sentinel"}${"]".repeat(depth)}`;
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-deep-argv-"));
+    const stateDir = path.join(root, "state");
+    try {
+      for (const source of ["command", "script", "health"] as const) {
+        const config = fixture();
+        const body = nested("pass\\u0077ord");
+        if (source === "command") config.processes!.worker.command = ["curl", "--data-raw", body];
+        if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start --data-raw '${body}'`; }
+        if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", "--data-raw", body] };
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+        if (source === "command") {
+          const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+          expect(failure).toMatch(/secret channel/);
+          expect(failure).not.toContain("synthetic-sentinel");
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+      }
+      const ordinary = fixture();
+      ordinary.processes!.worker.command = ["curl", "--data-raw", nested("page")];
+      expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(ordinary.processes!.worker.command);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 5_000);
 
   it("rejects PostgreSQL credential names and assembled header values before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-assembled-secret-"));

@@ -140,12 +140,16 @@ function rejectCredentialArgument(value: string, field: string): void {
 
 /** Inspect JSON bodies as data, including JSON escapes in field names. */
 function rejectStructuredCredentialPayload(value: string, field: string): void {
-  const inspect = (node: unknown): void => {
-    if (Array.isArray(node)) { for (const child of node) inspect(child); return; }
-    if (node === null || typeof node !== "object") return;
-    for (const [key, child] of Object.entries(node)) {
-      if (isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
-      inspect(child);
+  const inspect = (root: unknown): void => {
+    const pending: unknown[] = [root];
+    while (pending.length) {
+      const node = pending.pop();
+      if (Array.isArray(node)) { for (const child of node) pending.push(child); continue; }
+      if (node === null || typeof node !== "object") continue;
+      for (const [key, child] of Object.entries(node)) {
+        if (isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
+        pending.push(child);
+      }
     }
   };
   // A script or --data-raw= argument may contain a JSON body after other
@@ -156,13 +160,17 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
     if (unquoted === candidates.at(-1)) break;
     candidates.push(unquoted);
   }
-  for (const candidate of candidates) for (let start = 0; start < candidate.length; start += 1) {
-    if (candidate[start] !== "{" && candidate[start] !== "[") continue;
+  for (const candidate of candidates) {
     const stack: string[] = [];
+    let start = -1;
     let quoted = false;
     let escaped = false;
-    for (let end = start; end < candidate.length; end += 1) {
+    for (let end = 0; end < candidate.length; end += 1) {
       const char = candidate[end];
+      if (stack.length === 0) {
+        if (char !== "{" && char !== "[") continue;
+        start = end;
+      }
       if (quoted) {
         if (escaped) escaped = false;
         else if (char === "\\") escaped = true;
@@ -172,11 +180,10 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
       if (char === '"') { quoted = true; continue; }
       if (char === "{" || char === "[") stack.push(char);
       else if (char === "}" || char === "]") {
-        if (stack.pop() !== (char === "}" ? "{" : "[")) break;
+        if (stack.pop() !== (char === "}" ? "{" : "[")) { stack.length = 0; quoted = false; continue; }
         if (stack.length === 0) {
           try { inspect(JSON.parse(candidate.slice(start, end + 1)) as unknown); }
           catch (error) { if (error instanceof DevFnError) throw error; }
-          break;
         }
       }
     }
@@ -310,7 +317,12 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     rejectUrlCredentials(url.toString(), field);
     if (!health.port && selectedRouteHostnames.has(url.hostname.toLowerCase().replace(/\.$/, ""))) invalid(field, "URL-only readiness cannot wait for a selected proxy route before installation; use its leased port.");
     if (health.port) {
-      if (health.url && selectedRouteHostnames.has(new URL(health.url).hostname.toLowerCase().replace(/\.$/, ""))) url.protocol = "http:";
+      if (health.url && selectedRouteHostnames.has(new URL(health.url).hostname.toLowerCase().replace(/\.$/, ""))) {
+        url.protocol = "http:";
+        // URL drops an explicit default HTTPS port before the scheme changes.
+        // Restore the actual lease so startup, status and retry probe the same endpoint.
+        url.port = String(ports[health.port]);
+      }
       httpPorts.add(health.port);
       httpSchemes.set(health.port, url.protocol.slice(0, -1));
     }
