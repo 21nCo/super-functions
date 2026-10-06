@@ -474,6 +474,77 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("accepts ordinary long cookies and rejects compact API keys in every argv consumer", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-cookie-api-key-"));
+    const stateDir = path.join(root, "state");
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    try {
+      for (const vector of [["--cookie", "theme=dark"], ["--cookie=theme=dark"], ["-b", "theme=dark"]]) {
+        for (const source of ["command", "script", "health", "compose-health"] as const) {
+          const config = fixture();
+          if (source === "command") config.processes!.worker.command = ["curl", ...vector];
+          if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start curl ${vector.join(" ")}`; }
+          if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
+          if (source === "compose-health") {
+            config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
+            config.profiles.default.services = ["web"];
+            config.profiles.default.processes = [];
+            config.profiles.default.environment = {};
+          }
+          config.processes!.worker.envAllowlist = ["MYAPIKEY"];
+          config.processes!.worker.secretEnv = ["MYAPIKEY"];
+          const resolved = resolve(config);
+          expect(JSON.stringify(resolved)).not.toContain(marker);
+          expect(JSON.stringify(resolved)).not.toContain("MYAPIKEY");
+          if (source === "command") expect(resolved.nodes.worker.command).toEqual(["curl", ...vector]);
+          if (source === "health") expect(resolved.nodes.worker.healthCommand).toEqual(["curl", ...vector]);
+          if (source === "compose-health") expect(resolved.nodes.web.healthCommand).toEqual(["curl", ...vector]);
+        }
+      }
+      const badVectors = [
+        [`--MYAPIKEY=${marker}`],
+        [`https://example.test/?GITHUBAPIKEY=${marker}`],
+        [`https://example.test/?MYACCESSKEY%32=${marker}`],
+        ["--cookie", `theme=dark; MYAPIKEY=${marker}`],
+        [`--cookie=theme=dark; MYACCESSKEY=${marker}`],
+        [`--cookie=theme=dark%3B%20GITHUBAPIKEY%3D${marker}`],
+      ];
+      for (const vector of badVectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
+        const config = fixture();
+        if (source === "command") config.processes!.worker.command = ["curl", ...vector];
+        if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start curl ${vector.join(" ")}`; }
+        if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
+        if (source === "compose-health") {
+          config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
+          config.profiles.default.services = ["web"];
+          config.profiles.default.processes = [];
+          config.profiles.default.environment = {};
+        }
+        expect(() => resolve(config)).toThrow(/secret channel/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      for (const source of ["process", "compose"] as const) {
+        const config = fixture();
+        if (source === "process") config.processes!.worker.health = { type: "http", url: `http://127.0.0.1:4102/ready?MYAPIKEY=${marker}` };
+        else {
+          config.services = { web: { adapter: "compose", service: "web", health: { type: "http", url: `http://127.0.0.1:4103/ready?MYACCESSKEY=${marker}` } } };
+          config.profiles.default.services = ["web"];
+          config.profiles.default.processes = [];
+          config.profiles.default.environment = {};
+        }
+        expect(() => resolve(config)).toThrow(/secret channel/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("rejects credential-named form and query argv across command, script and health before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-form-"));
     const stateDir = path.join(root, "state");

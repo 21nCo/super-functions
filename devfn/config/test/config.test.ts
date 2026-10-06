@@ -51,6 +51,17 @@ describe("DevFn configuration", () => {
     }
     for (const key of ["MONKEY", "compass", "PAGE2", "GITHUBISSUE"]) expect(isCredentialKey(key)).toBe(false);
   });
+  it("classifies compact API and access keys with arbitrary qualifiers", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["MYAPIKEY", "GITHUBAPIKEY2", "MYACCESSKEY", "githubAccessKey3"]) {
+      expect(isCredentialKey(key)).toBe(true);
+      expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, services: { app: { adapter: "compose", service: "app", env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
+    }
+    for (const key of ["MONKEY", "APIKEYSTONE", "ACCESSKEYBOARD", "GITHUBISSUE", "PAGE2"]) expect(isCredentialKey(key)).toBe(false);
+  });
   it("validates named ports, processes, services, profiles, and hostnames", () => {
     const config = validateDevFnConfig({
       version: 1,

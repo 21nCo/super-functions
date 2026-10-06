@@ -18,6 +18,7 @@ const COMPACT_QUALIFIERS = new Set([
 // qualifier or a word boundary, so MONKEY and COMPASS remain ordinary names.
 const UNAMBIGUOUS_SUFFIXES = [
   "password", "passwd", "passphrase", "passcode", "secret", "token", "credential", "credentials",
+  "apikey", "accesskey",
   "privatekey", "sessionid", "sessiontoken", "authorization",
 ];
 

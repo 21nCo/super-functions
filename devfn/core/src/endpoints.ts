@@ -128,7 +128,9 @@ function rejectCredentialArgument(value: string, field: string): void {
   for (const checked of decodedVariants(value)) {
     rejectStructuredCredentialPayload(checked, field);
     for (const argument of checked.matchAll(/(?:^|\s)--([A-Za-z][A-Za-z0-9_-]*)(?==|\s|$)/g)) {
-      if (isCredentialKey(argument[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+      // --cookie is a value-taking curl option. Its assignment names are
+      // checked with the same credential grammar after argv is assembled.
+      if (argument[1].toLowerCase() !== "cookie" && isCredentialKey(argument[1])) invalid(field, "credential-bearing argv must use the secret channel.");
     }
     // Template fragments can assemble an otherwise hidden credential header.
     for (const header of checked.matchAll(/(?:^|[^A-Za-z0-9_-])([A-Za-z][A-Za-z0-9_-]*)\s*:/g)) {
