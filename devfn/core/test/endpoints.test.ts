@@ -767,6 +767,9 @@ describe("endpoint and template contract", () => {
         `{"pass\\u0077ord"/*comment*/:"${marker}"}`,
         `{'password':'${marker}'}`,
         `%7B%22pass%5Cu0077ord%22%2F*x*%2F%3A%22${marker}%22%7D`,
+        `{"page":1 "password"/*comment*/:"${marker}"}`,
+        `{"page":1 "payload":{"label":"ok" "pass\\u0077ord" /* comment */ :"${marker}"}}`,
+        `{"page":1 "password"// comment\n:"${marker}"}`,
       ]) for (const source of sources) {
         const config = configure(source, body);
         expect(() => resolve(config)).toThrow(/secret channel/);
@@ -775,8 +778,12 @@ describe("endpoint and template contract", () => {
         expect(error).not.toContain(marker);
         await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
       }
-      const ordinaryBody = '{"payload":{"page":2}}';
-      for (const source of sources) {
+      for (const ordinaryBody of [
+        '{"payload":{"page":2}}',
+        '{"page":1 "label"/* comment */:"password"}',
+        '{"label":"password"/* comment */}',
+        '{"page":1 /* "password":"comment data" */ "label":"ok"}',
+      ]) for (const source of sources) {
         const config = configure(source, ordinaryBody);
         config.processes!.worker.env = { ...config.processes!.worker.env, PAYLOAD: ordinaryBody };
         config.processes!.worker.envAllowlist = ["API_TOKEN"];

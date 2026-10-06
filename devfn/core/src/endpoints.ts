@@ -195,6 +195,7 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
     let stringStart = -1;
     let quote = "";
     let escaped = false;
+    let pendingKey: { raw: string; quote: string } | undefined;
     for (let end = 0; end < candidate.length; end += 1) {
       const char = candidate[end];
       if (stack.length === 0) {
@@ -207,20 +208,34 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
         else if (char === quote) {
           const closedQuote = quote;
           quote = "";
-          // A body with an incomplete closing delimiter still has a real
-          // credential field. Inspect object keys as they close, before the
-          // whole-body JSON parse, with one pass over the input.
-          // A quoted member name is a credential even if the body ends in a
-          // comment or omits the colon. Waiting for valid JSON would leak it.
-          // A missing comma after an earlier member leaves expectsKey false,
-          // but a following quoted name and colon still declare a field.
-          let next = end + 1;
-          while (next < candidate.length && /\s/.test(candidate[next])) next += 1;
-          if (stack.at(-1)?.delimiter === "{" && (stack.at(-1)?.expectsKey || candidate[next] === ":")) {
-            rejectKey(candidate.slice(stringStart + 1, end), closedQuote);
+          // Inspect a key even when the object cannot be parsed. A missing
+          // comma leaves expectsKey false, so hold the quoted token until the
+          // next significant character establishes whether it is a key.
+          if (stack.at(-1)?.delimiter === "{") {
+            const raw = candidate.slice(stringStart + 1, end);
+            if (stack.at(-1)!.expectsKey) rejectKey(raw, closedQuote);
+            else pendingKey = { raw, quote: closedQuote };
           }
         }
         continue;
+      }
+      if (/\s/.test(char)) continue;
+      // Comments are invalid JSON, but clients can still consume these bodies.
+      // Skip their content so quoted words inside comments are not fields, and
+      // preserve a possible key across comments before its colon.
+      if (char === "/" && candidate[end + 1] === "*") {
+        const close = candidate.indexOf("*/", end + 2);
+        end = close < 0 ? candidate.length : close + 1;
+        continue;
+      }
+      if (char === "/" && candidate[end + 1] === "/") {
+        const newline = candidate.indexOf("\n", end + 2);
+        end = newline < 0 ? candidate.length : newline;
+        continue;
+      }
+      if (pendingKey) {
+        if (char === ":") rejectKey(pendingKey.raw, pendingKey.quote);
+        pendingKey = undefined;
       }
       if (char === '"' || char === "'") { quote = char; stringStart = end; continue; }
       if (char === "{" || char === "[") stack.push({ delimiter: char, expectsKey: char === "{" });
