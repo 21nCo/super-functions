@@ -16,6 +16,7 @@ import {
   AuthFnUnauthenticatedError,
   AuthFnValidationError
 } from '../index.js';
+import { createApiKey } from '../core/api-keys.js';
 import { issueSessionCookies } from '../core/cookies.js';
 import {
   createAuthFnPlacementContextIssuer,
@@ -493,6 +494,11 @@ describe('AuthFn placement-bound auth context', () => {
     });
     await expect(bound.issuer.derive(new Request('https://account.example.com/auth/session', {
       headers: { authorization: 'Bearer secret_unbound' }
+    }))).rejects.toBeInstanceOf(AuthFnUnauthenticatedError);
+
+    const serviceKey = await createApiKey(bound.config, { userId: null, name: 'service' });
+    await expect(bound.issuer.derive(new Request('https://account.example.com/auth/session', {
+      headers: { authorization: `Bearer ${serviceKey.secret}` }
     }))).rejects.toBeInstanceOf(AuthFnUnauthenticatedError);
 
     await bound.config.database.update({

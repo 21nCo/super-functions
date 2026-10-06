@@ -7,9 +7,16 @@ import { resolve } from "node:path";
  */
 export async function loadLlmsSiteSource(cwd, dependencies) {
   const { buildManifest, loadDocsConfig, FsContentProvider } = dependencies;
-  const config = await loadDocsConfig({ cwd });
+  const loadedConfig = await loadDocsConfig({ cwd });
+  const config = {
+    ...loadedConfig,
+    content: {
+      ...loadedConfig.content,
+      root: resolve(cwd, loadedConfig.content.root || "."),
+    },
+  };
   const provider = new FsContentProvider({
-    root: config.content.root || cwd,
+    root: config.content.root,
     docsDir: config.content.docsDir,
     pagesDir: config.content.pagesDir,
     blogDir: config.content.blogDir,
@@ -45,7 +52,7 @@ export function withSourceLinks(text, manifest, product, canonicalUrl) {
   if (canonicalUrl) return text;
   const sources = new Map(Object.values(manifest.pages)
     .filter((page) => page.id.startsWith("docs:"))
-    .map((page) => [page.path, page.id.slice("docs:".length)]));
+    .map((page) => [new URL(page.path, "https://docs.invalid").pathname, page.id.slice("docs:".length)]));
   return text.replace(/\]\((\/docs[^\s)]*)\)/g, (match, href) => {
     const url = new URL(href, "https://docs.invalid");
     const source = sources.get(url.pathname);

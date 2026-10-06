@@ -28,7 +28,7 @@ dependencies = [
   "pydantic>=2.5.0",
   "cryptography>=41.0.0",
   "python-jose>=3.3.0",
-  "superfunctions>=0.1.0",
+  "superfunctions-core>=0.1.1,<0.2.0",
 ]
 
 [project.optional-dependencies]

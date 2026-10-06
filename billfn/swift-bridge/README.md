@@ -8,8 +8,15 @@ It implements the `billfn-bridge/v1` protocol and exposes:
 - a `WKWebView` message bus
 - a native-backed BillFn client wrapper
 
-## Test
+## Build and test
 
 ```bash
-npm --workspace billfn/swift-bridge test
+npm install
+npm run build
+npm test
+npm pack
 ```
+
+Run these commands from this package directory. The build typechecks the browser bridge
+and emits JavaScript and declarations to `dist`; package exports reference only those
+artifacts. Packing runs the same build gate, without downloading ad-hoc compilers.

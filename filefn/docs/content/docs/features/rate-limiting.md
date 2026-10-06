@@ -13,9 +13,10 @@ See [Core Concepts › Rate limiting](../core-concepts/rate-limiting) for the co
 import { createFileFn } from "@filefn/server";
 
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
+  stores: { atomicKv: redisAtomicStore },
   rateLimit: {
-    persistence: redisPersistence, // optional; in-memory by default
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -33,7 +34,11 @@ const fileFn = createFileFn({
 
 `rateLimit.algorithm` is one of `"fixed-window" | "sliding-window" | "token-bucket"`.
 
-`rateLimit.persistence` plugs in a shared store (Redis / Postgres / KV) so multi-instance deployments share counters.
+`rateLimit.mode: "strict"` uses CAS-capable `stores.atomicKv` for shared counters.
+Use `"best-effort"` with `stores.kv` when approximate cross-replica limits are
+acceptable, or `"local"` for in-process counters. Without an explicit mode,
+FileFn selects strict for `atomicKv`, best-effort for `kv`, otherwise local.
+The former `rateLimit.persistence` option was removed in 0.2.0.
 
 ## Pre-built rate limiter
 

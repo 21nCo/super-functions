@@ -1,27 +1,45 @@
 {
-  "name": "@botfn/persistence-service",
+  "name": "@superfunctions/botfn-persistence-service",
   "version": "0.0.1",
   "description": "Persistence service for bot data using tRPC, Hono, Postgres, and Drizzle",
-  "main": "src/index.cloudflare.ts",
+  "main": "./dist/index.cloudflare.js",
+  "types": "./dist/index.cloudflare.d.ts",
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.cloudflare.d.ts",
+      "import": "./dist/index.cloudflare.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js"
+    }
+  },
   "type": "module",
   "scripts": {
     "dev": "wrangler dev src/index.cloudflare.ts",
     "deploy": "wrangler deploy src/index.cloudflare.ts",
     "db:env:check": "node -e \"if (!process.env.DATABASE_URL) { console.error('DATABASE_URL is required'); process.exit(1); }\"",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run"
   },
   "dependencies": {
     "hono": "^4.0.0",
     "zod": "^3.22.0",
     "@trpc/server": "^10.45.0",
     "@trpc/client": "^10.45.0",
-    "@superfunctions/db": "^0.2.0",
     "drizzle-orm": "^0.35.0",
     "postgres": "^3.4.8"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
     "wrangler": "^3.0.0",
+    "vitest": "^3.2.4",
+    "@electric-sql/pglite": "^0.3.0",
     "@cloudflare/workers-types": "^4.0.0"
   },
   "author": "21n",

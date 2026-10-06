@@ -48,6 +48,15 @@ It does not own state validation, token persistence, or route generation. Pair i
 - Tune retries for provider-specific 429/5xx behavior instead of wrapping token calls with ad hoc fetch logic.
 - Treat provider revocation as best effort unless your product contract requires remote confirmation before local cleanup.
 
+## Release validation
+
+Run `npm run typecheck`, `npm run build`, `npm run lint`, and `npm test` in a
+standalone package checkout with registry-backed dependencies. The transport
+requires the OAuth core descriptor additions released in `0.2.0`; a workspace
+source alias cannot substitute for that published prerequisite. The nested-token
+tests exercise user-versus-bot selection, missing-user failures, JSON request
+encoding with Basic authentication, provider headers, and JSON revocation errors.
+
 ## Related Packages
 
 - OAuth core primitives: [../oauth-core/README.md](../oauth-core/README.md)

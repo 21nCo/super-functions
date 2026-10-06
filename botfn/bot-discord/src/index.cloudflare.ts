@@ -1,4 +1,4 @@
-import { createBotApp } from './core';
+import { createBotApp } from './core.js';
 
 const app = createBotApp();
 

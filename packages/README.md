@@ -18,7 +18,7 @@ packages/
 │   └── cli/                     # @superfunctions/cli
 │
 └── Python Packages (PyPI)
-    ├── python-core/             # superfunctions (namespace package)
+    ├── python-core/             # superfunctions-core (imports: superfunctions)
     ├── python-sqlalchemy/       # superfunctions-sqlalchemy
     ├── python-fastapi/          # superfunctions-fastapi
     └── python-flask/            # superfunctions-flask
@@ -41,7 +41,7 @@ packages/db/             → @superfunctions/db
 
 ### Python Packages
 ```text
-packages/python-core/        → superfunctions (imports: superfunctions.db, superfunctions.http)
+packages/python-core/        → superfunctions-core (imports: superfunctions.db, superfunctions.http)
 packages/python-sqlalchemy/  → superfunctions-sqlalchemy
 packages/python-fastapi/     → superfunctions-fastapi
 packages/python-flask/       → superfunctions-flask
@@ -55,11 +55,23 @@ npm install @superfunctions/http @superfunctions/http-express
 npm install @superfunctions/db
 ```
 
+`@superfunctions/middleware` 0.3.0 accepts database peers `^0.2.0 || ^0.3.0`.
+Its `checkMany` request supports `limitsByKey` overrides and returns
+`blockedKeys` for keys exceeding their individual limits. Existing callers
+without per-key overrides retain the shared limit.
+
+
 ### Python
 ```bash
-pip install superfunctions
+pip install 'superfunctions-core>=0.1.1,<0.2.0'
 pip install superfunctions-sqlalchemy superfunctions-fastapi
 ```
+
+`superfunctions-core` is the 21n distribution; PyPI's `superfunctions` is an
+unrelated project. Imports remain under `superfunctions`. The initial core
+release must be published before dependent adapters and SDKs; for unpublished
+wheel validation, use the actual packed core through `PIP_FIND_LINKS` as
+described in the root README. No Python publication is part of this cutover.
 
 ## Usage
 

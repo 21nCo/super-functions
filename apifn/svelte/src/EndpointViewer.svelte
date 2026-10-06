@@ -38,7 +38,10 @@
   $: responses = operation.responses ?? {};
   $: responseCodes = Object.keys(responses);
 
-  let activeCode = responseCodes[0] ?? "200";
+  let activeCode = "";
+  $: if (!responseCodes.includes(activeCode)) {
+    activeCode = responseCodes[0] ?? "200";
+  }
 
   $: activeResponse = responses[activeCode] as {
     description?: string; content?: Record<string, { schema?: SchemaObject }>;
@@ -77,7 +80,7 @@
             <tr>
               <td class="mono accent">{p.name}</td>
               <td><span class="badge-muted">{p.in}</span></td>
-              <td class="mono small">{(p.schema?.type as string) ?? "string"}</td>
+              <td class="mono small">{p.schema?.type ?? "string"}</td>
               <td>{#if p.required}<span class="badge-red">✓</span>{/if}</td>
               <td class="muted small">{p.description ?? ""}</td>
             </tr>

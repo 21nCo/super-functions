@@ -50,6 +50,8 @@ npm install @apifn/svelte
 | `rateLimits` | `Record<string, RateLimitInfo>` | — | Rate-limit badges, keyed `"METHOD /path"` |
 
 The explorer renders a searchable, tag-grouped sidebar and Documentation / Try It / Performance / History tabs, collapsing to a hamburger overlay at ≤768px.
+Try-It parameter, authentication and request-body controls have accessible names;
+section headings are not used as unassociated form labels.
 
 ---
 
@@ -102,6 +104,28 @@ Components use `--apifn-*` CSS variables scoped to `.apifn-root`. `ApiExplorer` 
 ## Types
 
 The package root exports prop interfaces for TypeScript consumers: `ApiExplorerProps`, `EndpointViewerProps`, `SchemaViewerProps`, `TryItProps`, `RequestHistoryProps`, `ResponseDiffProps`, `PerformanceOverlayProps`, plus `HistoryEntry`, `TryItResponse`, and `PerformanceMetrics`. `OpenAPIDocument`, `OperationObject`, and `SchemaObject` are re-exported from `@apifn/core`.
+
+## Development tests
+
+From this package directory, install and run the local toolchain:
+
+```bash
+npm install --workspaces=false
+npm test
+```
+
+Vitest compiles the actual `.svelte` sources with the package-local Svelte/Vite
+plugin and runs them in jsdom. The suite exercises reactive request inputs,
+pending-send state, response events and rendering, HTTP/network/decoding errors,
+retry recovery, public prop updates, endpoint filtering, media-query
+subscriptions, and metrics polling/revalidation with cleanup after destruction.
+Only external fetch and metrics boundaries are controlled by the tests.
+
+The public runtime surface is the component subpaths, not observable stores.
+Destroying the explorer prevents in-flight metrics from publishing or scheduling
+another poll; it does not abort the metrics client request or add cancellation
+to `TryIt`. The local suite uses Svelte 4, matching the package's development
+compiler; applications may also consume the source using the Svelte 5 peer.
 
 ## License
 

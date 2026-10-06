@@ -1,11 +1,16 @@
 import type { DocsConfig } from "@docsfn/core";
 
+const deploymentOrigin = process.env.CLOUDFLARE_DOCS_DEPLOY === "1"
+  ? process.env.CLOUDFLARE_DOCS_PUBLIC_ORIGIN
+  : undefined;
+
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
     title: "DevFn",
     description: "Trusted local profiles, process and Compose lifecycle, port leases, readiness, and localhost routes.",
     basePath: "/docs",
+    canonicalUrl: deploymentOrigin,
     editLink: { pattern: "https://github.com/21nCo/super-functions/edit/dev/devfn/docs/{path}" },
   },
   compat: { preset: "none" },

@@ -125,6 +125,26 @@ export type {
 export type { Theme, HistoryEntry, PerformanceMetrics, AuthConfig, TryItResponse }
 ```
 
+## Development tests
+
+From this package directory, install and run the local toolchain:
+
+```bash
+npm install --workspaces=false
+npm test
+```
+
+Vitest runs in jsdom with React Testing Library. The behavioral suite exercises
+request parameter/auth/body edits, pending-send state, HTTP and decoding/network
+errors, retry recovery, endpoint prop changes, sidebar filtering, media-query
+subscriptions, and metrics polling cleanup (including obsolete in-flight results).
+Browser fetch and metrics clients are controlled at their external boundaries;
+the real exported components render and manage their own state.
+
+This package exports components, not standalone hooks. Polling cleanup prevents
+stale metric results from updating an unmounted explorer; it does not abort the
+underlying metrics client request or add request cancellation to `TryIt`.
+
 ## License
 
 MIT

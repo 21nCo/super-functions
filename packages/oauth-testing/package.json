@@ -18,7 +18,7 @@
     "build": "tsc",
     "test": "vitest --config ./vitest.config.ts --run",
     "test:watch": "vitest --config ./vitest.config.ts --watch",
-    "lint": "echo 'lint not configured'",
+    "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

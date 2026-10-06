@@ -1,5 +1,5 @@
 {
-  "name": "@botfn/admin",
+  "name": "@superfunctions/botfn-admin",
   "version": "0.1.0",
   "description": "Function-owned Super Console administration capability for BotFn",
   "type": "module",
@@ -32,10 +32,11 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
-    "@superfunctions/admin": "0.1.0"
+  "peerDependencies": {
+    "@superfunctions/admin": "^0.1.4"
   },
   "devDependencies": {
+    "@superfunctions/admin": "^0.1.4",
     "typescript": "^5.6.0",
     "vitest": "^3.2.4"
   }

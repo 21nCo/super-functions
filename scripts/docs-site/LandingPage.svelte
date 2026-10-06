@@ -213,4 +213,14 @@
   .landing-card:hover .landing-card-cta {
     opacity: 1;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .landing-card {
+      transition: none;
+    }
+
+    .landing-card:hover {
+      transform: none;
+    }
+  }
 </style>

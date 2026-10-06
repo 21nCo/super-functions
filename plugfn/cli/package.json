@@ -6,6 +6,11 @@
     "plugfn": "./dist/index.js"
   },
   "type": "module",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

@@ -17,6 +17,19 @@ Your router is the source of truth: introspect it into OpenAPI 3.1, then drive v
 | [`@apifn/svelte`](./svelte) | The same UI surface for Svelte, shipped as `.svelte` source. |
 | [`@apifn/docsfn`](./docsfn) | docsfn plugin — render an OpenAPI spec as an interactive API reference. |
 
+### npm release dependency order
+
+The prepared release versions are `@apifn/core`, `@apifn/react`, and
+`@apifn/svelte` **0.0.3**, plus `@apifn/docsfn` **0.1.0**. Publish core first;
+React, Svelte, and `@apifn/admin` **0.1.0** require that exact core version.
+Publish DocsFn after both renderers: it pins core, React, and Svelte to 0.0.3.
+The admin wrapper also requires the published `@superfunctions/admin` **^0.1.4**
+peer so consumers share the same `AdminClient` type.
+
+All ApiFn workspace callers use the new exact core pin. CLI, collections, mock,
+and snippets retain their current package versions and are not included in this
+publication batch; do not republish their already-used versions.
+
 ## Python SDK
 
 [`apifn`](./python) provides Python helpers for OpenAPI generation, diffing, collections, FastAPI, and Flask. It requires Python 3.10 or newer and is versioned separately from the npm packages.

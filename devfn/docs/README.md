@@ -5,18 +5,13 @@ This SvelteKit site uses DocsFn. Consumer guides live in `content/docs`; referen
 From the repository root:
 
 ```sh
+npm exec -- turbo run build --filter=@devfn/docs
 npm --workspace @devfn/docs run dev
-npm --workspace @devfn/docs run build
 ```
 
-The build regenerates `static/llms.txt` and `static/llms-full.txt`. For CLI validation, first build the SearchFn workspace dependencies from the repository root (the Vite site build uses source aliases and does not require these separate builds):
+The filtered Turbo build prepares declared workspace dependency exports before building the site and regenerating `static/llms.txt` and `static/llms-full.txt`. Vite and CLI consumers use those public exports, not SearchFn source aliases. After that build, validate the site:
 
 ```sh
-npm run build --workspace @searchfn/core
-npm run build --workspace @searchfn/adapter-contracts
-npm run build --workspace @searchfn/adapter-memory
-npm run build --workspace @searchfn/adapter-indexeddb
-npm run build --workspace @searchfn/client
 npm exec --workspace @devfn/docs -- docsfn validate --root .
 ```
 The site defaults to port 6017. The public documentation route is `/docs`.
