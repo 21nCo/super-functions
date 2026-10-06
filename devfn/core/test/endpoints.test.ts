@@ -605,6 +605,67 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("keeps credential fields and option values out of every resolved argv consumer", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-structured-option-"));
+    const stateDir = path.join(root, "state");
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const sources = ["command", "script", "health", "compose-health"] as const;
+    const configure = (source: typeof sources[number], vector: string[]): DevFnConfig => {
+      const config = fixture();
+      if (source === "command") config.processes!.worker.command = vector;
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start ${vector.join(" ")}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: vector };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: vector } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    const bad = [
+      ["curl", "--data-raw", `{"page":1 "password":"${marker}"}`],
+      ["curl", "--data-raw", `<password>${marker}</password>`],
+      ["curl", "--data-raw", `<request token="${marker}"/>`],
+      ["curl", "--cert", `client:${marker}`],
+      ["curl", `--cert=client:${marker}`],
+      ["curl", `-Eclient:${marker}`],
+      ["curl", "-E", `client:${marker}`],
+      ["curl", "--cert", `C:\\fixtures\\client.pem:${marker}`],
+      ["java", `-Dpassword=${marker}`, "Main"],
+      ["java", `-Ddb.password=${marker}`, "Main"],
+      ["java", "-D", `password=${marker}`, "Main"],
+    ];
+    try {
+      for (const vector of bad) for (const source of sources) {
+        const config = configure(source, vector);
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }), `${source}: ${vector[1]}`).toThrow(/secret channel/);
+      }
+      for (const vector of [bad[0], bad[1], bad[3], bad[7]]) {
+        const config = configure("command", vector);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      for (const vector of [
+        ["curl", "--data-raw", '{"page":1,"payload":{"label":"password"}}'],
+        ["curl", "--data-raw", '<request page="2"><label>ok</label></request>'],
+        ["curl", "--cert", "client.pem"],
+        ["curl", "--cert", "C:\\fixtures\\client.pem"],
+        ["java", "-Dpage=2", "Main"],
+        ["curl", "--header", "X-Trace: ok", "--cookie", "theme=dark", "literal $HOME `id` ; & |"],
+      ]) {
+        const config = configure("command", vector);
+        config.processes!.worker.envAllowlist = ["API_TOKEN"];
+        config.processes!.worker.secretEnv = ["API_TOKEN"];
+        const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+        expect(resolved.nodes.worker.command).toEqual(vector);
+        expect(JSON.stringify(resolved)).not.toContain("API_TOKEN");
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("rejects credential-named form and query argv across command, script and health before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-form-"));
     const stateDir = path.join(root, "state");

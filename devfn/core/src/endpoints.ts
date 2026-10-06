@@ -180,6 +180,16 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
     candidates.push(unquoted);
   }
   for (const candidate of candidates) {
+    // Body arguments can be XML as well as JSON. Inspect names only inside
+    // tags so ordinary text content remains literal argv data.
+    for (const tag of candidate.match(/<[^>]*(?:>|$)/g) ?? []) {
+      const element = tag.match(/^<\s*\/?\s*([A-Za-z_][A-Za-z0-9_.:-]*)/);
+      if (!element) continue;
+      if (isCredentialKey(element[1])) invalid(field, "credential-bearing structured argv must use the secret channel.");
+      for (const attribute of tag.matchAll(/\s+([A-Za-z_][A-Za-z0-9_.:-]*)\s*=/g)) {
+        if (isCredentialKey(attribute[1])) invalid(field, "credential-bearing structured argv must use the secret channel.");
+      }
+    }
     const stack: Array<{ delimiter: "{" | "["; expectsKey: boolean }> = [];
     let start = -1;
     let stringStart = -1;
@@ -202,7 +212,13 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
           // whole-body JSON parse, with one pass over the input.
           // A quoted member name is a credential even if the body ends in a
           // comment or omits the colon. Waiting for valid JSON would leak it.
-          if (stack.at(-1)?.delimiter === "{" && stack.at(-1)?.expectsKey) rejectKey(candidate.slice(stringStart + 1, end), closedQuote);
+          // A missing comma after an earlier member leaves expectsKey false,
+          // but a following quoted name and colon still declare a field.
+          let next = end + 1;
+          while (next < candidate.length && /\s/.test(candidate[next])) next += 1;
+          if (stack.at(-1)?.delimiter === "{" && (stack.at(-1)?.expectsKey || candidate[next] === ":")) {
+            rejectKey(candidate.slice(stringStart + 1, end), closedQuote);
+          }
         }
         continue;
       }
@@ -236,7 +252,7 @@ function decodedVariants(value: string): string[] {
 const CURL_OTHER_SHORT_VALUE_OPTIONS = new Set("E K C c D P h m o x Q r e X Y y t z T A w".split(" "));
 
 /** Curl permits no-value switches before a value-taking short option. */
-function curlShortValueOption(token: string): { option: "H" | "u" | "U" | "d" | "F" | "b"; attached: string } | undefined {
+function curlShortValueOption(token: string): { option: string; attached: string } | undefined {
   if (!token.startsWith("-") || token.startsWith("--")) return undefined;
   // Stop at an earlier option that consumes the rest of the token. Other
   // short switches (including -g, -4 and -6) can prefix a sensitive option.
@@ -245,7 +261,7 @@ function curlShortValueOption(token: string): { option: "H" | "u" | "U" | "d" | 
     if (option === "H" || option === "u" || option === "U" || option === "d" || option === "F" || option === "b") {
       return { option, attached: token.slice(index + 1).replace(/^=/, "") };
     }
-    if (CURL_OTHER_SHORT_VALUE_OPTIONS.has(option)) return undefined;
+    if (CURL_OTHER_SHORT_VALUE_OPTIONS.has(option)) return { option, attached: token.slice(index + 1).replace(/^=/, "") };
   }
   return undefined;
 }
@@ -269,6 +285,26 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index].replace(/^["']|["']$/g, "");
       const short = curlShortValueOption(token);
+      // Curl and JVM both allow attached values on short options. A value
+      // that declares a credential key is sensitive regardless of the option
+      // letter (for example Java -Ddb.password=x).
+      if (short) {
+        const raw = short.attached || tokens[index + 1];
+        if (raw !== undefined) for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
+          const assignment = candidate.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@)/);
+          if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+        }
+      }
+      const certOption = token.match(/^--cert(?:=(.*))?$/i);
+      if (certOption || short?.option === "E") {
+        const raw = certOption ? certOption[1] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
+        if (raw !== undefined) for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
+          // Curl's certificate:password form is a credential. Keep a Windows
+          // drive path, whose colon is a path separator, as ordinary data.
+          const pathOrPair = /^[A-Za-z]:[\\/]/.test(candidate) ? candidate.slice(2) : candidate;
+          if (pathOrPair.includes(":")) invalid(field, "credential-bearing argv must use the secret channel.");
+        }
+      }
       // curl accepts both -Hname:value and -H name:value, as well as long
       // header options. A short attached header has no word boundary before
       // its name, so the general header scan above cannot identify it.
