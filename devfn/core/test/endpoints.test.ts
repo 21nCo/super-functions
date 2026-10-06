@@ -622,6 +622,54 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects malformed structured credential keys and keeps nested JSON as data", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-structured-argv-"));
+    const stateDir = path.join(root, "state");
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const sources = ["command", "script", "health", "compose-health"] as const;
+    const configure = (source: typeof sources[number], body: string): DevFnConfig => {
+      const config = fixture();
+      if (source === "command") config.processes!.worker.command = ["curl", "--data-raw", body];
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start --data-raw '${body}'`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", "--data-raw", body] };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", "--data-raw", body] } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    try {
+      for (const body of [
+        `{"pass\\u0077ord"/*comment*/:"${marker}"}`,
+        `{'password':'${marker}'}`,
+        `%7B%22pass%5Cu0077ord%22%2F*x*%2F%3A%22${marker}%22%7D`,
+      ]) for (const source of sources) {
+        const config = configure(source, body);
+        expect(() => resolve(config)).toThrow(/secret channel/);
+        const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+        expect(error).toMatch(/secret channel/);
+        expect(error).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      const ordinaryBody = '{"payload":{"page":2}}';
+      for (const source of sources) {
+        const config = configure(source, ordinaryBody);
+        config.processes!.worker.env = { ...config.processes!.worker.env, PAYLOAD: ordinaryBody };
+        config.processes!.worker.envAllowlist = ["API_TOKEN"];
+        config.processes!.worker.secretEnv = ["API_TOKEN"];
+        const resolved = resolve(config);
+        if (source !== "compose-health") expect(resolved.nodes.worker.environment.PAYLOAD).toBe(ordinaryBody);
+        if (source === "command") expect(resolved.nodes.worker.command).toEqual(["curl", "--data-raw", ordinaryBody]);
+        if (source === "health") expect(resolved.nodes.worker.healthCommand).toEqual(["curl", "--data-raw", ordinaryBody]);
+        if (source === "compose-health") expect(resolved.nodes.web.healthCommand).toEqual(["curl", "--data-raw", ordinaryBody]);
+        expect(JSON.stringify(resolved)).not.toContain("API_TOKEN");
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("checks deeply nested structured argv in bounded time before startup mutation", async () => {
     const depth = 20_000;
     const nested = (key: string) => `${"[".repeat(depth)}{"${key}":"synthetic-sentinel"}${"]".repeat(depth)}`;

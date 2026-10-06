@@ -104,7 +104,9 @@ function expand(value: string, field: string, lookup: (name: string) => [string,
   // Parse the manifest source only. Referenced values (including opaque owners)
   // are data and must never be parsed as another template.
   const literal = value.replace(REFERENCE, "");
-  if (literal.includes("{{") || literal.includes("}}")) invalid(field, "malformed template reference.");
+  // A closing pair is ordinary data in nested JSON. Only an unmatched opener
+  // can be mistaken for a template reference.
+  if (literal.includes("{{")) invalid(field, "malformed template reference.");
   // Manifest syntax is checked before substitution. The owner is opaque data:
   // its bytes may resemble a credential argument or URL without declaring one.
   rejectUrlCredentials(value, field);
@@ -142,6 +144,41 @@ function rejectCredentialArgument(value: string, field: string): void {
 
 /** Inspect JSON bodies as data, including JSON escapes in field names. */
 function rejectStructuredCredentialPayload(value: string, field: string): void {
+  const rejectKey = (raw: string, quote: string): void => {
+    let key = raw;
+    if (quote === '"') {
+      try { key = JSON.parse(`"${raw}"`) as string; } catch { /* inspect malformed keys too */ }
+    }
+    // JSON.parse handles valid JSON escapes. Also inspect malformed and
+    // shell-quoted bodies, where another consumer may remove one escape layer.
+    for (let depth = 0; depth < 3; depth += 1) {
+      if (isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
+      const decoded = key.replace(/\\(?:u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|(.))/g, (_match, unicode: string | undefined, hex: string | undefined, escaped: string | undefined) =>
+        unicode ? String.fromCharCode(parseInt(unicode, 16)) : hex ? String.fromCharCode(parseInt(hex, 16)) : escaped ?? "");
+      if (decoded === key) break;
+      key = decoded;
+    }
+  };
+  const followsKey = (body: string, offset: number): boolean => {
+    let next = offset;
+    while (next < body.length) {
+      if (/\s/.test(body[next])) { next += 1; continue; }
+      if (body.startsWith("/*", next)) {
+        const end = body.indexOf("*/", next + 2);
+        if (end < 0) return false;
+        next = end + 2;
+        continue;
+      }
+      if (body.startsWith("//", next)) {
+        const end = body.indexOf("\n", next + 2);
+        if (end < 0) return false;
+        next = end + 1;
+        continue;
+      }
+      return body[next] === ":";
+    }
+    return false;
+  };
   const inspect = (root: unknown): void => {
     const pending: unknown[] = [root];
     while (pending.length) {
@@ -166,7 +203,7 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
     const stack: string[] = [];
     let start = -1;
     let stringStart = -1;
-    let quoted = false;
+    let quote = "";
     let escaped = false;
     for (let end = 0; end < candidate.length; end += 1) {
       const char = candidate[end];
@@ -174,31 +211,25 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
         if (char !== "{" && char !== "[") continue;
         start = end;
       }
-      if (quoted) {
+      if (quote) {
         if (escaped) escaped = false;
         else if (char === "\\") escaped = true;
-        else if (char === '"') {
-          quoted = false;
+        else if (char === quote) {
+          const closedQuote = quote;
+          quote = "";
           // A body with an incomplete closing delimiter still has a real
           // credential field. Inspect object keys as they close, before the
           // whole-body JSON parse, with one pass over the input.
           if (stack.at(-1) === "{") {
-            let next = end + 1;
-            while (next < candidate.length && /\s/.test(candidate[next])) next += 1;
-            if (candidate[next] === ":") {
-              try {
-                const key = JSON.parse(candidate.slice(stringStart, end + 1)) as unknown;
-                if (typeof key === "string" && isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
-              } catch (error) { if (error instanceof DevFnError) throw error; }
-            }
+            if (followsKey(candidate, end + 1)) rejectKey(candidate.slice(stringStart + 1, end), closedQuote);
           }
         }
         continue;
       }
-      if (char === '"') { quoted = true; stringStart = end; continue; }
+      if (char === '"' || char === "'") { quote = char; stringStart = end; continue; }
       if (char === "{" || char === "[") stack.push(char);
       else if (char === "}" || char === "]") {
-        if (stack.pop() !== (char === "}" ? "{" : "[")) { stack.length = 0; quoted = false; continue; }
+        if (stack.pop() !== (char === "}" ? "{" : "[")) { stack.length = 0; quote = ""; continue; }
         if (stack.length === 0) {
           try { inspect(JSON.parse(candidate.slice(start, end + 1)) as unknown); }
           catch (error) { if (error instanceof DevFnError) throw error; }
