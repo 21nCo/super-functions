@@ -826,9 +826,9 @@ describe("endpoint and template contract", () => {
     };
     try {
       for (const source of ["profile", "process-env", "command", "script", "health", "compose-health"] as const) {
-        const ordinary = "https://outer.example.test/?next=https://inner.example.test/path";
-        expect(() => resolve(configure(source, ordinary)), source).not.toThrow();
-        for (const nested of [`https://alice:${marker}@inner.example.test/path`, `https%3A%2F%2Falice%3A${marker}%40inner.example.test%2Fpath`]) {
+        for (const ordinary of ["https://outer.example.test/?next=https://inner.example.test/path", "https://outer.example.test/?next=//inner.example.test/path", "\\\\server\\share", "/user@example.test", "literal $HOME `id` ; & |"])
+          expect(() => resolve(configure(source, ordinary)), `${source}: ${ordinary}`).not.toThrow();
+        for (const nested of [`https://alice:${marker}@inner.example.test/path`, `https%3A%2F%2Falice%3A${marker}%40inner.example.test%2Fpath`, `//alice:${marker}@inner.example.test/path`, `%2F%2Falice%3A${marker}%40inner.example.test%2Fpath`]) {
           const config = configure(source, `https://outer.example.test/?next=${nested}`);
           expect(() => resolve(config), source).toThrow(/secret channel/);
           const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
@@ -863,6 +863,19 @@ describe("endpoint and template contract", () => {
     const short = plainToken(5_000);
     const long = plainToken(40_000);
     expect(long, `plain token: ${short.toFixed(1)}ms vs ${long.toFixed(1)}ms`).toBeLessThan(short * 10 + 200);
+  });
+
+  it("rejects malformed URL authority credentials in bounded preflight time", () => {
+    const measure = (length: number) => {
+      const config = fixture();
+      config.processes!.worker.command = ["tool", `https://alice:synthetic@invalid%${")".repeat(length)}`];
+      const started = performance.now();
+      expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+      return performance.now() - started;
+    };
+    const short = measure(5_000);
+    const long = measure(40_000);
+    expect(long, `${short.toFixed(1)}ms vs ${long.toFixed(1)}ms`).toBeLessThan(short * 10 + 200);
   });
 
   it("rejects credential aliases and split environment option names in every argv consumer", async () => {
@@ -1389,7 +1402,7 @@ describe("endpoint and template contract", () => {
     expect(() => resolveEndpointTemplates({ config: assembled, plan: createPlan(assembled), ownerId: "--token=owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
   });
 
-  it("shares effective Compose project identity across case variants", () => {
+  it("separates case-distinct Compose projects and preserves same-prefix wiring", () => {
     const config = fixture();
     config.profiles.default.environment = {};
     config.ports!.web = {};
@@ -1398,6 +1411,9 @@ describe("endpoint and template contract", () => {
       consumer: { adapter: "compose", service: "consumer", projectName: "BLUE", dependsOn: ["web"], env: { UPSTREAM: "{{env.DEVFN_URL_WEB}}" } },
     };
     config.profiles.default.services = ["consumer"];
+    expect(composeProjectName("blue", "Owner")).not.toBe(composeProjectName("BLUE", "Owner"));
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "Owner", ports: { api: 4101, worker: 4102, web: 4103 }, composeNetworks: { web: ["shared"], consumer: ["shared"] } })).toThrow(/no shared effective Compose network/);
+    config.services.consumer.projectName = "blue";
     const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "Owner", ports: { api: 4101, worker: 4102, web: 4103 }, composeNetworks: { web: ["shared"], consumer: ["shared"] } });
     expect(resolved.nodes.consumer.environment.UPSTREAM).toBe("http://web:8080");
     config.services.consumer.projectName = "green";

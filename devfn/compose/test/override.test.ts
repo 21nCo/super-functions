@@ -50,7 +50,8 @@ describe("ComposeController", () => {
   it("keeps case-distinct opaque owners in separate stable Compose projects", () => {
     expect(composeProjectName("blue", "Owner")).not.toBe(composeProjectName("BLUE", "owner"));
     expect(composeProjectName("blue", "OWNER")).not.toBe(composeProjectName("blue", "owner-0559aadba9e2"));
-    expect(composeProjectName("blue", "Owner")).toBe(composeProjectName("BLUE", "Owner"));
+    expect(composeProjectName("blue", "Owner")).not.toBe(composeProjectName("BLUE", "Owner"));
+    expect(composeProjectName("blue", "Owner")).toBe(composeProjectName("blue", "Owner"));
     expect(composeProjectName("blue", "--token=synthetic-sentinel")).not.toContain("synthetic-sentinel");
     expect(composeProjectName("abcdefghijklmnopqrstuvwxy-one", "owner")).not.toBe(composeProjectName("abcdefghijklmnopqrstuvwxy-two", "owner"));
     expect(composeProjectName("team.alpha", "owner")).not.toBe(composeProjectName("team-alpha", "owner"));

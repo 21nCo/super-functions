@@ -57,12 +57,11 @@ export class ComposeError extends Error {
 export function composeProjectName(prefix: string, instanceId: string): string {
   const ownerDigest = createHash("sha256").update(instanceId).digest("hex").slice(0, 20);
   // The readable prefix is lossy (punctuation and length are normalized).
-  // Include its original case-folded bytes in the namespace identity so two
-  // accepted prefixes cannot alias merely because they render alike.
-  const prefixIdentity = prefix.toLowerCase();
-  const prefixDigest = createHash("sha256").update(prefixIdentity).digest("hex").slice(0, 12);
+  // Hash the exact accepted prefix: punctuation, length and case are all
+  // significant to the declared project even though Docker renders them alike.
+  const prefixDigest = createHash("sha256").update(prefix).digest("hex").slice(0, 12);
   const suffix = `p-${prefixDigest}-o-${ownerDigest}`;
-  const normalizedPrefix = prefixIdentity.replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "") || "d";
+  const normalizedPrefix = prefix.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "") || "d";
   const budget = 48 - suffix.length - 1;
   const safePrefix = normalizedPrefix.slice(0, budget);
   return `${safePrefix}-${suffix}`;

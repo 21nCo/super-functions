@@ -542,32 +542,20 @@ function rejectUrlCredentialsDecoded(value: string, field: string): void {
       invalid(field, "credential-bearing URL must use the secret channel.");
     }
   }
-  // Scan every scheme, including URLs embedded in an outer URL's query or
-  // fragment. Only the authority is needed for userinfo; stopping there also
-  // keeps a token with many nested URLs bounded instead of reparsing each
-  // remaining suffix. Query and fragment keys are checked above.
-  for (let cursor = 0; cursor < value.length;) {
-    const schemeEnd = value.indexOf("://", cursor);
-    if (schemeEnd < 0) break;
-    let start = schemeEnd;
-    while (start > 0 && /[A-Za-z0-9+.-]/.test(value[start - 1])) start -= 1;
-    if (!/[A-Za-z]/.test(value[start] ?? "")) { cursor = schemeEnd + 3; continue; }
-    let end = schemeEnd + 3;
-    while (end < value.length && !/\s|[<>/?#&]/.test(value[end])) end += 1;
-    let candidate = value.slice(start, end);
-    cursor = schemeEnd + 3;
-    while (candidate) {
-      try {
-        const url = new URL(`${candidate}/`);
-        if (url.username || url.password) invalid(field, "credential-bearing URL must use the secret channel.");
-        break;
-      } catch (error) {
-        if (error instanceof DevFnError) throw error;
-        // A quoted argv fragment may leave a closing delimiter on the URL.
-        if (!/["'`),;\]}]$/.test(candidate)) break;
-        candidate = candidate.slice(0, -1);
-      }
+  // Userinfo appears before the first authority delimiter. Inspect that span
+  // directly, including scheme-relative links nested in query values. This
+  // avoids repeatedly reparsing a malformed long authority while trimming
+  // punctuation one byte at a time. Decoded variants cover encoded links.
+  for (let index = 0; index + 1 < value.length; index += 1) {
+    if (value[index] !== "/" || value[index + 1] !== "/") continue;
+    const before = index === 0 ? "" : value[index - 1];
+    if (before !== ":" && before !== "" && !/[\s=(&?#"'`]/.test(before)) continue;
+    let end = index + 2;
+    while (end < value.length && !/[\s/?#&]/.test(value[end])) {
+      if (value[end] === "@") invalid(field, "credential-bearing URL must use the secret channel.");
+      end += 1;
     }
+    index = end - 1;
   }
 }
 
