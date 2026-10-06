@@ -844,6 +844,61 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects credential assignments nested under long options in every argv consumer", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-option-assignment-"));
+    const stateDir = path.join(root, "state");
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const sources = ["command", "script", "health", "compose-health"] as const;
+    const configure = (source: typeof sources[number], vector: string[]): DevFnConfig => {
+      const config = fixture();
+      if (source === "command") config.processes!.worker.command = ["tool", ...vector];
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${vector.join(" ")}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", ...vector] };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", ...vector] } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    try {
+      const sensitive = [
+        [`--env=DB_PASSWORD=${marker}`],
+        [`--build-arg=PGPASSWORD=${marker}`],
+        ["--env", `API_KEY=${marker}`],
+        [`--env=DB_PASSWORD%3D${marker}`],
+        [`--env%3DDB_PASSWORD%3D${marker}`],
+        [`--build-arg=DB_PASSWORD`],
+      ];
+      for (const vector of sensitive) for (const source of sources) {
+        const config = configure(source, vector);
+        expect(() => resolve(config), `${source}: ${vector.join(" ")}`).toThrow(/secret channel/);
+        const error = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (failure: Error) => failure.message);
+        expect(error).toMatch(/secret channel/);
+        expect(error).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      for (const vector of [
+        ["--env=NODE_ENV=development"],
+        ["--build-arg", "NODE_ENV=development"],
+        ["--env=theme=dark"],
+        ["--label=literal-$HOME-`id`-;&|"],
+      ]) for (const source of sources) {
+        const config = configure(source, vector);
+        config.processes!.worker.envAllowlist = ["API_TOKEN"];
+        config.processes!.worker.secretEnv = ["API_TOKEN"];
+        const resolved = resolve(config);
+        expect(JSON.stringify(resolved)).not.toContain(marker);
+        expect(JSON.stringify(resolved)).not.toContain("API_TOKEN");
+        if (source === "command") expect(resolved.nodes.worker.command).toEqual(["tool", ...vector]);
+        if (source === "health") expect(resolved.nodes.worker.healthCommand).toEqual(["tool", ...vector]);
+        if (source === "compose-health") expect(resolved.nodes.web.healthCommand).toEqual(["tool", ...vector]);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("rejects PASSKEY in profile literals, URLs, headers and structured arguments", () => {
     const marker = "SYNTHETIC_DO_NOT_USE";
     const variants = [

@@ -331,6 +331,15 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       // no flag at all. They are still persisted in resolved command plans.
       const assignmentOperand = token.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=)/);
       if (assignmentOperand && isCredentialKey(assignmentOperand[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+      // Long options can wrap an environment or build assignment in their
+      // attached value. Inspect the value after the option's first '=' with
+      // the same key grammar used for bare and split assignment operands.
+      // `tokens` already contains the bounded decoded variants, so encoded
+      // option delimiters and assignment delimiters take this path too.
+      const longOptionValue = token.match(/^--[A-Za-z][A-Za-z0-9_-]*=(.*)$/)?.[1]
+        ?.replace(/^["'`]+|["'`]+$/g, "");
+      const attachedAssignment = longOptionValue?.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/);
+      if (attachedAssignment && isCredentialKey(attachedAssignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
       const short = curlShortValueOption(token);
       // Curl and JVM both allow attached values on short options. A value
       // that declares a credential key is sensitive regardless of the option
