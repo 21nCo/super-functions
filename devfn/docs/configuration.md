@@ -39,7 +39,7 @@ Turbo, Wrangler, and ExtFn resolve project-local binaries with offline npm execu
 
 Local-process exposure verification requires `lsof` on macOS and Linux; Windows uses `netstat`. Run `devfn doctor` before startup to detect a missing listener-inspection tool.
 
-Sensitive-looking keys cannot be literal manifest values. Numbered keys such as `API_TOKEN2` follow the same rule. They must be inherited by name in `envAllowlist` and repeated in `secretEnv`, which activates streaming redaction before logs are persisted. PostgreSQL `PGPASSWORD` and qualified `pg_pass`/`pg_pwd` casing variants follow this rule. URL userinfo and credential-bearing headers such as `Authorization: Bearer` are rejected in resolved literals and argv, including when assembled from templates. Curl short-option clusters and cookie assignments receive the same validation. Public processes require `--allow-public`.
+Sensitive-looking keys cannot be literal manifest values. Numbered keys such as `API_TOKEN2` and compact names ending in an unambiguous credential word such as `MYPASSWORD` or `GITHUBTOKEN` follow the same rule. They must be inherited by name in `envAllowlist` and repeated in `secretEnv`, which activates streaming redaction before logs are persisted. PostgreSQL `PGPASSWORD` and qualified `pg_pass`/`pg_pwd` casing variants follow this rule. URL userinfo and credential-bearing headers such as `Authorization: Bearer` are rejected in resolved literals and argv, including when assembled from templates. Curl short-option clusters and cookie assignments receive the same validation. Public processes require `--allow-public`.
 
 ## Compose services
 
@@ -70,7 +70,7 @@ HTTP readiness that names a leased `port` probes its direct loopback URL at star
 
 For native commands, package scripts and command-health argv, a colon-delimited credential pair following `--user`, `--username`, `--proxy-user`, `-u` or `-U` is rejected in split, equals and attached forms. Plain user names remain valid. Percent-encoded credential URLs and headers are also rejected; encoding does not turn them into safe non-secret literals. This inspection does not invoke a shell or alter argument bytes.
 
-Form arguments with credential-named fields and JSON bodies with credential-named keys are rejected in those same three argv sources, including nested objects, JSON-escaped keys, percent-encoded bodies and shell-quoted JSON in package scripts. Ordinary non-secret JSON remains argv data. Deliver credentials through `envAllowlist` and `secretEnv` instead of embedding them in a command or readiness check.
+Form arguments with credential-named fields and JSON bodies with credential-named keys are rejected in those same three argv sources, including nested objects, JSON-escaped keys, percent-encoded bodies, incomplete JSON bodies and shell-quoted JSON in package scripts. Ordinary non-secret JSON remains argv data. Deliver credentials through `envAllowlist` and `secretEnv` instead of embedding them in a command or readiness check.
 
 Before reusing an unmanaged Compose container with `--no-recreate`, DevFn also compares Compose's effective service config hash with the hash persisted on that container. A changed command, published port, image, or other startup setting is rejected even when the environment is unchanged. Missing or malformed hash evidence fails closed before `up`.
 

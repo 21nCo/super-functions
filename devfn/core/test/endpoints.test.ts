@@ -436,6 +436,44 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects compact keys, verbose curl clusters and malformed credential JSON before startup", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-boundary-"));
+    const stateDir = path.join(root, "state");
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    try {
+      const vectors = [
+        [`--MYPASSWORD=${marker}`],
+        [`https://example.test/?GITHUBTOKEN=${marker}`],
+        [`-vHAuthorization:Bearer ${marker}`],
+        ["-vH", `Authorization:Bearer ${marker}`],
+        ["--data-raw", `{"password":"${marker}"`],
+        ["--data-raw", `{"payload":{"pass\\u0077ord":"${marker}"`],
+      ];
+      for (const vector of vectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
+        const config = fixture();
+        if (source === "command") config.processes!.worker.command = ["curl", ...vector];
+        if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start curl ${vector.join(" ")}`; }
+        if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
+        if (source === "compose-health") {
+          config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
+          config.profiles.default.services = ["web"];
+          config.profiles.default.processes = [];
+          config.profiles.default.environment = {};
+        }
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      const ordinary = fixture();
+      ordinary.processes!.worker.command = ["curl", "-vHX-Request-Id: fixture", "--data-raw", '{"page":2', "literal $HOME `id` ; & |"];
+      ordinary.processes!.worker.envAllowlist = ["GITHUBTOKEN"];
+      ordinary.processes!.worker.secretEnv = ["GITHUBTOKEN"];
+      expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(ordinary.processes!.worker.command);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("rejects credential-named form and query argv across command, script and health before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-form-"));
     const stateDir = path.join(root, "state");

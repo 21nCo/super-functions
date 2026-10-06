@@ -163,6 +163,7 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
   for (const candidate of candidates) {
     const stack: string[] = [];
     let start = -1;
+    let stringStart = -1;
     let quoted = false;
     let escaped = false;
     for (let end = 0; end < candidate.length; end += 1) {
@@ -174,10 +175,25 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
       if (quoted) {
         if (escaped) escaped = false;
         else if (char === "\\") escaped = true;
-        else if (char === '"') quoted = false;
+        else if (char === '"') {
+          quoted = false;
+          // A body with an incomplete closing delimiter still has a real
+          // credential field. Inspect object keys as they close, before the
+          // whole-body JSON parse, with one pass over the input.
+          if (stack.at(-1) === "{") {
+            let next = end + 1;
+            while (next < candidate.length && /\s/.test(candidate[next])) next += 1;
+            if (candidate[next] === ":") {
+              try {
+                const key = JSON.parse(candidate.slice(stringStart, end + 1)) as unknown;
+                if (typeof key === "string" && isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
+              } catch (error) { if (error instanceof DevFnError) throw error; }
+            }
+          }
+        }
         continue;
       }
-      if (char === '"') { quoted = true; continue; }
+      if (char === '"') { quoted = true; stringStart = end; continue; }
       if (char === "{" || char === "[") stack.push(char);
       else if (char === "}" || char === "]") {
         if (stack.pop() !== (char === "}" ? "{" : "[")) { stack.length = 0; quoted = false; continue; }
@@ -210,7 +226,7 @@ function curlShortValueOption(token: string): { option: "H" | "u" | "U" | "d" | 
     if (option === "H" || option === "u" || option === "U" || option === "d" || option === "F" || option === "b") {
       return { option, attached: token.slice(index + 1).replace(/^=/, "") };
     }
-    if (!"sSLkfiINO".includes(option)) return undefined;
+    if (!"vsSLkfiINO".includes(option)) return undefined;
   }
   return undefined;
 }

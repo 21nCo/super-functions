@@ -40,6 +40,17 @@ describe("DevFn configuration", () => {
       expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
     }
   });
+  it("rejects compact credential suffixes in literal maps while retaining ordinary keys and secret inheritance", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["MYPASSWORD", "GITHUBTOKEN", "requestSecret2"]) {
+      expect(isCredentialKey(key)).toBe(true);
+      expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, services: { app: { adapter: "compose", service: "app", env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
+    }
+    for (const key of ["MONKEY", "compass", "PAGE2", "GITHUBISSUE"]) expect(isCredentialKey(key)).toBe(false);
+  });
   it("validates named ports, processes, services, profiles, and hostnames", () => {
     const config = validateDevFnConfig({
       version: 1,

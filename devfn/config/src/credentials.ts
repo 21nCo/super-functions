@@ -12,6 +12,15 @@ const COMPACT_QUALIFIERS = new Set([
   "api", "app", "auth", "aws", "client", "db", "database", "google", "oauth", "pg", "server", "service", "session", "user", "xamz", "xgoog",
 ]);
 
+// These suffixes identify credentials even with an application-specific
+// qualifier that DevFn cannot enumerate (for example GITHUBTOKEN).
+// Short ambiguous suffixes such as key, pass and sig still require a known
+// qualifier or a word boundary, so MONKEY and COMPASS remain ordinary names.
+const UNAMBIGUOUS_SUFFIXES = [
+  "password", "passwd", "passphrase", "passcode", "secret", "token", "credential", "credentials",
+  "privatekey", "sessionid", "sessiontoken", "authorization",
+];
+
 function words(name: string): string[] {
   // Numbered copies of a credential field retain the field's meaning.
   return name.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -39,7 +48,7 @@ export function isCredentialKey(name: string): boolean {
     }
   }
   const compact = parts.join("");
-  return compactCredential(compact);
+  return compactCredential(compact) || UNAMBIGUOUS_SUFFIXES.some((suffix) => compact.length > suffix.length && compact.endsWith(suffix));
 }
 
 /** Reject keys that would alias on case-insensitive process environments. */
