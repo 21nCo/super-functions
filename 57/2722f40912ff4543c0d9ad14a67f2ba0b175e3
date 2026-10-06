@@ -1,0 +1,21 @@
+devfn/core/src/endpoints.ts
+  s_28d4128c7417df::t_d54028ef739e17 183-192,215-221,255,264,288-307
+devfn/core/test/endpoints.test.ts
+  s_28d4128c7417df::t_1ed504710a73ea 606-666
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "572722f40912ff4543c0d9ad14a67f2ba0b175e3",
+  "prompts": {},
+  "sessions": {
+    "s_28d4128c7417df": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c1c580e-3b46-4699-b932-7f146605890c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
