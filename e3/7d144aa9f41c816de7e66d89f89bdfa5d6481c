@@ -1,0 +1,44 @@
+devfn/compose/src/index.ts
+  h_bdc5b81c173ee9 3,65-75,93,100-101,105-119,176,178,185-207,324
+devfn/compose/test/override.test.ts
+  h_bdc5b81c173ee9 64,255-271,299-329
+devfn/config/src/credentials.ts
+  h_bdc5b81c173ee9 3,21,30-34
+devfn/config/src/schema.ts
+  h_bdc5b81c173ee9 155-162
+devfn/config/test/config.test.ts
+  h_bdc5b81c173ee9 9-18
+devfn/core/README.md
+  h_bdc5b81c173ee9 3,5,9,11
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 47-48,59,69-72,96,109-110,126-137,492-496,677-678,685,705-707,752,792,795,797,803,819
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 52-56,60,82-83,91-92,155-156,161-165,206-208
+devfn/core/test/endpoints.test.ts
+  h_bdc5b81c173ee9 22-41,43-76,429,476,505,528,548,588,626,680,701,737,756,778,819,843,1147,1190,1224
+devfn/core/test/startup-fixture.test.ts
+  h_bdc5b81c173ee9 11,35-36,45,86,99,146-149,177-198,288-289,347,421
+devfn/docs/configuration.md
+  h_bdc5b81c173ee9 46,67,69,81
+devfn/ports/src/listeners.ts
+  h_bdc5b81c173ee9 118
+devfn/processes/src/readiness.ts
+  h_bdc5b81c173ee9 68,82-87
+devfn/processes/src/supervisor.ts
+  h_bdc5b81c173ee9 67
+devfn/processes/test/readiness.test.ts
+  h_bdc5b81c173ee9 14-20
+devfn/processes/test/supervisor.test.ts
+  h_bdc5b81c173ee9 7,11-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e37d144aa9f41c816de7e66d89f89bdfa5d6481c",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
