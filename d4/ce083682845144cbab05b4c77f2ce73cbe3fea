@@ -1,0 +1,18 @@
+devfn/compose/src/index.ts
+  h_bdc5b81c173ee9 137-148,152,183-185,187-189,192
+devfn/compose/src/source-files.ts
+  h_bdc5b81c173ee9 3,24,30,38-50,63,72-73,84-85,104
+devfn/compose/test/override.test.ts
+  h_bdc5b81c173ee9 112-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d4ce083682845144cbab05b4c77f2ce73cbe3fea",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
