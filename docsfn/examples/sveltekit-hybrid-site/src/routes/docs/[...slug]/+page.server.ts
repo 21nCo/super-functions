@@ -1,3 +1,4 @@
+import { resolveUnsafeHtmlAllowlist } from "@docsfn/core";
 import { error } from "@sveltejs/kit";
 import { generateStaticParams, resolveDocsPageSurface, resolveDocsRouteDataOrThrow } from "@docsfn/sveltekit";
 import { loadHybridSiteSource } from "../../../lib/server/site-source";
@@ -17,8 +18,8 @@ function isRouteNotFoundError(input: unknown): input is { message: string } {
   );
 }
 
-export const load: PageServerLoad = async ({ params, parent }) => {
-  const { source } = await parent();
+export const load: PageServerLoad = async ({ params }) => {
+  const source = await loadHybridSiteSource();
   const docsSource = source.docs;
 
   let routeEntry;
@@ -54,6 +55,7 @@ export const load: PageServerLoad = async ({ params, parent }) => {
     page: routeEntry.page,
     surface,
     sidebar,
-    compatPreset: docsSource.compatPreset
+    compatPreset: docsSource.compatPreset,
+    unsafeHtmlAllowlist: resolveUnsafeHtmlAllowlist({})
   };
 };

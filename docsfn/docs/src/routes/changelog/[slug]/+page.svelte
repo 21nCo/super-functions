@@ -23,5 +23,9 @@
   {collectionLabel}
   embedded={data.embed}
 >
-  <DocsContent compiled={data.compiled} />
+  <DocsContent
+    compiled={data.compiled}
+    sourcePath={data.post.id}
+    unsafeHtmlAllowlist={data.unsafeHtmlAllowlist}
+  />
 </ChangelogEntry>

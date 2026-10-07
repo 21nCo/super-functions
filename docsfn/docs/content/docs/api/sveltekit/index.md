@@ -88,13 +88,15 @@ Thin delegates to the corresponding `*OrThrow` getter; a miss throws **`DOCS_ROU
 
 | Factory | Params event | Returns (success) |
 | --- | --- | --- |
-| **`createPageLoad(manifest, options?)`** | `{ slug?: string }` | `{ page, route, surface, manifest }` |
+| **`createPageLoad(manifest, options?)`** | `{ slug?: string }` | `{ page, route, surface, sidebar? }` |
 | **`createVersionedPageLoad(manifest, options?)`** | `{ version, slug?: string }` | Adds `version`. |
-| **`createPostLoad(manifest)`** | `{ slug: string }` | `{ post, manifest }` |
-| **`createCollectionPostLoad(collectionId, manifest, options?)`** | `{ slug: string }` | `{ collection, post, manifest }` |
-| **`createApiLoad(manifest, options?)`** | `{ slug?: string }` | `{ api, manifest }` |
+| **`createPostLoad(manifest)`** | `{ slug: string }` | `{ post }` |
+| **`createCollectionPostLoad(collectionId, manifest, options?)`** | `{ slug: string }` | `{ collection, post }` |
+| **`createApiLoad(manifest, options?)`** | `{ slug?: string }` | `{ api }` |
 
 All map **`DOCS_ROUTE_NOT_FOUND`** to HTTP 404 via SvelteKit **`error`**.
+
+SvelteKit serializes load data to the browser, so these factories never return the manifest. Page loads return only the selected page, its surface and the resolved sidebar. `collection` carries `id`, `label`, `scope`, `listRoute` and `feedPath` without post-id indexes. Keep the manifest in server-only modules and derive any other data there. Route access checks remain the caller's responsibility.
 
 ## Search endpoint
 

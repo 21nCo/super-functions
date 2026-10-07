@@ -184,6 +184,31 @@ describe("Next proof routes", () => {
     expect(html).not.toContain('class="docs-example-content"');
   });
 
+  it("applies the path-based raw HTML allowlist to compiled blog posts", async () => {
+    const source = await createApiProofSource();
+    for (const slug of ["trusted", "untrusted"]) {
+      source.manifest.posts[`blog:${slug}.md`] = {
+        kind: "post", id: `blog:${slug}.md`, slug, path: `/blog/${slug}`,
+        title: slug, date: "2026-10-01", tags: [], draft: false,
+        body: 'Intro\n\n<iframe src="https://example.com/embed"></iframe>\n', frontmatter: {},
+      };
+    }
+    const previous = process.env.DOCSFN_HTML_UNSAFE_ALLOWLIST;
+    process.env.DOCSFN_HTML_UNSAFE_ALLOWLIST = "trusted.md";
+    try {
+      vi.resetModules();
+      vi.doMock("@/source.config", () => ({ loadDocsSiteSource: async () => source }));
+      const module = await import("./app/blog/[...slug]/page.tsx");
+      const render = async (slug: string) =>
+        renderToStaticMarkup(await module.default({ params: Promise.resolve({ slug: [slug] }) }));
+      expect(await render("trusted")).toContain('<iframe src="https://example.com/embed">');
+      await expect(render("untrusted")).rejects.toThrow(/unsafe HTML/);
+    } finally {
+      if (previous === undefined) delete process.env.DOCSFN_HTML_UNSAFE_ALLOWLIST;
+      else process.env.DOCSFN_HTML_UNSAFE_ALLOWLIST = previous;
+    }
+  });
+
   it("resolves blog links and preserves normalized source paths", async () => {
     const source = await createApiProofSource();
     source.manifest.posts["blog:entry.md"] = {

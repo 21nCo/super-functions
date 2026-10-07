@@ -6,7 +6,7 @@
 </script>
 
 <svelte:head>
-  <title>{data.source.siteTitle}</title>
+  <title>{data.site.title}</title>
   <meta name="description" content="docsfn hybrid example app" />
 </svelte:head>
 
@@ -19,7 +19,7 @@
 
     <nav aria-label="Primary">
       <ul class="top-nav">
-        {#each data.source.docs.manifest.topNav ?? [] as item (`${item.label}:${item.href}`)}
+        {#each data.site.topNav as item (`${item.label}:${item.href}`)}
           <li>
             <a href={item.href}>{item.label}</a>
           </li>

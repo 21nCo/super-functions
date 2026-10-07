@@ -65,11 +65,11 @@
 {#key `${data.embed}:${data.embedSidebar}`}
 <DocsSiteShell
   embedded={data.embed}
-  brand={data.source.siteTitle}
+  brand={data.site.title}
   brandHref="/"
-  items={data.source.config.navigation?.topNav ?? []}
+  items={data.site.topNav}
   searchTrigger={clientSearchReady ? DocsSiteSearch : undefined}
-  showFooter={data.source.config.site.showFooter !== false}
+  showFooter={data.site.showFooter}
   footerNote="Built at 21n.co"
   footerLinks={[{ label: "21n.co", href: "https://21n.co", external: true }]}
 >

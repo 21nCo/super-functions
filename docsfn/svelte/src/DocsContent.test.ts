@@ -140,6 +140,23 @@ describe("DocsContent", () => {
     ).toThrowError(/DOCS_COMPONENT_UNRESOLVED|component DemoCard is not resolved/);
   });
 
+  it("honors collection-relative allowlists for compiled manifest entries in the browser", () => {
+    const compiled = compileSvelteContent({
+      source: 'Intro\n\n<iframe src="https://example.com/embed"></iframe>\n',
+      sourcePath: "launch/post.md",
+      allowRawHtml: true,
+    });
+
+    const { container } = render(DocsContent, {
+      compiled,
+      sourcePath: "blog:launch/post.md",
+      unsafeHtmlAllowlist: ["launch/*.md"],
+    });
+    expect(container.querySelector('iframe[src="https://example.com/embed"]')).not.toBeNull();
+    cleanup();
+    expect(() => render(DocsContent, { compiled, unsafeHtmlAllowlist: ["launch/*.md"] })).toThrowError(/unsafe HTML/);
+  });
+
   it("renders blog surfaces without raw-source fallback", async () => {
     render(DocsContent, {
       content: "# SearchFn v1.2 Release\n\nThis release introduces deterministic manifest and search artifacts.",

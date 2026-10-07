@@ -16,7 +16,11 @@ import {
   resolveEmbedSidebarMode as resolveNextEmbedSidebarMode,
 } from "../../next/src/route-helpers";
 import {
+  createApiLoad,
+  createCollectionPostLoad,
   createPageLoad,
+  createPostLoad,
+  createVersionedPageLoad,
   getApiData,
   generateApiParams,
   generateCollectionParams,
@@ -364,4 +368,82 @@ it.each(["api", "api/foo"])("round trips dedicated API slugs beginning with api:
   manifest.apis = { x: api };
   manifest.routes = { [api.path]: api.id };
   for (const read of [getApiData, getNextApiData]) expect(read(slug, manifest, { basePath: "/docs" })?.id).toBe("x");
+});
+
+it("keeps unrelated protected, draft and API content out of serialized load data", async () => {
+  const manifest = structuredClone(await loadCanonicalManifest());
+  const dated = createDatedCollectionManifest();
+  const publicPage = Object.values(manifest.pages).find((page) => page.path === "/docs")!;
+  const protectedPage = {
+    ...publicPage,
+    id: "docs:protected.md",
+    slug: "protected",
+    path: "/docs/protected",
+    title: "Protected",
+    body: "PROTECTED_PAGE_BODY",
+    frontmatter: { auth: "protected" },
+  };
+  const versionedPage = { ...publicPage, id: "docs:v2/index.md", path: "/docs/v2", version: "v2" };
+  const draftPost = Object.values(dated.posts).find((post) => post.draft)!;
+  draftPost.body = "DRAFT_POST_BODY";
+  const spec = buildOpenApiReference({
+    sourceId: "api:x.json",
+    sourcePath: "x.json",
+    fallbackTitle: "X",
+    body: JSON.stringify({ openapi: "3.0.3", info: { title: "API_SPEC_SECRET", version: "1" }, paths: {} }),
+  });
+  const api = { kind: "api" as const, id: "x", slug: "x", path: "/docs/api/x", title: "X", frontmatter: {}, spec };
+  manifest.pages[protectedPage.id] = protectedPage;
+  manifest.pages[versionedPage.id] = versionedPage;
+  manifest.posts = dated.posts;
+  manifest.blog = dated.blog;
+  manifest.collections = dated.collections;
+  manifest.apis = { x: api };
+  manifest.routes = {
+    ...manifest.routes,
+    ...dated.routes,
+    [protectedPage.path]: protectedPage.id,
+    [versionedPage.path]: versionedPage.id,
+    [api.path]: api.id,
+  };
+  const secrets = ["PROTECTED_PAGE_BODY", "DRAFT_POST_BODY", "API_SPEC_SECRET", draftPost.id];
+  const serialize = (data: object) => JSON.stringify(data);
+  const expectNoLeak = (data: object, allowed: string[] = []) => {
+    expect(data).not.toHaveProperty("manifest");
+    const serialized = serialize(data);
+    for (const secret of secrets.filter((value) => !allowed.includes(value))) {
+      expect(serialized).not.toContain(secret);
+    }
+  };
+
+  const page = createPageLoad(manifest, { basePath: "/docs" })({ params: {} } as never);
+  expectNoLeak(page);
+  expect(page.page.id).toBe(publicPage.id);
+  expect(page.sidebar).toEqual(page.surface.sidebarId ? manifest.sidebars[page.surface.sidebarId] : undefined);
+
+  const versioned = createVersionedPageLoad(manifest, { basePath: "/docs" })({ params: { version: "v2" } } as never);
+  expectNoLeak(versioned);
+  expect(versioned).toMatchObject({ version: "v2", route: "/docs/v2" });
+
+  const post = createPostLoad(manifest)({ params: { slug: "introducing-docsfn" } } as never);
+  expectNoLeak(post);
+  expect(Object.keys(post)).toEqual(["post"]);
+
+  const collectionPost = createCollectionPostLoad("blog", manifest)({ params: { slug: "introducing-docsfn" } } as never);
+  expectNoLeak(collectionPost);
+  expect(collectionPost.collection).toEqual({
+    id: "blog",
+    label: "Blog",
+    scope: "blog",
+    listRoute: "/blog",
+    feedPath: "/blog/rss.xml",
+  });
+
+  const apiData = createApiLoad(manifest, { basePath: "/docs" })({ params: { slug: "x" } } as never);
+  expectNoLeak(apiData, ["API_SPEC_SECRET"]);
+  expect(Object.keys(apiData)).toEqual(["api"]);
+
+  const protectedData = createPageLoad(manifest, { basePath: "/docs" })({ params: { slug: "protected" } } as never);
+  expectNoLeak(protectedData, ["PROTECTED_PAGE_BODY"]);
+  expect(() => createPostLoad(manifest)({ params: { slug: "draft" } } as never)).toThrow();
 });

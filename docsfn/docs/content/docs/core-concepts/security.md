@@ -73,6 +73,13 @@ segments, and `**/` also matches zero directory prefixes. Other characters are
 literal. Wildcard matches exceeding one million pattern-length × candidate-length
 work units fail closed rather than running an unbounded regular expression.
 
+When rendering manifest entries, compile with `allowRawHtml: isUnsafeHtmlAllowed(entry.id)`
+and pass `sourcePath={entry.id}` plus `unsafeHtmlAllowlist={resolveUnsafeHtmlAllowlist({})}`
+to `DocsContent`. Browsers cannot read the server environment, so the allowlist must
+travel with the render props. A manifest id such as `blog:launch/post.md` matches rules
+written against the full id or the collection-relative path (`launch/post.md`).
+Absolute-path rules apply only while building the manifest.
+
 Compiled content without a source identity cannot gain trust from an allowlist,
 even `**`. The host must supply trustworthy source metadata; this check does not
 authenticate a caller-supplied identity. Explicit `allowUnsafeHtml: true` remains

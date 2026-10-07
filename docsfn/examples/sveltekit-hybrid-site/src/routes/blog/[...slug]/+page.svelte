@@ -15,6 +15,8 @@
 
   <DocsContent
     compiled={data.compiled}
+    sourcePath={data.sourcePath}
+    unsafeHtmlAllowlist={data.unsafeHtmlAllowlist}
   />
 </article>
 

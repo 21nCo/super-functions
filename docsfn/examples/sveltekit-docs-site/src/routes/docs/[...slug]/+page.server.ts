@@ -1,5 +1,12 @@
 import { error } from "@sveltejs/kit";
-import { compileSvelteContent, resolveMarkdownRelativeLinks, getTopNavigation, type SidebarItem } from "@docsfn/core";
+import {
+  compileSvelteContent,
+  getTopNavigation,
+  isUnsafeHtmlAllowed,
+  resolveMarkdownRelativeLinks,
+  resolveUnsafeHtmlAllowlist,
+  type SidebarItem,
+} from "@docsfn/core";
 import {
   generateStaticParams,
   resolveDocsPageSurface,
@@ -123,9 +130,15 @@ export const load: PageServerLoad = async ({ params, parent }) => {
   return {
     routeEntry,
     compiled: routeEntry.kind === "page" ? resolveMarkdownRelativeLinks({
-      compiled: compileSvelteContent({ source: routeEntry.page.body, sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""), compatPreset: source.compatPreset }),
+      compiled: compileSvelteContent({
+        source: routeEntry.page.body,
+        sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""),
+        compatPreset: source.compatPreset,
+        allowRawHtml: isUnsafeHtmlAllowed(routeEntry.page.id),
+      }),
       route: routeEntry.route, sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""),
     }) : undefined,
+    unsafeHtmlAllowlist: resolveUnsafeHtmlAllowlist({}),
     surface,
     sidebarLinks,
     searchDocumentCount,

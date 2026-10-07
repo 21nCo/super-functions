@@ -1,5 +1,5 @@
 import { error } from "@sveltejs/kit";
-import { getTopNavigation } from "@docsfn/core";
+import { getTopNavigation, resolveUnsafeHtmlAllowlist } from "@docsfn/core";
 import type { Sidebar } from "@docsfn/core";
 import {
   resolveDocsPageSurface,
@@ -7,7 +7,7 @@ import {
   resolveEmbedMode,
   type SvelteDocsPageSurface,
 } from "@docsfn/sveltekit";
-import { getCompiledDocsPage } from "$lib/server/docs-site-source";
+import { getCompiledDocsPage, loadRequestDocsSiteSource } from "$lib/server/docs-site-source";
 import type { PageServerLoad } from "./$types";
 
 function buildCanonicalUrl(canonicalBase: string | undefined, path: string): string {
@@ -28,8 +28,8 @@ function isRouteNotFoundError(input: unknown): input is { message: string } {
   );
 }
 
-export const load: PageServerLoad = async ({ params, parent, url }) => {
-  const { source } = await parent();
+export const load: PageServerLoad = async ({ params, request, url }) => {
+  const source = await loadRequestDocsSiteSource(request);
   const embed = resolveEmbedMode(url);
 
   let routeEntry;
@@ -108,6 +108,7 @@ export const load: PageServerLoad = async ({ params, parent, url }) => {
     surface,
     sidebar,
     compiled,
+    unsafeHtmlAllowlist: resolveUnsafeHtmlAllowlist({}),
     searchDocumentCount,
     searchScopes,
     siteTitle: source.siteTitle,

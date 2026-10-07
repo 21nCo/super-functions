@@ -112,7 +112,12 @@ import {
   DocsSidebar,
   Pagination,
 } from "@docsfn/react";
-import { compileReactContent, resolveMarkdownRelativeLinks } from "@docsfn/core";
+import {
+  compileReactContent,
+  isUnsafeHtmlAllowed,
+  resolveMarkdownRelativeLinks,
+  resolveUnsafeHtmlAllowlist,
+} from "@docsfn/core";
 
 const manifestPromise = getManifest();
 const configPromise = getDocsConfig();
@@ -180,7 +185,12 @@ export default async function DocsPage({
 
   if (routeEntry.kind === "page") {
     const compiled = resolveMarkdownRelativeLinks({
-      compiled: compileReactContent({ source: routeEntry.page.body, sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""), compatPreset: config.compat?.preset ?? "none" }),
+      compiled: compileReactContent({
+        source: routeEntry.page.body,
+        sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""),
+        compatPreset: config.compat?.preset ?? "none",
+        allowRawHtml: isUnsafeHtmlAllowed(routeEntry.page.id),
+      }),
       route: routeEntry.route,
       sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""),
     });
@@ -191,7 +201,11 @@ export default async function DocsPage({
         ) : null}
         <main>
           <Breadcrumbs surface={surface} />
-          <DocsContent compiled={compiled} />
+          <DocsContent
+            compiled={compiled}
+            sourcePath={routeEntry.page.id}
+            unsafeHtmlAllowlist={resolveUnsafeHtmlAllowlist({})}
+          />
           <Pagination surface={surface} />
         </main>
       </div>

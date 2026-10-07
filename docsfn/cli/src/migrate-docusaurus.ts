@@ -3,6 +3,7 @@ import { isLocalRoute } from "@docsfn/core";
 import fsSync from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import vm from "node:vm";
 
 export interface DocusaurusMigrateOptions {
   source: string;
@@ -94,7 +95,7 @@ const MARKDOWN_EXTENSIONS = new Set([".md", ".mdx"]);
 // Only media explicitly referenced by migrated docs belongs in public assets.
 const DOC_ASSET_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".ico",
-  ".mp3", ".mp4", ".webm", ".ogg", ".wav", ".pdf",
+  ".mp3", ".m4a", ".mp4", ".mov", ".webm", ".ogg", ".wav", ".pdf",
 ]);
 const CHANGELOG_DATE_LINE_REGEX =
   /^\s*<div\s+align=["']right["']>\s*\*([^*]+)\*\s*<\/div>\s*$/im;
@@ -600,12 +601,16 @@ async function loadSidebarsFromText(sidebarsPath: string): Promise<unknown> {
     const moduleValue = { exports: {} as unknown };
     const loadImport = (specifier: string) =>
       evaluate(resolveImport(resolvedPath, specifier), new Set(seen));
-    const fn = new Function(
-      "module",
-      "exports",
-      "__loadImport",
-      `${transformed}\nreturn module.exports;`
-    );
+    // Sidebars are configuration data: evaluate them without Node globals such
+    // as process or require. This limits ambient access; it is not a sandbox.
+    const fn = new vm.Script(
+      `(function (module, exports, __loadImport) {\n${transformed}\nreturn module.exports;\n})`,
+      { filename: resolvedPath }
+    ).runInNewContext(Object.create(null)) as (
+      module: { exports: unknown },
+      exports: unknown,
+      loadImport: (specifier: string) => unknown
+    ) => unknown;
     return fn(moduleValue, moduleValue.exports, loadImport);
   }
 
@@ -656,8 +661,11 @@ async function loadDocusaurusSidebars(input: {
     input.warnings.push(
       `Could not load ${normalizePath(path.relative(input.sourceRoot, resolvedPath))}; meta.json order was inferred from files.`
     );
-    if (error instanceof Error && error.message) {
-      input.warnings.push(`Sidebar load error: ${error.message}`);
+    // Sidebar evaluation errors come from another realm, so avoid instanceof Error.
+    const message =
+      typeof error === "object" && error !== null && "message" in error ? String(error.message) : "";
+    if (message) {
+      input.warnings.push(`Sidebar load error: ${message}`);
     }
   }
 
@@ -1114,6 +1122,12 @@ function rewriteColocatedAssets(source: string, record: ContentRecord, assets: S
     .replace(
       /(\b(?:src|href)=["'])([^"']+)(["'])/g,
       (_match, prefix, href, close) => `${prefix}${rewrite(href)}${close}`
+    )
+    // Reference definitions such as `[diagram]: ./diagram.png` back `![Diagram][diagram]`.
+    .replace(
+      /^( {0,3}\[[^\]\n]+\]:[ \t]*)(?:<([^>\n]*)>|(\S+))/gm,
+      (_match, prefix, bracketed, bare) =>
+        bracketed === undefined ? `${prefix}${rewrite(bare)}` : `${prefix}<${rewrite(bracketed)}>`
     );
 }
 

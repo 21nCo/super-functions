@@ -5,7 +5,7 @@ description: Build a docsfn documentation site on SvelteKit 2 with Svelte 5.
 
 # SvelteKit Integration
 
-This guide mirrors the layout used by the official docsfn docs app: a **singleton manifest + search artifact** loaded from the root layout, a **`docs/[...slug]`** catch-all for docs and API pages, **blog** routes, **`/search.json`**, and Vite aliases so the browser bundle never pulls Node-only code from `@docsfn/core`.
+This guide mirrors the layout used by the official docsfn docs app: a **singleton manifest + search artifact** kept in a server-only module, a **`docs/[...slug]`** catch-all for docs and API pages, **blog** routes, **`/search.json`**, and Vite aliases so the browser bundle never pulls Node-only code from `@docsfn/core`.
 
 ## Prerequisites
 
@@ -226,10 +226,18 @@ export async function loadDocsSiteSource(): Promise<DocsSiteSource> {
 import { loadDocsSiteSource } from "$lib/server/docs-site-source";
 import type { LayoutServerLoad } from "./$types";
 
-export const load: LayoutServerLoad = async () => ({
-  source: await loadDocsSiteSource(),
-});
+export const load: LayoutServerLoad = async () => {
+  const source = await loadDocsSiteSource();
+  return {
+    site: {
+      title: source.siteTitle,
+      topNav: source.config.navigation?.topNav ?? [],
+    },
+  };
+};
 ```
+
+SvelteKit serializes layout data into every page, so return only the chrome the browser renders. Keep the manifest and search artifact in server loads and endpoints, which read them from `loadDocsSiteSource()`.
 
 ---
 
@@ -257,7 +265,7 @@ cript lang="ts">
 
 <div class="docsfn-site-root">
   <TopBar
-    items={data.source.config.navigation?.topNav}
+    items={data.site.topNav}
     searchTrigger={DocsSearch}
   />
   <main class="docsfn-site-main">
@@ -275,9 +283,15 @@ Pass **`loadSearchArtifact`** if you do not have the artifact in `data` (see Ste
 ```ts
 // src/routes/docs/[...slug]/+page.server.ts
 import { error } from "@sveltejs/kit";
-import { compileSvelteContent, resolveMarkdownRelativeLinks } from "@docsfn/core";
+import {
+  compileSvelteContent,
+  isUnsafeHtmlAllowed,
+  resolveMarkdownRelativeLinks,
+  resolveUnsafeHtmlAllowlist,
+} from "@docsfn/core";
 import type { Sidebar } from "@docsfn/core";
 import { resolveDocsPageSurface, resolveDocsRouteDataOrThrow } from "@docsfn/sveltekit";
+import { loadDocsSiteSource } from "$lib/server/docs-site-source";
 import type { PageServerLoad } from "./$types";
 
 function isRouteNotFound(err: unknown): err is { code: string; message: string } {
@@ -289,8 +303,8 @@ function isRouteNotFound(err: unknown): err is { code: string; message: string }
   );
 }
 
-export const load: PageServerLoad = async ({ params, parent }) => {
-  const { source } = await parent();
+export const load: PageServerLoad = async ({ params }) => {
+  const source = await loadDocsSiteSource();
   const basePath = "/docs";
 
   let routeEntry;
@@ -323,13 +337,25 @@ export const load: PageServerLoad = async ({ params, parent }) => {
   const compiled =
     routeEntry.kind === "page"
       ? resolveMarkdownRelativeLinks({
-          compiled: compileSvelteContent({ source: routeEntry.page.body, sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""), compatPreset: source.compatPreset }),
+          compiled: compileSvelteContent({
+            source: routeEntry.page.body,
+            sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""),
+            compatPreset: source.compatPreset,
+            allowRawHtml: isUnsafeHtmlAllowed(routeEntry.page.id),
+          }),
           route: routeEntry.route,
           sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""),
         })
       : undefined;
 
-  return { routeEntry, surface, sidebar, compiled, siteTitle: source.siteTitle };
+  return {
+    routeEntry,
+    surface,
+    sidebar,
+    compiled,
+    unsafeHtmlAllowlist: resolveUnsafeHtmlAllowlist({}),
+    siteTitle: source.siteTitle,
+  };
 };
 ```
 
@@ -373,7 +399,11 @@ cript lang="ts">
     <Breadcrumbs surface={data.surface} />
     {#if data.routeEntry.kind === "page" && data.compiled}
       <article>
-        <DocsContent compiled={data.compiled} />
+        <DocsContent
+          compiled={data.compiled}
+          sourcePath={data.routeEntry.page.id}
+          unsafeHtmlAllowlist={data.unsafeHtmlAllowlist}
+        />
       </article>
     {:else}
       <ApiReferenceRenderer api={data.routeEntry.api} />
@@ -419,16 +449,16 @@ on a thin wrapper component used as `searchTrigger`.
 
 ## Step 12 — Blog routes
 
-**`src/routes/blog/+page.ts`** (client load is fine for listing):
+**`src/routes/blog/+page.server.ts`** (filter on the server so draft posts never reach the browser):
 
 ```ts
-import type { PageLoad } from "./$types";
+import { getCollectionPosts } from "@docsfn/sveltekit";
+import { loadDocsSiteSource } from "$lib/server/docs-site-source";
+import type { PageServerLoad } from "./$types";
 
-export const load: PageLoad = async ({ parent }) => {
-  const { source } = await parent();
-  const posts = Object.values(source.manifest.posts)
-    .filter((p) => !p.draft)
-    .sort((a, b) => b.date.localeCompare(a.date));
+export const load: PageServerLoad = async () => {
+  const source = await loadDocsSiteSource();
+  const posts = getCollectionPosts("blog", source.manifest).map(({ body: _body, ...post }) => post);
   return { posts };
 };
 ```
@@ -437,23 +467,34 @@ export const load: PageLoad = async ({ parent }) => {
 
 ```ts
 import { error } from "@sveltejs/kit";
-import { compileSvelteContent, resolveMarkdownRelativeLinks } from "@docsfn/core";
+import {
+  compileSvelteContent,
+  isUnsafeHtmlAllowed,
+  resolveMarkdownRelativeLinks,
+  resolveUnsafeHtmlAllowlist,
+} from "@docsfn/core";
 import { getPostData } from "@docsfn/sveltekit";
+import { loadDocsSiteSource } from "$lib/server/docs-site-source";
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async ({ params, parent }) => {
-  const { source } = await parent();
+export const load: PageServerLoad = async ({ params }) => {
+  const source = await loadDocsSiteSource();
   const post = getPostData(params.slug, source.manifest);
   if (!post || post.draft) throw error(404, "Not found");
   const compiled = resolveMarkdownRelativeLinks({
-    compiled: compileSvelteContent({ source: post.body, compatPreset: source.compatPreset }),
+    compiled: compileSvelteContent({
+      source: post.body,
+      sourcePath: post.id.replace(/^[^:]+:/, ""),
+      compatPreset: source.compatPreset,
+      allowRawHtml: isUnsafeHtmlAllowed(post.id),
+    }),
     route: post.path, sourcePath: post.id.replace(/^[^:]+:/, ""),
   });
-  return { post, compiled, siteTitle: source.siteTitle };
+  return { post, compiled, unsafeHtmlAllowlist: resolveUnsafeHtmlAllowlist({}), siteTitle: source.siteTitle };
 };
 ```
 
-Render with **`DocsContent`** and link the list to `/blog/[...slug]`.
+Render with **`DocsContent`**, passing `sourcePath={data.post.id}` and `unsafeHtmlAllowlist={data.unsafeHtmlAllowlist}`, and link the list to `/blog/[...slug]`.
 
 **RSS** — optional `src/routes/blog/rss.xml/+server.ts` using **`generateRSSFeed`** from `@docsfn/core` (see [RSS](../core-concepts/rss)).
 

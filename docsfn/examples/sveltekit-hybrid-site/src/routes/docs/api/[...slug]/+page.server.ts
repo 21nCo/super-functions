@@ -6,8 +6,8 @@ export const entries = async () => generateStaticParams(
   (await loadHybridSiteSource()).docs.manifest, { basePath: "/docs/api" }
 ).map(({ slug }) => ({ slug: slug ?? "" }));
 
-export const load: PageServerLoad = async ({ params, parent }) => {
-  const { source } = await parent();
+export const load: PageServerLoad = async ({ params }) => {
+  const source = await loadHybridSiteSource();
   const api = loadApiData(params.slug, source.docs.manifest, {
     basePath: source.docs.basePath
   });

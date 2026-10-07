@@ -11,7 +11,7 @@
 </script>
 
 <svelte:head>
-  <title>{title} - {data.source.siteTitle}</title>
+  <title>{title} - {data.site.title}</title>
   <meta name="description" content="Product updates and release notes." />
 </svelte:head>
 

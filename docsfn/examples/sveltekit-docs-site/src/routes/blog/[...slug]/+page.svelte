@@ -21,5 +21,9 @@
   {#if data.post.tags.length > 0}
     <p>Tags: {data.post.tags.join(", ")}</p>
   {/if}
-  <DocsContent compiled={data.compiled} />
+  <DocsContent
+    compiled={data.compiled}
+    sourcePath={data.post.id}
+    unsafeHtmlAllowlist={data.unsafeHtmlAllowlist}
+  />
 </article>

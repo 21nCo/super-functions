@@ -35,7 +35,11 @@
   </header>
 
   <div class="blog-post-body">
-    <DocsContent compiled={data.compiled} />
+    <DocsContent
+      compiled={data.compiled}
+      sourcePath={data.post.id}
+      unsafeHtmlAllowlist={data.unsafeHtmlAllowlist}
+    />
   </div>
 </article>
 

@@ -15,6 +15,7 @@ import {
   type DocsManifest,
   type DocsSearchArtifact,
   type DocsTopNavItem,
+  type Sidebar,
   type Version,
 } from "@docsfn/core";
 import { error as svelteKitError } from "@sveltejs/kit";
@@ -59,6 +60,39 @@ export interface SvelteDocsPageSurface {
   versionLinks?: Record<string, string>;
   editLink?: string;
   pageActions?: Array<Record<string, unknown>>;
+}
+
+// Load results are serialized to the browser, so they carry only the selected
+// entry and its navigation data, never the full manifest.
+export interface DocsPageLoadData {
+  page: DocPage;
+  route: string;
+  surface: SvelteDocsPageSurface;
+  sidebar?: Sidebar;
+}
+
+export interface DocsVersionedPageLoadData extends DocsPageLoadData {
+  version: string;
+}
+
+export interface DocsCollectionLoadSurface {
+  id: string;
+  label: string;
+  scope: string;
+  listRoute: string;
+  feedPath: string;
+}
+
+export interface DocsPostLoadData {
+  post: BlogPost;
+}
+
+export interface DocsCollectionPostLoadData extends DocsPostLoadData {
+  collection: DocsCollectionLoadSurface | null;
+}
+
+export interface DocsApiLoadData {
+  api: ApiReference;
 }
 
 export interface GenerateStaticParamsOptions {
@@ -313,6 +347,16 @@ function getDatedCollectionSurface(
   }
 
   return null;
+}
+
+function toCollectionLoadSurface(
+  collection: DatedCollectionSurface | null
+): DocsCollectionLoadSurface | null {
+  if (!collection) {
+    return null;
+  }
+  const { id, label, scope, listRoute, feedPath } = collection;
+  return { id, label, scope, listRoute, feedPath };
 }
 
 function resolveCollectionPostRoute(
@@ -945,7 +989,7 @@ export function createPageLoad(
   manifest: DocsManifest,
   options: ResolvePageSurfaceOptions = {}
 ) {
-  return ({ params }: LoadEvent<{ slug?: string }>) => {
+  return ({ params }: LoadEvent<{ slug?: string }>): DocsPageLoadData => {
     try {
       const routeEntry = resolveDocsRouteDataOrThrow(params.slug, manifest, {
         basePath: options.basePath,
@@ -969,7 +1013,7 @@ export function createPageLoad(
         page: routeEntry.page,
         route: routeEntry.route,
         surface,
-        manifest,
+        sidebar: surface.sidebarId ? manifest.sidebars[surface.sidebarId] : undefined,
       };
     } catch (error) {
       if (isDocsRouteNotFound(error)) {
@@ -984,7 +1028,7 @@ export function createVersionedPageLoad(
   manifest: DocsManifest,
   options: ResolvePageSurfaceOptions & ResolveVersionedPageOptions = {}
 ) {
-  return ({ params }: LoadEvent<{ version: string; slug?: string }>) => {
+  return ({ params }: LoadEvent<{ version: string; slug?: string }>): DocsVersionedPageLoadData => {
     const routePath = toVersionedPath({
       version: params.version,
       slug: params.slug,
@@ -1009,8 +1053,8 @@ export function createVersionedPageLoad(
         page: routeEntry.page,
         route: routeEntry.route,
         surface,
+        sidebar: surface.sidebarId ? manifest.sidebars[surface.sidebarId] : undefined,
         version: params.version,
-        manifest,
       };
     } catch (error) {
       if (isDocsRouteNotFound(error)) {
@@ -1025,13 +1069,10 @@ export function createPostLoad(
   manifest: DocsManifest,
   options: CollectionPostOptions = {}
 ) {
-  return ({ params }: LoadEvent<{ slug: string }>) => {
+  return ({ params }: LoadEvent<{ slug: string }>): DocsPostLoadData => {
     try {
       const post = getPostDataOrThrow(params.slug, manifest, options);
-      return {
-        post,
-        manifest,
-      };
+      return { post };
     } catch (error) {
       if (isDocsRouteNotFound(error)) {
         throw svelteKitError(404, error.message);
@@ -1046,13 +1087,12 @@ export function createCollectionPostLoad(
   manifest: DocsManifest,
   options: CollectionPostOptions = {}
 ) {
-  return ({ params }: LoadEvent<{ slug: string }>) => {
+  return ({ params }: LoadEvent<{ slug: string }>): DocsCollectionPostLoadData => {
     try {
       const post = getCollectionPostDataOrThrow(collectionId, params.slug, manifest, options);
       return {
-        collection: getDatedCollectionSurface(collectionId, manifest),
+        collection: toCollectionLoadSurface(getDatedCollectionSurface(collectionId, manifest)),
         post,
-        manifest,
       };
     } catch (error) {
       if (isDocsRouteNotFound(error)) {
@@ -1067,13 +1107,10 @@ export function createApiLoad(
   manifest: DocsManifest,
   options: ResolvePageOptions = {}
 ) {
-  return ({ params }: LoadEvent<{ slug?: string }>) => {
+  return ({ params }: LoadEvent<{ slug?: string }>): DocsApiLoadData => {
     try {
       const api = getApiDataOrThrow(params.slug, manifest, options);
-      return {
-        api,
-        manifest,
-      };
+      return { api };
     } catch (error) {
       if (isDocsRouteNotFound(error)) {
         throw svelteKitError(404, error.message);

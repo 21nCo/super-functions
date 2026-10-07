@@ -91,6 +91,8 @@
 
         <DocsContent
           compiled={data.compiled}
+          sourcePath={data.routeEntry.page.id}
+          unsafeHtmlAllowlist={data.unsafeHtmlAllowlist}
         />
       </article>
     {:else}

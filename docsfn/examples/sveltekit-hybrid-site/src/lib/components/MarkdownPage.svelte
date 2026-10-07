@@ -8,6 +8,7 @@
   export let content: string;
   export let sourcePath: string;
   export let compatPreset: DocsCompatPreset = "none";
+  export let unsafeHtmlAllowlist: string[] = [];
 </script>
 
 <article class="markdown-page">
@@ -18,7 +19,7 @@
   {/if}
   <p class="route">Route: {path}</p>
 
-  <DocsContent content={content} {sourcePath} {compatPreset} />
+  <DocsContent content={content} {sourcePath} {compatPreset} {unsafeHtmlAllowlist} />
 </article>
 
 <style>

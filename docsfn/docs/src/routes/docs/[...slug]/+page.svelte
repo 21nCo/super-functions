@@ -28,7 +28,11 @@
     {#if !data.compiled.headings.some((heading) => heading.level === 1)}
       <h1>{data.surface.title}</h1>
     {/if}
-    <DocsContent compiled={data.compiled}>
+    <DocsContent
+      compiled={data.compiled}
+      sourcePath={data.routeEntry.page.id}
+      unsafeHtmlAllowlist={data.unsafeHtmlAllowlist}
+    >
       <PageActions slot="page-actions" editLink={data.surface.editLink} />
     </DocsContent>
   </article>

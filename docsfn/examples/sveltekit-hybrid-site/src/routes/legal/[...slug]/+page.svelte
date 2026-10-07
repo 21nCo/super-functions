@@ -12,4 +12,5 @@
   content={data.page.body}
   sourcePath={data.page.id}
   compatPreset={data.compatPreset}
+  unsafeHtmlAllowlist={data.unsafeHtmlAllowlist}
 />

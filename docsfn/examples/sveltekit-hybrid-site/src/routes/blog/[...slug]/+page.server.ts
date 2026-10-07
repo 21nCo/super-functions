@@ -1,5 +1,10 @@
 import { error } from "@sveltejs/kit";
-import { compileSvelteContent, resolveMarkdownRelativeLinks } from "@docsfn/core";
+import {
+  compileSvelteContent,
+  isUnsafeHtmlAllowed,
+  resolveMarkdownRelativeLinks,
+  resolveUnsafeHtmlAllowlist
+} from "@docsfn/core";
 import { getDocsCollectionPosts, getPostDataOrThrow } from "@docsfn/sveltekit";
 import { loadHybridSiteSource } from "../../../lib/server/site-source";
 import type { PageServerLoad } from "./$types";
@@ -17,8 +22,8 @@ function isRouteNotFoundError(input: unknown): input is { message: string } {
   );
 }
 
-export const load: PageServerLoad = async ({ params, parent }) => {
-  const { source } = await parent();
+export const load: PageServerLoad = async ({ params }) => {
+  const source = await loadHybridSiteSource();
 
   try {
     const post = getPostDataOrThrow(params.slug, source.docs.manifest);
@@ -26,9 +31,16 @@ export const load: PageServerLoad = async ({ params, parent }) => {
     return {
       post,
       compiled: resolveMarkdownRelativeLinks({
-        compiled: compileSvelteContent({ source: post.body, sourcePath, compatPreset: source.docs.compatPreset }),
+        compiled: compileSvelteContent({
+          source: post.body,
+          sourcePath,
+          compatPreset: source.docs.compatPreset,
+          allowRawHtml: isUnsafeHtmlAllowed(post.id)
+        }),
         route: post.path, sourcePath,
       }),
+      sourcePath: post.id,
+      unsafeHtmlAllowlist: resolveUnsafeHtmlAllowlist({}),
       compatPreset: source.docs.compatPreset
     };
   } catch (routeError) {

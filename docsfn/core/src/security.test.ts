@@ -286,6 +286,25 @@ it.each([
   }
 });
 
+it.each([
+  ["blog", "launch/*.md", "launch/post.md", true],
+  ["collection:changelog", "**/v1.md", "notes/v1.md", true],
+  ["pages", "about.md", "about.md", true],
+  ["blog", "other/*.md", "launch/post.md", false],
+  ["api", "spec.json", "spec.json", false],
+])("matches %s manifest ids against collection-relative allowlist %s", (collection, glob, relativePath, allowed) => {
+  const body = "<script>alert(1)</script>";
+  const policy = { allowUnsafeHtmlAllowlist: [glob] };
+  const id = `${collection}:${relativePath}`;
+  const source = () => assertSourceEntriesTrusted({ entries: [createEntry({ id, collection: collection as never, relativePath, body })], policy });
+  const compiled = () => assertCompiledContentTrusted({ source: body, sourcePath: id, policy });
+  // API specs are not Markdown content, so only the compiled check applies to them.
+  for (const check of collection === "api" ? [compiled] : [source, compiled]) {
+    if (allowed) expect(check).not.toThrow();
+    else expect(check).toThrow(/DOCS_HTML_UNSAFE|unsafe HTML/);
+  }
+});
+
 it("never grants path-based trust to content with no source identity", () => {
   expect(() => assertCompiledContentTrusted({ source: "<script>alert(1)</script>", policy: { allowUnsafeHtmlAllowlist: ["**"] } })).toThrow();
   expect(() => assertCompiledContentTrusted({ source: "<script>alert(1)</script>", policy: { allowUnsafeHtml: true } })).not.toThrow();

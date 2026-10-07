@@ -14,6 +14,7 @@ const SENSITIVE_VALUE_PATTERN =
   /(bearer\s+[a-z0-9._-]+|xox[baprs]-[a-z0-9-]+|gh[pousr]_[a-z0-9]+|sk_[a-z0-9]+|api[_-]?key\s*[:=])/i;
 
 const RAW_HTML_ALLOWLIST_ENV = "DOCSFN_HTML_UNSAFE_ALLOWLIST";
+const MANIFEST_CONTENT_ID_PATTERN = /^(?:docs|pages|blog|collection:[^:/\\]+):(.+)$/;
 
 export interface ResolveUnsafeHtmlAllowlistInput {
   value?: string;
@@ -411,11 +412,14 @@ export function isUnsafeHtmlAllowed(sourcePath?: string, policyInput?: SourceTru
 
   if (!input.sourcePath) return false;
   const sourceId = input.sourcePath;
+  // Manifest ids are `collection:relativePath`. Match the collection-relative
+  // identity too, as the manifest build gate does for the same Markdown entry.
+  const manifestRelativePath = MANIFEST_CONTENT_ID_PATTERN.exec(sourceId)?.[1];
   const allowlisted = matchesAllowlist(
     {
       id: sourceId,
       collection: "docs",
-      relativePath: sourceId,
+      relativePath: manifestRelativePath ?? sourceId,
       absolutePath: input.sourcePath,
       entryType: "content",
       frontmatter: {},

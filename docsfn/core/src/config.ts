@@ -426,7 +426,8 @@ export async function getDocsConfigWatchRoots(input: LoadDocsConfigInput & { wat
       ancestor = parent;
     }
   }
-  return [...roots].sort();
+  // Code-unit order keeps watch-root output identical across locales.
+  return [...roots].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 }
 
 export function validateDocsConfig(loadedConfig: unknown, configPath = "docsfn.config"): DocsConfig {

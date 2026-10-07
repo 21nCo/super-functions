@@ -10,7 +10,7 @@
 </script>
 
 <svelte:head>
-  <title>Blog — {data.source.siteTitle}</title>
+  <title>Blog — {data.site.title}</title>
 </svelte:head>
 
 <DatedCollectionList

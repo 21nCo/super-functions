@@ -43,6 +43,21 @@ async function fixture(run) {
     }
   };
   const title = (expected) => wait(async () => (await manifest())?.site.title === expected);
+  let probes = 0;
+  // Synchronizes on observable watcher state instead of elapsed time: a
+  // detected probe proves `directory` is subscribed, and a later completed
+  // rebuild proves every earlier queued event has been built.
+  const settle = async (directory) => {
+    const probe = join(directory, `.probe-${++probes}`);
+    const detected = `Change detected: ${probe}`;
+    let writes = 0;
+    await wait(async () => {
+      if (output.includes(detected)) return true;
+      await fs.writeFile(probe, String(++writes));
+      return false;
+    });
+    await wait(() => output.slice(output.lastIndexOf(detected)).includes("dev:rebuild:"));
+  };
   const stop = async () => {
     if (child && child.exitCode === null) {
       const closed = new Promise((resolve) => child.once("close", resolve));
@@ -53,7 +68,7 @@ async function fixture(run) {
     }
   };
   try {
-    await run({ base, root, start, stop, wait, title, manifest, output: () => output });
+    await run({ base, root, start, stop, wait, title, settle, manifest, output: () => output });
   } finally {
     await stop();
     await fs.rm(base, { recursive: true, force: true });
@@ -235,7 +250,7 @@ test("stopping dev terminates an active build process", () =>
   }));
 
 test("declared symlink roots opt into physical package dependencies after settled retargeting", () =>
-  fixture(async ({ base, root, start, title }) => {
+  fixture(async ({ base, root, start, title, settle }) => {
     const first = join(base, "node_modules/first-settings");
     const second = join(base, "node_modules/second-settings");
     const shared = join(root, "shared");
@@ -247,13 +262,13 @@ test("declared symlink roots opt into physical package dependencies after settle
     await fs.writeFile(join(root, "docsfn.config.mjs"), `import title from './shared/title.mjs'; export default ${config("title")};`);
     await start(["--watch-root", "shared"]);
     await title("First");
-    // Output-directory startup events must not accidentally trigger the build
-    // that observes the retargeted link.
-    await sleep(1500);
+    // Drain startup events so only the retargeted link can trigger the next build.
+    await settle(first);
     await fs.unlink(shared);
     await fs.symlink(second, shared, "dir");
     await title("Second");
-    await sleep(500);
+    // The retargeted physical directory must be subscribed before it changes.
+    await settle(second);
     await fs.writeFile(join(second, "title.mjs"), "export default 'Updated';");
     await title("Updated");
   })

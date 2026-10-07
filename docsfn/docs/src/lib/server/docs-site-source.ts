@@ -6,6 +6,7 @@ import {
   createDiagnostic,
   createDocsError,
   createDocsSearchRuntime,
+  isUnsafeHtmlAllowed,
   loadDocsConfig,
   resolveMarkdownRelativeLinks,
   type CompiledContentArtifact,
@@ -98,6 +99,7 @@ function createCompiledCache(input: {
           source: page.body,
           sourcePath: page.id,
           compatPreset: input.compatPreset,
+          allowRawHtml: isUnsafeHtmlAllowed(page.id),
         }),
         route: page.path,
         sourcePath: page.id,
@@ -120,6 +122,7 @@ function createCompiledCache(input: {
           source: post.body,
           sourcePath: post.id,
           compatPreset: input.compatPreset,
+          allowRawHtml: isUnsafeHtmlAllowed(post.id),
         }),
         route: post.path,
         sourcePath: post.id,
@@ -242,6 +245,18 @@ async function loadDocsSiteServerState(): Promise<DocsSiteServerState> {
 export async function loadDocsSiteSource(): Promise<DocsSiteSource> {
   const state = await loadDocsSiteServerState();
   return state.source;
+}
+
+const requestSources = new WeakMap<Request, Promise<DocsSiteSource>>();
+
+/** Shares one source snapshot across a request's server loads, including uncached development builds. */
+export function loadRequestDocsSiteSource(request: Request): Promise<DocsSiteSource> {
+  let source = requestSources.get(request);
+  if (!source) {
+    source = loadDocsSiteSource();
+    requestSources.set(request, source);
+  }
+  return source;
 }
 
 async function compiledCacheForSource(source?: DocsSiteSource): Promise<DocsSiteCompiledContentCache> {

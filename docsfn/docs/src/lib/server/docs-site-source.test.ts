@@ -4,7 +4,9 @@ import {
   getCompiledDocsPage,
   getDocsSiteCompiledCacheSummary,
   loadDocsSiteSource,
+  loadRequestDocsSiteSource,
 } from "./docs-site-source";
+import { load as loadLayout } from "../../routes/+layout.server";
 import { load as loadBlogListPage } from "../../routes/blog/+page.server";
 import { load as loadBlogPage } from "../../routes/blog/[...slug]/+page.server";
 import { load as loadChangelogPage } from "../../routes/changelog/[slug]/+page.server";
@@ -75,7 +77,7 @@ describe("docsfn dogfood site source", () => {
     );
 
     const blogList = await loadBlogListPage({
-      parent: async () => ({ source }),
+      request: new Request("https://docsfn.test/"),
     } as never);
     expect(blogList.posts.every((post) => post.collectionId === "blog")).toBe(true);
     expect(blogList.posts.some((post) => post.slug === "docsfn-v0-1-0")).toBe(false);
@@ -99,14 +101,14 @@ describe("docsfn dogfood site source", () => {
         slug: ["api", "core"],
       },
       url: new URL("https://docsfn.test/docs/api/core"),
-      parent: async () => ({ source }),
+      request: new Request("https://docsfn.test/"),
     } as never);
     const secondDocsLoad = await loadDocsPage({
       params: {
         slug: ["api", "core"],
       },
       url: new URL("https://docsfn.test/docs/api/core"),
-      parent: async () => ({ source }),
+      request: new Request("https://docsfn.test/"),
     } as never);
 
     expect(firstDocsLoad.compiled).toBe(secondDocsLoad.compiled);
@@ -117,7 +119,7 @@ describe("docsfn dogfood site source", () => {
         slug: ["api", "core"],
       },
       url: new URL("https://docsfn.test/docs/api/core?embed=1"),
-      parent: async () => ({ source }),
+      request: new Request("https://docsfn.test/"),
     } as never);
     expect(embeddedDocsLoad.embed).toBe(true);
 
@@ -125,13 +127,13 @@ describe("docsfn dogfood site source", () => {
       params: {
         slug: "introducing-docsfn",
       },
-      parent: async () => ({ source }),
+      request: new Request("https://docsfn.test/"),
     } as never);
     const secondBlogLoad = await loadBlogPage({
       params: {
         slug: "introducing-docsfn",
       },
-      parent: async () => ({ source }),
+      request: new Request("https://docsfn.test/"),
     } as never);
 
     expect(firstBlogLoad.compiled).toBe(secondBlogLoad.compiled);
@@ -142,14 +144,14 @@ describe("docsfn dogfood site source", () => {
         slug: "docsfn-v0-1-0",
       },
       url: new URL("https://docsfn.test/changelog/docsfn-v0-1-0"),
-      parent: async () => ({ source }),
+      request: new Request("https://docsfn.test/"),
     } as never);
     const secondChangelogLoad = await loadChangelogPage({
       params: {
         slug: "docsfn-v0-1-0",
       },
       url: new URL("https://docsfn.test/changelog/docsfn-v0-1-0"),
-      parent: async () => ({ source }),
+      request: new Request("https://docsfn.test/"),
     } as never);
 
     expect(firstChangelogLoad.post.collectionId).toBe("changelog");
@@ -161,9 +163,28 @@ describe("docsfn dogfood site source", () => {
         slug: "docsfn-v0-1-0",
       },
       url: new URL("https://docsfn.test/changelog/docsfn-v0-1-0?embed=1"),
-      parent: async () => ({ source }),
+      request: new Request("https://docsfn.test/"),
     } as never);
     expect(embeddedChangelogLoad.embed).toBe(true);
+  });
+
+  it("serializes only site chrome from the root layout", async () => {
+    const source = await loadDocsSiteSource();
+    const data = await loadLayout({
+      request: new Request("https://docsfn.test/"),
+      url: new URL("https://docsfn.test/"),
+    } as never);
+    expect(data).not.toHaveProperty("source");
+    expect(data).toHaveProperty("site", {
+      title: source.siteTitle,
+      description: source.config.site.description,
+      showFooter: source.config.site.showFooter !== false,
+      topNav: source.config.navigation?.topNav ?? [],
+    });
+    const serialized = JSON.stringify(data);
+    const page = Object.values(source.manifest.pages)[0];
+    expect(serialized).not.toContain(JSON.stringify(page.body).slice(1, 80));
+    expect(serialized).not.toContain('"documents"');
   });
 
   it("resolves relative links on collapsed index pages against the section route", async () => {
@@ -175,16 +196,17 @@ describe("docsfn dogfood site source", () => {
     expect(html).not.toContain('href="./configuration"');
   });
 
-  it("reuses the parent manifest's compiled content in development", async () => {
+  it("reuses the request's source snapshot and compiled content in development", async () => {
     const previousEnvironment = process.env.NODE_ENV;
     process.env.NODE_ENV = "development";
     try {
-      const source = await loadDocsSiteSource();
+      const request = new Request("https://docsfn.test/docs/api/core");
+      const source = await loadRequestDocsSiteSource(request);
       const compiled = await getCompiledDocsPage("docs:api/core/index.md", source);
       const data = await loadDocsPage({
         params: { slug: "api/core" },
-        url: new URL("https://docsfn.test/docs/api/core"),
-        parent: async () => ({ source }),
+        url: new URL(request.url),
+        request,
       } as never);
       expect(data.compiled).toBe(compiled);
       expect(data.routeEntry.page).toBe(source.manifest.pages["docs:api/core/index.md"]);

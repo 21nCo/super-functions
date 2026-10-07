@@ -1,5 +1,10 @@
 import { error } from "@sveltejs/kit";
-import { compileSvelteContent, resolveMarkdownRelativeLinks } from "@docsfn/core";
+import {
+  compileSvelteContent,
+  isUnsafeHtmlAllowed,
+  resolveMarkdownRelativeLinks,
+  resolveUnsafeHtmlAllowlist,
+} from "@docsfn/core";
 import { getDocsBlogPostData } from "@docsfn/sveltekit";
 import type { PageServerLoad } from "./$types";
 import {
@@ -25,10 +30,14 @@ export const load: PageServerLoad = async ({ params, parent }) => {
     post,
     compiled: resolveMarkdownRelativeLinks({
       compiled: compileSvelteContent({
-        source: post.body, sourcePath: post.id.replace(/^blog:/, ""), compatPreset: source.compatPreset,
+        source: post.body,
+        sourcePath: post.id.replace(/^blog:/, ""),
+        compatPreset: source.compatPreset,
+        allowRawHtml: isUnsafeHtmlAllowed(post.id),
       }),
       route: post.path, sourcePath: post.id.replace(/^blog:/, ""),
     }),
+    unsafeHtmlAllowlist: resolveUnsafeHtmlAllowlist({}),
     compatPreset: source.compatPreset,
   };
 };

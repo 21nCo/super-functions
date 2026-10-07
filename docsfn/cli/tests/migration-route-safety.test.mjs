@@ -16,7 +16,13 @@ test("migration publishes referenced media and leaves docs-local private files b
     const source = join(root, "source"), target = join(root, "target");
     await mkdir(join(source, "docs/guide"), { recursive: true });
     await mkdir(join(source, "static"));
-    await writeFile(join(source, "docs/index.md"), '# Docs\n![Diagram](guide/diagram.png)\n[Data](secrets.json)\n');
+    await writeFile(
+      join(source, "docs/index.md"),
+      '# Docs\n![Diagram](guide/diagram.png)\n[Data](secrets.json)\n![Flow][flow]\n[Clip][clip]\n[Voice][voice]\n[Leak][leak]\n\n[flow]: ./guide/flow.png "Flow"\n[clip]: <guide/demo clip.mov>\n  [voice]: guide/note.m4a\n[leak]: ./secrets.json\n'
+    );
+    await writeFile(join(source, "docs/guide/flow.png"), "reference media");
+    await writeFile(join(source, "docs/guide/demo clip.mov"), "video");
+    await writeFile(join(source, "docs/guide/note.m4a"), "audio");
     await writeFile(join(source, "docs/guide/diagram.png"), "intended media");
     await writeFile(join(source, "docs/secrets.json"), "private data");
     await writeFile(join(source, "docs/.env"), "private settings");
@@ -24,7 +30,14 @@ test("migration publishes referenced media and leaves docs-local private files b
     await writeFile(join(source, "static/public.json"), "explicit public asset");
     await execute(process.execPath, [cli, "migrate", "docusaurus", source, "--out-dir", target]);
     assert.equal(await readFile(join(target, "static/docs-assets/guide/diagram.png"), "utf8"), "intended media");
-    assert.match(await readFile(join(target, "content/docs/index.md"), "utf8"), /\/docs-assets\/guide\/diagram.png/);
+    const migrated = await readFile(join(target, "content/docs/index.md"), "utf8");
+    assert.match(migrated, /\/docs-assets\/guide\/diagram.png/);
+    assert.match(migrated, /^\[flow\]: \/docs-assets\/guide\/flow\.png "Flow"$/m);
+    assert.match(migrated, /^\[clip\]: <\/docs-assets\/guide\/demo%20clip\.mov>$/m);
+    assert.match(migrated, /^  \[voice\]: \/docs-assets\/guide\/note\.m4a$/m);
+    assert.match(migrated, /^\[leak\]: \.\/secrets\.json$/m);
+    for (const [file, content] of [["flow.png", "reference media"], ["demo clip.mov", "video"], ["note.m4a", "audio"]])
+      assert.equal(await readFile(join(target, "static/docs-assets/guide", file), "utf8"), content);
     for (const file of ["secrets.json", ".env", "unused.png"])
       await assert.rejects(access(join(target, "static/docs-assets", file)));
     assert.equal(await readFile(join(target, "static/public.json"), "utf8"), "explicit public asset");
@@ -129,5 +142,29 @@ test("migration accepts an ancestor alias while confining outputs to the selecte
       "--out-dir", join(alias, "target")], { timeout: 30000 });
     assert.match(await readFile(join(actual, "target/content/docs/index.md"), "utf8"), /Docs/);
     assert.equal(await readFile(join(actual, "sentinel.txt"), "utf8"), "Keep parent content");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("migration evaluates TypeScript sidebars without Node globals", async () => {
+  const root = await mkdtemp(join(tmpdir(), "docsfn-migration-sidebars-"));
+  try {
+    const source = join(root, "source");
+    await mkdir(join(source, "docs"), { recursive: true });
+    for (const page of ["intro", "guide", "zeta"]) await writeFile(join(source, `docs/${page}.md`), `# ${page}\n`);
+    // The extensionless import makes native import() fail, exercising text evaluation.
+    await writeFile(join(source, "sidebar-extra.ts"), 'export const guide = "guide";\n');
+    const sidebars = (body) =>
+      `import { guide } from "./sidebar-extra";\nconst sidebars: Record<string, string[]> = ${body};\nexport default sidebars;\n`;
+    await writeFile(join(source, "sidebars.ts"), sidebars('{ docs: ["zeta", guide, "intro"] }'));
+    const migrate = async (target) => {
+      await execute(process.execPath, [cli, "migrate", "docusaurus", source, "--out-dir", target]);
+      return readFile(join(target, ".docsfn-migration/report.md"), "utf8");
+    };
+    const ordered = join(root, "ordered");
+    await migrate(ordered);
+    assert.deepEqual(JSON.parse(await readFile(join(ordered, "content/docs/meta.json"), "utf8")).pages, ["zeta", "guide", "intro"]);
+
+    await writeFile(join(source, "sidebars.ts"), sidebars('{ docs: [process.env.HOME ? "zeta" : "intro", guide] }'));
+    assert.match(await migrate(join(root, "isolated")), /Sidebar load error: process is not defined/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

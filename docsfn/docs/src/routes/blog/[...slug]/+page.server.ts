@@ -1,10 +1,11 @@
+import { resolveUnsafeHtmlAllowlist } from "@docsfn/core";
 import { error } from "@sveltejs/kit";
 import { getCollectionPostData } from "@docsfn/sveltekit";
-import { getCompiledDocsPost } from "$lib/server/docs-site-source";
+import { getCompiledDocsPost, loadRequestDocsSiteSource } from "$lib/server/docs-site-source";
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async ({ params, parent }) => {
-  const { source } = await parent();
+export const load: PageServerLoad = async ({ params, request }) => {
+  const source = await loadRequestDocsSiteSource(request);
   const post = getCollectionPostData("blog", params.slug, source.manifest);
 
   if (!post || post.draft) {
@@ -16,6 +17,7 @@ export const load: PageServerLoad = async ({ params, parent }) => {
   return {
     post,
     compiled,
+    unsafeHtmlAllowlist: resolveUnsafeHtmlAllowlist({}),
     siteTitle: source.siteTitle,
   };
 };

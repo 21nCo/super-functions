@@ -8,7 +8,7 @@
   let { data }: Props = $props();
 
   const tagline = "The documentation toolchain for superfunctions";
-  const configDescription = $derived(data.source.config.site.description ?? "");
+  const configDescription = $derived(data.site.description ?? "");
   const extraBlurb = $derived(
     configDescription && configDescription !== tagline ? configDescription : ""
   );
@@ -41,8 +41,8 @@
 </script>
 
 <svelte:head>
-  <title>{data.source.siteTitle}</title>
-  <meta name="description" content={data.source.config.site.description ?? tagline} />
+  <title>{data.site.title}</title>
+  <meta name="description" content={data.site.description ?? tagline} />
 </svelte:head>
 
 <div class="docs-home">

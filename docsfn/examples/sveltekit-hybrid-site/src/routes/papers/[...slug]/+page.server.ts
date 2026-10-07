@@ -1,5 +1,5 @@
 import { error } from "@sveltejs/kit";
-import { flattenSidebarLinks } from "@docsfn/core";
+import { flattenSidebarLinks, resolveUnsafeHtmlAllowlist } from "@docsfn/core";
 import { generateStaticParams, resolveDocsPageSurface, resolveDocsRouteDataOrThrow } from "@docsfn/sveltekit";
 import { loadHybridSiteSource } from "../../../lib/server/site-source";
 import type { PageServerLoad } from "./$types";
@@ -18,8 +18,8 @@ function isRouteNotFoundError(input: unknown): input is { message: string } {
   );
 }
 
-export const load: PageServerLoad = async ({ params, parent }) => {
-  const { source } = await parent();
+export const load: PageServerLoad = async ({ params }) => {
+  const source = await loadHybridSiteSource();
   const papersSource = source.papers;
 
   let routeEntry;
@@ -57,6 +57,7 @@ export const load: PageServerLoad = async ({ params, parent }) => {
     surface,
     sidebarTitle: surface.sidebarId ?? "paper",
     sidebarLinks: sidebar ? flattenSidebarLinks(sidebar) : [],
-    compatPreset: papersSource.compatPreset
+    compatPreset: papersSource.compatPreset,
+    unsafeHtmlAllowlist: resolveUnsafeHtmlAllowlist({})
   };
 };

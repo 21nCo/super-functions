@@ -1,4 +1,9 @@
-import { compileReactContent, resolveMarkdownRelativeLinks } from "@docsfn/core";
+import {
+  compileReactContent,
+  isUnsafeHtmlAllowed,
+  resolveMarkdownRelativeLinks,
+  resolveUnsafeHtmlAllowlist,
+} from "@docsfn/core";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
@@ -221,9 +226,16 @@ export default async function DocsPage(props: {
 
             <DocsContent
               compiled={resolveMarkdownRelativeLinks({
-                compiled: compileReactContent({ source: routeEntry.page.body, sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""), compatPreset: source.compatPreset }),
+                compiled: compileReactContent({
+                  source: routeEntry.page.body,
+                  sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""),
+                  compatPreset: source.compatPreset,
+                  allowRawHtml: isUnsafeHtmlAllowed(routeEntry.page.id),
+                }),
                 route: routeEntry.route, sourcePath: routeEntry.page.id.replace(/^[^:]+:/, ""),
               })}
+              sourcePath={routeEntry.page.id}
+              unsafeHtmlAllowlist={resolveUnsafeHtmlAllowlist({})}
             />
           </article>
         ) : (
