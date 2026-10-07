@@ -1,0 +1,142 @@
+docsfn/docs/src/lib/server/docs-site-source.ts
+  s_c1093e7194f7e3::t_853136fa403422 9,102,125
+  s_c1093e7194f7e3::t_9d2cdf95445392 250-261
+docsfn/examples/sveltekit-docs-site/src/routes/blog/[...slug]/+page.server.ts
+  s_c1093e7194f7e3::t_6478ec8f9d0732 2-7,33-36,40
+docsfn/svelte/src/DocsContent.test.ts
+  s_c1093e7194f7e3::t_aa0988b2cfdac8 143-159
+docsfn/examples/sveltekit-hybrid-site/src/routes/help/[...slug]/+page.server.ts
+  s_c1093e7194f7e3::t_838f1937c908e8 10-11
+  s_c1093e7194f7e3::t_9af6ac10700b7c 1,22-23
+docsfn/docs/src/routes/+page.server.ts
+  s_c1093e7194f7e3::t_f663f997b7e36f 3
+docsfn/examples/sveltekit-hybrid-site/src/routes/papers/[...slug]/+page.svelte
+  s_c1093e7194f7e3::t_9af6ac10700b7c 36
+docsfn/core/src/security.ts
+  s_c1093e7194f7e3::t_ccce2a61daa78a 17,415-417,422
+docsfn/docs/content/docs/guides/nextjs.md
+  s_c1093e7194f7e3::t_a4d504c8a886e7 115-120,188-193,204-208
+docsfn/examples/sveltekit-hybrid-site/src/routes/legal/[...slug]/+page.server.ts
+  s_c1093e7194f7e3::t_838f1937c908e8 10-11
+  s_c1093e7194f7e3::t_9af6ac10700b7c 1,22-23
+docsfn/examples/sveltekit-hybrid-site/src/routes/blog/+page.server.ts
+  s_c1093e7194f7e3::t_838f1937c908e8 1,5-6
+docsfn/examples/sveltekit-docs-site/src/routes/blog/[...slug]/+page.svelte
+  s_c1093e7194f7e3::t_6478ec8f9d0732 24-28
+docsfn/examples/next-docs-site/app/blog/[...slug]/page.tsx
+  s_c1093e7194f7e3::t_3e1b6e88d65b18 5-10,78-81,85-86
+docsfn/examples/sveltekit-docs-site/src/routes/docs/[...slug]/+page.server.ts
+  s_c1093e7194f7e3::t_6478ec8f9d0732 3-9,133-138,141
+  s_c1093e7194f7e3::t_202697f98cd20d 2
+docsfn/docs/content/docs/core-concepts/security.md
+  s_c1093e7194f7e3::t_a4d504c8a886e7 76-82
+docsfn/docs/src/routes/blog/+page.svelte
+  s_c1093e7194f7e3::t_f663f997b7e36f 13
+docsfn/examples/next-docs-site/proof-routes.test.tsx
+  s_c1093e7194f7e3::t_d31fe902b33303 187-211
+docsfn/docs/src/routes/docs/[...slug]/+page.server.ts
+  s_c1093e7194f7e3::t_853136fa403422 2,111
+  s_c1093e7194f7e3::t_9d2cdf95445392 10,31-32
+docsfn/examples/sveltekit-hybrid-site/src/routes/docs/[...slug]/+page.svelte
+  s_c1093e7194f7e3::t_9af6ac10700b7c 19
+docsfn/docs/src/routes/docs/[...slug]/+page.svelte
+  s_c1093e7194f7e3::t_853136fa403422 31-35
+docsfn/docs/src/routes/changelog/[slug]/+page.server.ts
+  s_c1093e7194f7e3::t_853136fa403422 1,22
+  s_c1093e7194f7e3::t_9d2cdf95445392 4,7-8
+docsfn/docs/content/docs/guides/sveltekit.md
+  s_c1093e7194f7e3::t_a4d504c8a886e7 286-291,340-345,351-358,402-406,470-475,485-490,493,497
+  s_c1093e7194f7e3::t_84fcf4de4a0c46 8,229-237,240-241,268,294,306-307,452,455-457,459-461,477,480-481
+docsfn/docs/src/routes/changelog/+page.server.ts
+  s_c1093e7194f7e3::t_9d2cdf95445392 2,5-6
+docsfn/examples/sveltekit-hybrid-site/src/routes/+layout.server.ts
+  s_c1093e7194f7e3::t_838f1937c908e8 5-6,8-11
+docsfn/cli/tests/migration-route-safety.test.mjs
+  s_c1093e7194f7e3::t_cec0bbd9b6c056 147-170
+  s_c1093e7194f7e3::t_b2284aac3cc6e1 19-25,33-40
+docsfn/examples/sveltekit-hybrid-site/src/routes/+layout.svelte
+  s_c1093e7194f7e3::t_838f1937c908e8 9,22
+docsfn/examples/sveltekit-docs-site/src/routes/docs/[...slug]/+page.svelte
+  s_c1093e7194f7e3::t_6478ec8f9d0732 94-95
+docsfn/examples/sveltekit-hybrid-site/src/routes/legal/[...slug]/+page.svelte
+  s_c1093e7194f7e3::t_9af6ac10700b7c 15
+docsfn/docs/src/routes/+page.svelte
+  s_c1093e7194f7e3::t_f663f997b7e36f 11,44-45
+docsfn/examples/sveltekit-hybrid-site/src/lib/components/MarkdownPage.svelte
+  s_c1093e7194f7e3::t_9af6ac10700b7c 11,22
+docsfn/core/src/config.ts
+  s_c1093e7194f7e3::t_56762e731ab894 429-430
+docsfn/examples/sveltekit-hybrid-site/src/routes/papers/+page.server.ts
+  s_c1093e7194f7e3::t_838f1937c908e8 1,4-5
+docsfn/docs/src/routes/blog/[...slug]/+page.svelte
+  s_c1093e7194f7e3::t_853136fa403422 38-42
+docsfn/docs/src/routes/changelog/+page.svelte
+  s_c1093e7194f7e3::t_f663f997b7e36f 14
+docsfn/cli/tests/dev-config-reload.test.mjs
+  s_c1093e7194f7e3::t_54190761c157d2 46-60,71,253,265-266,270-271
+docsfn/examples/sveltekit-hybrid-site/src/routes/docs/api/[...slug]/+page.server.ts
+  s_c1093e7194f7e3::t_838f1937c908e8 9-10
+docsfn/docs/src/routes/+layout.svelte
+  s_c1093e7194f7e3::t_f663f997b7e36f 68,70,72
+docsfn/docs/src/lib/server/docs-site-source.test.ts
+  s_c1093e7194f7e3::t_9d2cdf95445392 80,104,111,122,130,136,147,154,166,199,203-204,208-209
+  s_c1093e7194f7e3::t_99b39e9555ffc0 178
+  s_c1093e7194f7e3::t_2e48813c8d6cca 7,9,171-177,179-187
+  s_c1093e7194f7e3::t_ce1b46ba4207eb 188-189
+docsfn/core/src/security.test.ts
+  s_c1093e7194f7e3::t_66f939a077fb9e 289-300,306-307
+  s_c1093e7194f7e3::t_1207a8fb9fd481 301-305
+docsfn/examples/sveltekit-hybrid-site/src/routes/papers/[...slug]/+page.server.ts
+  s_c1093e7194f7e3::t_9af6ac10700b7c 2,60-61
+  s_c1093e7194f7e3::t_838f1937c908e8 21-22
+docsfn/docs/src/routes/blog/[...slug]/+page.server.ts
+  s_c1093e7194f7e3::t_9d2cdf95445392 4,7-8
+  s_c1093e7194f7e3::t_853136fa403422 1,20
+docsfn/docs/src/routes/blog/+page.server.ts
+  s_c1093e7194f7e3::t_9d2cdf95445392 2,5-6
+docsfn/docs/src/routes/changelog/[slug]/+page.svelte
+  s_c1093e7194f7e3::t_853136fa403422 26-30
+docsfn/examples/sveltekit-hybrid-site/src/routes/blog/[...slug]/+page.svelte
+  s_c1093e7194f7e3::t_9af6ac10700b7c 18-19
+docsfn/cli/src/migrate-docusaurus.ts
+  s_c1093e7194f7e3::t_b2284aac3cc6e1 98,1125-1130
+  s_c1093e7194f7e3::t_56762e731ab894 6,604-613
+  s_c1093e7194f7e3::t_3050bb784e421f 664-668
+docsfn/examples/next-docs-site/app/docs/[[...slug]]/page.tsx
+  s_c1093e7194f7e3::t_3e1b6e88d65b18 1-6,229-234,237-238
+docsfn/examples/sveltekit-hybrid-site/src/routes/docs/[...slug]/+page.server.ts
+  s_c1093e7194f7e3::t_9af6ac10700b7c 1,58-59
+  s_c1093e7194f7e3::t_838f1937c908e8 21-22
+docsfn/docs/src/routes/+layout.server.ts
+  s_c1093e7194f7e3::t_a5511d9ed0ba1b 7,11-16
+  s_c1093e7194f7e3::t_9d2cdf95445392 2,5-6
+docsfn/sveltekit/src/route-helpers.test.ts
+  s_c1093e7194f7e3::t_fcad3d50e4ec72 19-20,22-23,372-448
+  s_c1093e7194f7e3::t_9a58f0f5d4e56d 449
+docsfn/docs/content/docs/api/sveltekit/index.md
+  s_c1093e7194f7e3::t_38b258321a83df 91,93-95,99
+  s_c1093e7194f7e3::t_b2c1b7856d2a81 100
+docsfn/examples/sveltekit-hybrid-site/src/routes/blog/[...slug]/+page.server.ts
+  s_c1093e7194f7e3::t_838f1937c908e8 25-26
+  s_c1093e7194f7e3::t_9af6ac10700b7c 2-7,34-39,42-43
+docsfn/sveltekit/src/route-helpers.ts
+  s_c1093e7194f7e3::t_13f5dd452ce94b 18,65-97,352-361,992,1016,1031,1056,1072,1075,1090,1094,1110,1113
+docsfn/examples/sveltekit-hybrid-site/src/routes/help/[...slug]/+page.svelte
+  s_c1093e7194f7e3::t_9af6ac10700b7c 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "375a1911a937d622836619aeb540bd9fd0db653e",
+  "prompts": {},
+  "sessions": {
+    "s_c1093e7194f7e3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "203316bd-9c88-41f4-b037-58d76f8b6cd9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
