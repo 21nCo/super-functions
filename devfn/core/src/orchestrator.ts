@@ -54,6 +54,13 @@ function provisionalComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, ow
     [node.name, [`${composeProjectName(config.services![node.name].projectName ?? "devfn", ownerId)}_default`]]));
 }
 
+function needsNetworkPreflight(config: DevFnConfig): boolean {
+  // A selected sibling URL reference must fail before creating lifecycle state.
+  // Without one, pure template validation is enough here; the locked pass
+  // below still reads effective Compose networks before startup or publication.
+  return JSON.stringify(config).includes("{{env.DEVFN_URL_");
+}
+
 async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, root: string, ownerId: string, ports: Record<string, number>, hostnameSuffix?: string): Promise<ReturnType<typeof resolveEndpointTemplates>> {
   // Validate literals before calling Docker. Provisional defaults are used only
   // for that read-only validation; the result is never published or started.
@@ -79,8 +86,9 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
       const spec = { ...processSpec, env: node.environment, command: node.command, script: node.script };
       startup = {
         kind: "process", command: resolveAdapterCommand(spec), cwd: processSpec.cwd ?? ".",
+        exposure: processSpec.exposure ?? "loopback", ports: processSpec.ports ?? [],
         environment: Object.entries(node.environment).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0),
-        envAllowlist: [...(processSpec.envAllowlist ?? [])].sort(), secretEnv: [...(processSpec.secretEnv ?? [])].sort(),
+        envAllowlist: [...(processSpec.envAllowlist ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), secretEnv: [...(processSpec.secretEnv ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0),
       };
     } else if (serviceSpec) {
       const spec = { ...serviceSpec, env: node.environment };
@@ -89,7 +97,7 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
         kind: "service", file: serviceSpec.file ?? "compose.yaml", service: serviceSpec.service,
         projectName: serviceSpec.projectName ?? "devfn", ports: serviceSpec.ports ?? {},
         environment: Object.entries(node.environment).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0),
-        envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort(), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort(),
+        envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0),
         source: await fingerprintComposeSource(spec, root, resolved.ownerId, environment),
       };
     } else continue;
@@ -225,7 +233,13 @@ export class DevFnOrchestrator {
     // Effective network evidence must reject unreachable sibling references
     // before state creation. Re-read it under the lifecycle lock after ports
     // are reserved because the Compose source can change between these steps.
-    await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, Object.fromEntries(plan.portNames.map((name) => [name, 1])), loadedPolicy?.policy.hostnameSuffix);
+    const preflightPorts = Object.fromEntries(plan.portNames.map((name) => [name, 1]));
+    if (needsNetworkPreflight(options.config)) {
+      await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, preflightPorts, loadedPolicy?.policy.hostnameSuffix);
+    } else {
+      resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports: preflightPorts,
+        hostnameSuffix: loadedPolicy?.policy.hostnameSuffix, composeNetworks: provisionalComposeNetworks(options.config, plan, identity.instanceId) });
+    }
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
     const stateDir = await realpath(requestedStateDir);
     return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.upLocked(options, stateDir, identity, loadedPolicy), { timeoutMs: 30_000 });
@@ -535,9 +549,9 @@ export class DevFnOrchestrator {
         }
         continue;
       }
-      if (allocation?.container && !scan.inspection.docker && relevantListeners.every((listener) => isDockerProxyListener(listener.process))) {
+      if (allocation?.container && !scan.inspection.docker) {
         if (!unavailableWarnings.has("docker")) {
-          diagnostics.push({ code: "DEVFN_LISTENER_INSPECTION_UNAVAILABLE", severity: "warning", message: "Docker listener ownership could not be inspected; recorded active container owners were retained." });
+          diagnostics.push({ code: "DEVFN_LISTENER_INSPECTION_UNAVAILABLE", severity: "error", message: "Docker listener ownership could not be verified for an active container." });
           unavailableWarnings.add("docker");
         }
         continue;

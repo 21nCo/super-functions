@@ -50,6 +50,40 @@ if (process.env.SECRET_TOKEN) console.log(process.env.SECRET_TOKEN);
 `;
 
 describe("real local startup fixtures", () => {
+  it("avoids prelock Docker config calls when the selected graph has no sibling URL reference", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-preflight-"));
+    const originalPath = process.env.PATH;
+    const originalLog = process.env.TEST_DOCKER_LOG;
+    try {
+      const bin = path.join(root, "bin");
+      const log = path.join(root, "docker-calls.log");
+      await mkdir(bin);
+      await writeFile(path.join(bin, "docker"), `#!/bin/sh
+printf '%s\\n' "$*" >> "$TEST_DOCKER_LOG"
+case " $* " in
+  *" config "*) printf '%s\\n' '{"services":{"api":{"image":"busybox","networks":{"default":null}}},"networks":{"default":{"name":"fixture_default"}}}' ;;
+  *" version "*) printf '%s\\n' 'Docker Compose version v2.24.4' ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 });
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n");
+      process.env.PATH = `${bin}:${originalPath ?? ""}`;
+      process.env.TEST_DOCKER_LOG = log;
+      const config = validateDevFnConfig({ version: 1, project: { id: "compose-preflight-fixture" },
+        services: { api: { adapter: "compose", service: "api", envAllowlist: ["TEST_DOCKER_LOG"] } },
+        profiles: { default: { services: ["api"] } } });
+      await expect(new DevFnOrchestrator().up({ config, root, stateDir: path.join(root, "state") })).rejects.toThrow();
+      const calls = (await readFile(log, "utf8")).split("\n").filter(Boolean);
+      expect(calls.filter((call) => call.includes(" config --format json"))).toHaveLength(2);
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+      if (originalLog === undefined) delete process.env.TEST_DOCKER_LOG;
+      else process.env.TEST_DOCKER_LOG = originalLog;
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("rejects disjoint effective Compose networks before state creation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-disjoint-networks-"));
     const stateDir = path.join(root, "state");

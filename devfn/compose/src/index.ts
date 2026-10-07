@@ -1,16 +1,17 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { assertEnvironmentKeyCasing, isCredentialKey, resolveContainedPath, type ComposeServiceSpec } from "@devfn/config";
 import { waitForReadiness } from "@devfn/processes";
-import { declaredComposeInputs, type DeclaredEnvFile } from "./source-files.js";
+import { assertComposeSourceGraphBounded } from "./source-files.js";
 
 const execFileAsync = promisify(execFile);
 const MINIMUM_COMPOSE_VERSION = [2, 24, 4] as const;
+const INHERITED_COMPOSE_ENV_KEYS = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "XDG_RUNTIME_DIR", "SystemRoot", "ComSpec", "PATHEXT"] as const;
 
 export interface ManagedComposeService {
   name: string;
@@ -79,11 +80,16 @@ export function composeProjectName(prefix: string, instanceId: string): string {
 }
 
 export function createComposeEnvironment(spec: ComposeServiceSpec, generated: Record<string, string> = {}, source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const base = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "XDG_RUNTIME_DIR", "SystemRoot", "ComSpec", "PATHEXT"];
+  const base = INHERITED_COMPOSE_ENV_KEYS;
   assertEnvironmentKeyCasing(base, spec.envAllowlist ?? [], Object.keys(spec.env ?? {}), Object.keys(generated));
   const environment: NodeJS.ProcessEnv = {};
   for (const key of [...base, ...(spec.envAllowlist ?? [])]) if (source[key] !== undefined) environment[key] = source[key];
   return { ...environment, ...(spec.env ?? {}), ...generated };
+}
+
+function implicitInterpolationKeys(spec: ComposeServiceSpec): Set<string> {
+  const explicit = new Set([...(spec.envAllowlist ?? []), ...Object.keys(spec.env ?? {})]);
+  return new Set(INHERITED_COMPOSE_ENV_KEYS.filter((key) => !explicit.has(key)));
 }
 
 /** Build host-side readiness environment without publishing inherited secrets in endpoint plans. */
@@ -97,7 +103,7 @@ function canonicalComposeValue(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
     .map(([key, entry]) => {
-      if (key === "environment") return [key, Object.keys(entry && typeof entry === "object" ? entry : {}).sort()];
+      if (key === "environment") return [key, Object.keys(entry && typeof entry === "object" ? entry : {}).sort((a, b) => a < b ? -1 : a > b ? 1 : 0)];
       if (key !== "args" && key !== "labels") return [key, canonicalComposeValue(entry)];
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [key, canonicalComposeValue(entry)];
       return [key, Object.fromEntries(Object.entries(entry).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
@@ -105,9 +111,42 @@ function canonicalComposeValue(value: unknown): unknown {
     }));
 }
 
-function canonicalDeclaredEnvironment(values: Record<string, unknown>): Record<string, unknown> {
+function canonicalDeclaredEnvironment(values: Record<string, unknown>, secretNames: readonly string[] = []): Record<string, unknown> {
   return Object.fromEntries(Object.entries(values).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
-    .map(([key, value]) => [key, isCredentialKey(key) ? "<secret-channel>" : value]));
+    .map(([key, value]) => [key, isCredentialKey(key) || secretNames.includes(key) ? "<secret-channel>" : value]));
+}
+
+function redactCredentialValues(value: unknown, secrets: readonly string[]): unknown {
+  if (typeof value === "string") {
+    return secrets.reduce((text, secret) => text.split(secret).join("<secret-channel>"), value);
+  }
+  if (Array.isArray(value)) return value.map((entry) => redactCredentialValues(entry, secrets));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value)
+    .map(([key, entry]) => [redactCredentialValues(key, secrets) as string, redactCredentialValues(entry, secrets)]));
+  return value;
+}
+
+function selectedComposeResources(
+  configuration: Record<string, unknown>,
+  service: Record<string, unknown>,
+): Record<string, unknown> {
+  const selected: Record<string, unknown> = {};
+  for (const kind of ["volumes", "networks", "configs"] as const) {
+    const declared = configuration[kind];
+    if (!declared || typeof declared !== "object" || Array.isArray(declared)) continue;
+    const references = service[kind];
+    const names = kind === "networks"
+      ? Array.isArray(references) ? references : Object.keys(references && typeof references === "object" ? references : {})
+      : Array.isArray(references) ? references.map((entry: unknown) => {
+        if (typeof entry === "string") return kind === "volumes" ? entry.split(":", 1)[0] : entry;
+        if (entry && typeof entry === "object") return (entry as Record<string, unknown>).source;
+        return undefined;
+      }) : [];
+    const resources = Object.fromEntries(names.filter((name): name is string => typeof name === "string" && Object.hasOwn(declared, name))
+      .map((name) => [name, (declared as Record<string, unknown>)[name]]));
+    if (Object.keys(resources).length) selected[kind] = canonicalComposeValue(resources);
+  }
+  return selected;
 }
 
 async function interpolateComposePaths(paths: string[], root: string, environment: NodeJS.ProcessEnv): Promise<string[]> {
@@ -132,71 +171,43 @@ async function interpolateComposePaths(paths: string[], root: string, environmen
 /** Fingerprint effective Compose inputs without hashing inherited host or secret values. */
 export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: string, instanceId: string, environment: NodeJS.ProcessEnv): Promise<string> {
   const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
+  const referencedInterpolation = new Set<string>();
+  try {
+    await assertComposeSourceGraphBounded(sourceFile, spec.service, (names, directory) => interpolateComposePaths(names, directory, environment), implicitInterpolationKeys(spec), referencedInterpolation);
+  } catch {
+    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to inventory Compose sources for ${spec.service}.`);
+  }
   let effective: string;
   try {
     const args = ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId),
-      "-f", sourceFile, "config", "--no-interpolate", "--format", "json"];
-    try {
-      effective = (await execFileAsync("docker", [...args, "--no-env-resolution"],
-        { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
-    } catch (error) {
-      if (!/unknown flag: --no-env-resolution/.test(String((error as { stderr?: unknown }).stderr ?? ""))) throw error;
-      // Compose 2.24.4 does not support --no-env-resolution. Its config output
-      // merges env_file values; the source inventory below supplies provenance.
-      effective = (await execFileAsync("docker", args,
-        { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
-    }
+      "-f", sourceFile, "config", "--format", "json"];
+    effective = (await execFileAsync("docker", args,
+      { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
   } catch {
     throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve effective Compose configuration for ${spec.service}.`);
   }
-  const configuration = JSON.parse(effective) as { services?: Record<string, { environment?: Record<string, unknown>; env_file?: Array<string | { path: string; required?: boolean }> }> };
+  const configuration = JSON.parse(effective) as { services?: Record<string, Record<string, unknown>> };
   const service = configuration.services?.[spec.service];
   if (!service) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose service ${spec.service} is absent from the effective configuration.`);
-  let envFiles: DeclaredEnvFile[];
-  let declaredEnvironment: Record<string, unknown>;
-  try {
-    const declared = await declaredComposeInputs(sourceFile, spec.service, (names, directory) => interpolateComposePaths(names, directory, environment));
-    declaredEnvironment = declared.environment;
-    envFiles = service.env_file
-      ? service.env_file.map((item) => ({ name: typeof item === "string" ? item : item.path, required: typeof item === "string" || item.required !== false, directory: path.dirname(sourceFile) }))
-      : declared.envFiles;
-  } catch {
-    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to inventory Compose environment files for ${spec.service}.`);
-  }
-  const fileMetadata = await Promise.all(envFiles.map(async (item) => {
-    let file: string;
-    try {
-      const [resolved] = await interpolateComposePaths([item.name], item.directory, environment);
-      file = path.resolve(item.directory, resolved);
-    } catch {
-      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve a Compose environment file for ${spec.service}.`);
-    }
-    try {
-      const info = await stat(file, { bigint: true });
-      return [String(info.size), String(info.mtimeNs), String(info.ctimeNs)];
-    } catch (error) {
-      if (!item.required && (error as NodeJS.ErrnoException).code === "ENOENT") return ["optional-absent"];
-      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Required Compose environment file for ${spec.service} is unavailable.`);
-    }
-  }));
-  // Compose has already merged transitive include and extends sources into the
-  // effective service. Only hash literal values that survived Compose's merge.
-  // On 2.24.4, env_file values are present in service.environment; provenance
-  // from the source graph keeps those values out of the digest.
   const { env_file: _envFiles, ...effectiveService } = service;
-  const effectiveLiterals = Object.fromEntries(Object.keys(service.environment ?? {})
-    .filter((key) => Object.hasOwn(declaredEnvironment, key))
-    .map((key) => [key, declaredEnvironment[key]]));
+  const effectiveEnvironment = service.environment && typeof service.environment === "object" && !Array.isArray(service.environment)
+    ? service.environment as Record<string, unknown> : {};
+  const credentialValues = [...new Set(Object.entries({ ...environment, ...effectiveEnvironment })
+    .filter(([key, value]) => (isCredentialKey(key) || spec.secretEnv?.includes(key)) && (referencedInterpolation.has(key) || Object.hasOwn(effectiveEnvironment, key)) && typeof value === "string" && value.length > 0)
+    .map(([, value]) => value as string))].sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
+  const safeService = redactCredentialValues(canonicalComposeValue(effectiveService), credentialValues);
+  const safeResources = redactCredentialValues(selectedComposeResources(configuration, service), credentialValues);
   return createHash("sha256")
-    .update(JSON.stringify(canonicalComposeValue(effectiveService)))
-    .update("\0").update(JSON.stringify(canonicalDeclaredEnvironment(effectiveLiterals)))
-    .update("\0").update(JSON.stringify(fileMetadata)).digest("hex");
+    .update(JSON.stringify(safeService))
+    .update("\0").update(JSON.stringify(canonicalDeclaredEnvironment(effectiveEnvironment, spec.secretEnv)))
+    .update("\0").update(JSON.stringify(safeResources)).digest("hex");
 }
 
 /** Read Compose's effective service networks before publishing sibling DNS URLs. */
 export async function effectiveComposeServiceNetworks(spec: ComposeServiceSpec, root: string, instanceId: string, environment: NodeJS.ProcessEnv): Promise<string[]> {
   const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
   try {
+    await assertComposeSourceGraphBounded(sourceFile, spec.service, (names, directory) => interpolateComposePaths(names, directory, environment), implicitInterpolationKeys(spec));
     const output = (await execFileAsync("docker", ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId),
       "-f", sourceFile, "config", "--format", "json"], { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
     const configuration = JSON.parse(output) as { services?: Record<string, { networks?: Record<string, unknown> | string[]; network_mode?: string }>; networks?: Record<string, { name?: string }> };
@@ -249,14 +260,14 @@ function effectivePortBindings(ports: EffectivePort[]): string[] {
     const published = String(port.published ?? "");
     if (!Number.isInteger(port.target) || port.target < 1 || (published !== "" && !/^\d+(?:-\d+)?$/.test(published))) throw new Error("Compose returned an unsupported published port.");
     return `${port.target}/${port.protocol ?? "tcp"}|${port.host_ip || "0.0.0.0"}|${published}`;
-  }).sort();
+  }).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 }
 
 function containerPortBindings(value: Record<string, Array<{ HostIp: string; HostPort: string }> | null> | null): string[] {
   return Object.entries(value ?? {}).flatMap(([target, bindings]) => {
     if (!bindings) throw new Error("Docker returned an incomplete port binding.");
     return bindings.map((binding) => `${target}|${binding.HostIp || "0.0.0.0"}|${binding.HostPort}`);
-  }).sort();
+  }).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 }
 
 function bindingsMatch(expected: string[], observed: string[]): boolean {

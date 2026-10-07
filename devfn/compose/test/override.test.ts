@@ -11,6 +11,18 @@ const execFileAsync = promisify(execFile);
 const MOCK_COMPOSE_HASH = "a".repeat(64);
 
 describe("ComposeController", () => {
+  it("bounds aggregate Compose source bytes before Docker config", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-source-limit-"));
+    const spec = { adapter: "compose" as const, service: "api" };
+    try {
+      const padding = `#${"x".repeat(6 * 1024 * 1024)}\n`;
+      await mkdir(path.join(root, "nested"));
+      await writeFile(path.join(root, "compose.yaml"), `${padding}include: [nested/child.yaml]\nservices:\n  api:\n    image: busybox\n`);
+      await writeFile(path.join(root, "nested", "child.yaml"), `${padding}services:\n  child:\n    image: busybox\n`);
+      await expect(fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec))).rejects.toThrow(/inventory Compose sources/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("reads effective default, explicit and isolated service networks", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-networks-"));
     const file = path.join(root, "compose.yaml");
@@ -42,12 +54,123 @@ describe("ComposeController", () => {
       await writeFile(envFile, "MODE=second\n");
       const changedEnvironment = await fingerprint();
       expect(changedEnvironment).not.toBe(first);
+      await writeFile(envFile, "MODE=first\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(envFile, "MODE=second\n");
       await writeFile(file, 'services:\n  api:\n    image: busybox\n    command: ["sleep", "20"]\n    env_file: service.env\n');
       expect(await fingerprint()).not.toBe(changedEnvironment);
       await writeFile(file, 'services:\n  api:\n    image: busybox\n    command: ["sleep", "20"]\n    environment:\n      MODE: current\n    env_file: service.env\n');
       const currentLiteral = await fingerprint();
       await writeFile(file, 'services:\n  api:\n    image: busybox\n    command: ["sleep", "20"]\n    environment:\n      MODE: changed\n    env_file: service.env\n');
       expect(await fingerprint()).not.toBe(currentLiteral);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("tracks effective interpolation and selected resources without secret values", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-resources-"));
+    const source = path.join(root, "compose.yaml");
+    const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["MODE", "CUSTOM"], secretEnv: ["CUSTOM"] };
+    const fingerprint = (mode: string, token: string) => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec, {}, { ...process.env, MODE: mode, CUSTOM: token }));
+    const document = (volume: string, unused = "other") => `services:\n  api:\n    image: busybox\n    environment:\n      MODE: \${MODE}\n      CUSTOM: \${CUSTOM}\n    volumes: [data:/var/data]\nvolumes:\n  data:\n    name: ${volume}\n  unused:\n    name: ${unused}\n`;
+    try {
+      await writeFile(source, document("first"));
+      const first = await fingerprint("one", "synthetic-one");
+      expect(await fingerprint("two", "synthetic-one")).not.toBe(first);
+      expect(await fingerprint("one", "synthetic-two")).toBe(first);
+      await writeFile(source, document("second"));
+      expect(await fingerprint("one", "synthetic-one")).not.toBe(first);
+      await writeFile(source, document("first", "changed"));
+      expect(await fingerprint("one", "synthetic-one")).toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("tracks selected network and config definitions after YAML merges", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-selected-"));
+    const source = path.join(root, "compose.yaml");
+    const configFile = path.join(root, "settings.txt");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    const document = (network: string, config: string, unused = "other") => `x-env: &common\n  MODE: fixture\nservices:\n  api:\n    image: busybox\n    environment:\n      <<: *common\n    networks: [internal]\n    configs: [settings]\nnetworks:\n  internal:\n    name: ${network}\n  unused:\n    name: ${unused}\nconfigs:\n  settings:\n    file: ${config}\n`;
+    try {
+      await writeFile(configFile, "application-neutral\n");
+      await writeFile(source, document("first", "settings.txt"));
+      const first = await fingerprint();
+      await writeFile(source, document("second", "settings.txt"));
+      expect(await fingerprint()).not.toBe(first);
+      await writeFile(path.join(root, "other.txt"), "application-neutral\n");
+      await writeFile(source, document("first", "other.txt"));
+      expect(await fingerprint()).not.toBe(first);
+      await writeFile(source, document("first", "settings.txt", "changed"));
+      expect(await fingerprint()).toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("accepts include path lists and same-file extends at the effective service", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-path-list-"));
+    const nested = path.join(root, "nested");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await mkdir(nested);
+      await writeFile(path.join(root, "compose.yaml"), "include:\n  - path: [nested/first.yaml, nested/second.yaml]\n");
+      await writeFile(path.join(nested, "first.yaml"), "services:\n  helper:\n    image: busybox\n");
+      await writeFile(path.join(nested, "second.yaml"), "services:\n  base:\n    image: busybox\n    command: [sleep, '10']\n  api:\n    extends: base\n");
+      const first = await fingerprint();
+      await writeFile(path.join(nested, "second.yaml"), "services:\n  base:\n    image: busybox\n    command: [sleep, '20']\n  api:\n    extends: base\n");
+      expect(await fingerprint()).not.toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("tracks default and include-scoped interpolation files", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-scoped-env-"));
+    const nested = path.join(root, "nested");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await mkdir(nested);
+      await writeFile(path.join(root, ".env"), "ROOT_MODE=first\n");
+      await writeFile(path.join(nested, "project.env"), "CHILD_MODE=one\n");
+      await writeFile(path.join(root, "compose.yaml"), "include:\n  - path: nested/compose.yaml\n    env_file: nested/project.env\nservices:\n  api:\n    image: busybox\n    environment:\n      ROOT_MODE: ${ROOT_MODE}\n");
+      await writeFile(path.join(nested, "compose.yaml"), "services:\n  child:\n    image: busybox\n    environment:\n      CHILD_MODE: ${CHILD_MODE}\n");
+      const first = await fingerprint();
+      await writeFile(path.join(root, ".env"), "ROOT_MODE=second\n");
+      expect(await fingerprint()).not.toBe(first);
+      await writeFile(path.join(root, ".env"), "ROOT_MODE=first\n");
+      expect(await fingerprint()).toBe(first);
+      const childSpec = { adapter: "compose" as const, service: "child" };
+      const childFingerprint = () => fingerprintComposeSource(childSpec, root, "owner", createComposeEnvironment(childSpec));
+      const childFirst = await childFingerprint();
+      await writeFile(path.join(nested, "project.env"), "CHILD_MODE=two\n");
+      expect(await fingerprint()).toBe(first);
+      expect(await childFingerprint()).not.toBe(childFirst);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("requires explicit provenance for inherited Compose interpolation", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-inherited-"));
+    const source = path.join(root, "compose.yaml");
+    const implicit = { adapter: "compose" as const, service: "api" };
+    const explicit = { ...implicit, envAllowlist: ["HOME"] };
+    const dockerConfig = process.env.DOCKER_CONFIG ?? path.join(process.env.HOME ?? "", ".docker");
+    try {
+      await writeFile(source, "services:\n  api:\n    image: busybox\n    environment:\n      WORK_DIR: ${HOME}\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inventory Compose sources/);
+      const first = await fingerprintComposeSource(explicit, root, "owner", createComposeEnvironment(explicit, {}, { ...process.env, DOCKER_CONFIG: dockerConfig, HOME: "/tmp/first" }));
+      const second = await fingerprintComposeSource(explicit, root, "owner", createComposeEnvironment(explicit, {}, { ...process.env, DOCKER_CONFIG: dockerConfig, HOME: "/tmp/second" }));
+      expect(second).not.toBe(first);
+      await writeFile(source, "services:\n  api:\n    image: busybox\n    command: [echo, '$HOME']\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).resolves.toMatch(/^[a-f0-9]{64}$/);
+      await writeFile(source, "services:\n  api:\n    image: busybox\n  unrelated:\n    image: busybox\n    environment:\n      WORK_DIR: ${HOME}\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).resolves.toMatch(/^[a-f0-9]{64}$/);
+      await writeFile(source, "services:\n  api:\n    image: busybox\n    networks: [selected]\nnetworks:\n  selected:\n    name: ${USER}\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inventory Compose sources/);
+      await writeFile(source, "include: ${HOME}/included.yaml\nservices:\n  api:\n    image: busybox\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inventory Compose sources/);
+      await writeFile(path.join(root, "base.yaml"), "services:\n  base:\n    image: busybox\n    environment:\n      WORK_DIR: ${HOME}\n");
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !override\n      WORK_DIR: fixed\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).resolves.toMatch(/^[a-f0-9]{64}$/);
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment:\n      WORK_DIR: fixed\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).resolves.toMatch(/^[a-f0-9]{64}$/);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
@@ -138,6 +261,8 @@ describe("ComposeController", () => {
       await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !reset {}\n    env_file: !reset []\n");
       const reset = await fingerprint();
       await writeFile(base, baseText("third"));
+      expect(await fingerprint()).toBe(reset);
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !reset null\n    env_file: !reset []\n");
       expect(await fingerprint()).toBe(reset);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
