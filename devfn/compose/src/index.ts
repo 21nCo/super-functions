@@ -163,6 +163,22 @@ function canonicalDeclaredEnvironment(values: Record<string, unknown>, secretNam
       ? "<secret-channel>" : canonicalComposeValue(value, secretNames)]));
 }
 
+function booleanComposeInterpolations(service: Record<string, unknown>): Set<string> {
+  const names = new Set<string>();
+  const fields = ["attach", "init", "privileged", "read_only", "stdin_open", "tty"];
+  const selected = fields.map((name) => service[name]);
+  for (const [parent, keys] of [["healthcheck", ["disable"]], ["build", ["no_cache", "pull"]]] as const) {
+    const value = service[parent];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      for (const key of keys) selected.push((value as Record<string, unknown>)[key]);
+    }
+  }
+  for (const value of selected) if (typeof value === "string") {
+    for (const token of interpolationTokens(value)) names.add(token.name);
+  }
+  return names;
+}
+
 function selectedComposeResources(
   configuration: Record<string, unknown>,
   service: Record<string, unknown>,
@@ -239,7 +255,7 @@ function envFileAssignments(content: string): Record<string, string> {
     }
     const start = cursor;
     if (!/[A-Za-z_]/.test(line[cursor] ?? "")) throw new Error("unsupported env_file assignment");
-    while (cursor < line.length && /[A-Za-z0-9_]/.test(line[cursor])) cursor += 1;
+    while (cursor < line.length && /[A-Za-z0-9_.-]/.test(line[cursor])) cursor += 1;
     const name = line.slice(start, cursor);
     while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
     if (cursor === line.length) { values[name] = `$${name}`; continue; }
@@ -326,6 +342,36 @@ async function interpolateComposePaths(paths: string[], root: string, environmen
   }
 }
 
+/** Ask Compose about selected-scope presence without rendering credential bytes. */
+async function composeInterpolationPresence(
+  names: ReadonlySet<string>, inventory: ComposeSourceInventory, environment: NodeJS.ProcessEnv,
+): Promise<Map<string, boolean | null>> {
+  const directory = await mkdtemp(path.join(tmpdir(), "devfn-compose-presence-"));
+  const helper = path.join(directory, "compose.yaml");
+  try {
+    const probes = Object.fromEntries([...names].map((name) => [name, {
+      present: `\${${name}+x}`, nonempty: `\${${name}:+x}`,
+    }]));
+    await writeFile(helper, JSON.stringify({ "x-devfn-presence": probes, services: { placeholder: { image: "busybox" } } }), { mode: 0o600 });
+    const output = (await execFileAsync("docker", ["compose", ...inventory.interpolationEnvFiles.flatMap((file) => ["--env-file", file]),
+      "--project-directory", inventory.serviceDirectory, "-f", helper, "config", "--format", "json"],
+    { cwd: inventory.serviceDirectory, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+    const resolved = (JSON.parse(output) as { "x-devfn-presence"?: Record<string, { present?: unknown; nonempty?: unknown }> })["x-devfn-presence"];
+    if (!resolved || typeof resolved !== "object") throw new Error("invalid Compose presence probe");
+    return new Map([...names].map((name) => {
+      const value = resolved[name];
+      if (!value || !["", "x"].includes(String(value.present)) || !["", "x"].includes(String(value.nonempty))) {
+        throw new Error("invalid Compose presence result");
+      }
+      return [name, value.present === "" ? null : value.nonempty === "x"];
+    }));
+  } catch {
+    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Unable to resolve Compose interpolation provenance.");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 /** Fingerprint effective Compose inputs without hashing inherited host or secret values. */
 export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: string, instanceId: string, environment: NodeJS.ProcessEnv): Promise<string> {
   const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
@@ -364,7 +410,8 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   assertSelectedInterpolation(rawSelectedResources, implicitInterpolationKeys(spec), referencedInterpolation);
   const effectiveEnvironment = service.environment && typeof service.environment === "object" && !Array.isArray(service.environment)
     ? service.environment as Record<string, unknown> : {};
-  const secretNames = new Set([...(spec.secretEnv ?? []), ...Object.keys(environment).filter(isCredentialKey), ...Object.keys(effectiveEnvironment).filter(isCredentialKey)]);
+  const secretNames = new Set([...(spec.secretEnv ?? []), ...Object.keys(environment).filter(isCredentialKey),
+    ...Object.keys(effectiveEnvironment).filter(isCredentialKey), ...[...referencedInterpolation].filter(isCredentialKey)]);
   assertSelectedInterpolation(inventory.service?.env_file, new Set([...implicitInterpolationKeys(spec), ...secretNames]), referencedInterpolation);
   const rawDeclaredEnvironment = inventory.service?.environment;
   const rawEnvironment = {
@@ -377,7 +424,17 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   let safeConfiguration = configuration;
   if (secretNames.size > 0) {
     try {
-      const maskedEnvironment = { ...environment, ...Object.fromEntries([...secretNames].map((name) => [name, "devfn-secret-channel"])) };
+      const presence = await composeInterpolationPresence(secretNames, inventory, environment);
+      // A missing variable must stay missing so Compose can choose the same
+      // default branch. Typed fields need stable valid sentinels: numeric
+      // ports accept 1, while Boolean service fields require true.
+      const booleanNames = booleanComposeInterpolations(rawService);
+      const masked = [...secretNames].filter((name) => presence.get(name) !== null).map((name) => {
+        let value = "";
+        if (presence.get(name)) value = booleanNames.has(name) ? "true" : "1";
+        return [name, value];
+      });
+      const maskedEnvironment = { ...environment, ...Object.fromEntries(masked) };
       const output = (await execFileAsync("docker", args, { cwd: root, env: maskedEnvironment,
         timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
       safeConfiguration = JSON.parse(output) as typeof configuration;
@@ -408,12 +465,11 @@ async function uninterpolatedComposeConfiguration(args: string[], root: string, 
     const output = (await execFileAsync("docker", [...args.slice(0, -3), "config", "--no-interpolate", "--format", "json"],
       { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
     return JSON.parse(output) as { services?: Record<string, Record<string, unknown>> };
-  } catch (error) {
-    // Compose 2.24.4 does not resolve interpolated env_file paths under
-    // --no-interpolate. The bounded source inventory retains raw field
-    // expressions while the successful normal config supplies actual values.
-    const detail = (error as { stderr?: unknown }).stderr;
-    if (!inventory.service || typeof detail !== "string" || !/(?:env file|invalid interpolation format|invalid volume specification|invalid mount|undefined volume)/i.test(detail) || !detail.includes("${")) {
+  } catch {
+    // Supported Compose versions may reject valid typed and env_file fields
+    // under --no-interpolate. The normal config already succeeded; use the
+    // bounded inventory for raw provenance when this diagnostic view fails.
+    if (!inventory.service) {
       throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve Compose source provenance for ${service}.`);
     }
     return { ...inventory.resources, services: { [service]: inventory.service } };

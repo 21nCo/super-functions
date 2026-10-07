@@ -39,6 +39,17 @@ function configureTemplateConsumer(source: TemplateConsumer, value: string, opti
   return config;
 }
 
+async function expectCredentialArgvRejected(vectors: string[][], root: string, stateDir: string, marker: string): Promise<void> {
+  for (const vector of vectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
+    const config = configureTemplateConsumer(source, vector.join(" "), { argv: ["curl", ...vector] });
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+    const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+    expect(failure).toMatch(/secret channel/);
+    expect(failure).not.toContain(marker);
+    await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+  }
+}
+
 describe("endpoint and template contract", () => {
   it("bounds acyclic expansion and preserves generated alias self-references", () => {
     const config = fixture();
@@ -488,14 +499,7 @@ describe("endpoint and template contract", () => {
       [`-sHAuthorization2: Bearer ${marker}`],
     ];
     try {
-      for (const vector of vectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
-        const config = configureTemplateConsumer(source, vector.join(" "), { argv: ["curl", ...vector] });
-        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
-        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
-        expect(failure).toMatch(/secret channel/);
-        expect(failure).not.toContain(marker);
-        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
-      }
+      await expectCredentialArgvRejected(vectors, root, stateDir, marker);
       const ordinary = fixture();
       ordinary.processes!.worker.command = ["curl", "-sHX-Request-Id: fixture", "-sdpage=2", "-b", "page=2"];
       ordinary.processes!.worker.envAllowlist = ["API_TOKEN2"];
@@ -517,14 +521,7 @@ describe("endpoint and template contract", () => {
         ["--data-raw", `{"password":"${marker}"`],
         ["--data-raw", `{"payload":{"pass\\u0077ord":"${marker}"`],
       ];
-      for (const vector of vectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
-        const config = configureTemplateConsumer(source, vector.join(" "), { argv: ["curl", ...vector] });
-        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
-        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
-        expect(failure).toMatch(/secret channel/);
-        expect(failure).not.toContain(marker);
-        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
-      }
+      await expectCredentialArgvRejected(vectors, root, stateDir, marker);
       const ordinary = fixture();
       ordinary.processes!.worker.command = ["curl", "-vHX-Request-Id: fixture", "--data-raw", '{"page":2', "literal $HOME `id` ; & |"];
       ordinary.processes!.worker.envAllowlist = ["GITHUBTOKEN"];

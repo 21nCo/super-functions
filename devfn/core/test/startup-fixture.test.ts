@@ -55,26 +55,30 @@ describe("real local startup fixtures", () => {
     const stateDir = path.join(root, "state");
     const envFile = path.join(root, "service.env");
     const oldSecret = process.env.CUSTOM;
-    await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sh, -c, 'sleep 3600 # ${MODE} ${CUSTOM}']\n    env_file: service.env\n");
-    await writeFile(path.join(root, ".env"), "MODE=one\n");
+    const oldProjectSecret = process.env.API_TOKEN;
+    await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sh, -c, 'sleep 3600 # ${MODE} ${CUSTOM}']\n    env_file: service.env\n    environment:\n      API_TOKEN: ${API_TOKEN}\n");
+    await writeFile(path.join(root, ".env"), "MODE=one\nAPI_TOKEN=private-one\n");
     await writeFile(envFile, "CUSTOM=${CUSTOM}\nALIAS=prefix-${CUSTOM}\nMODE=10\n");
     const config = validateDevFnConfig({ version: 1, project: { id: "envfile-lifecycle-fixture" },
-      services: { api: { adapter: "compose", service: "api", envAllowlist: ["CUSTOM"], secretEnv: ["CUSTOM"] } },
+      services: { api: { adapter: "compose", service: "api", envAllowlist: ["CUSTOM", "API_TOKEN"], secretEnv: ["CUSTOM", "API_TOKEN"] } },
       profiles: { default: { services: ["api"] } } });
     const orchestrator = new DevFnOrchestrator();
     process.env.CUSTOM = "10";
+    delete process.env.API_TOKEN;
     try {
       const first = await orchestrator.up({ config, root, stateDir });
       const inspect = async (id: string): Promise<string[]> => {
         const result = await execFileAsync("docker", ["inspect", "--format", "{{json .Config.Env}}", id]);
         return JSON.parse(result.stdout) as string[];
       };
-      expect(await inspect(first.services[0].containerIds[0])).toEqual(expect.arrayContaining(["CUSTOM=10", "ALIAS=prefix-10", "MODE=10"]));
+      expect(await inspect(first.services[0].containerIds[0])).toEqual(expect.arrayContaining(["CUSTOM=10", "ALIAS=prefix-10", "MODE=10", "API_TOKEN=private-one"]));
+      expect(JSON.stringify(await readReceipt(config, root, first.instanceId))).not.toContain("private-one");
       process.env.CUSTOM = "SYNTHETIC_DO_NOT_USE";
+      await writeFile(path.join(root, ".env"), "MODE=one\nAPI_TOKEN=SYNTHETIC_DO_NOT_USE\n");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect((await readReceipt(config, root, first.instanceId))?.invocationId).toBe(first.invocationId);
-      await writeFile(path.join(root, ".env"), "MODE=two\n");
+      await writeFile(path.join(root, ".env"), "MODE=two\nAPI_TOKEN=SYNTHETIC_DO_NOT_USE\n");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
       const replacedForMode = await orchestrator.up({ config, root, stateDir });
       expect(replacedForMode.invocationId).not.toBe(first.invocationId);
@@ -88,6 +92,8 @@ describe("real local startup fixtures", () => {
       await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
       if (oldSecret === undefined) delete process.env.CUSTOM;
       else process.env.CUSTOM = oldSecret;
+      if (oldProjectSecret === undefined) delete process.env.API_TOKEN;
+      else process.env.API_TOKEN = oldProjectSecret;
       await rm(root, { recursive: true, force: true });
     }
   }, 60_000);
