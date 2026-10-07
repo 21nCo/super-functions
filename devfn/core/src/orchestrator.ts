@@ -76,13 +76,19 @@ async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePl
   return resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks });
 }
 
+function compareCodepoint(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 async function startupFingerprints(config: DevFnConfig, root: string, resolved: ReturnType<typeof resolveEndpointTemplates>): Promise<Record<string, string>> {
   const fingerprints: Record<string, string> = {};
   for (const [name, node] of Object.entries(resolved.nodes)) {
     const processSpec = config.processes?.[name];
     const serviceSpec = config.services?.[name];
     const secretNames = new Set([...(processSpec?.secretEnv ?? []), ...(serviceSpec?.secretEnv ?? [])]);
-    const declaredEnvironment = Object.entries(node.environment).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+    const declaredEnvironment = Object.entries(node.environment).sort(([a], [b]) => compareCodepoint(a, b))
       .map(([key, value]) => [key, secretNames.has(key) || isCredentialKey(key) ? "<secret-channel>" : value]);
     let startup: unknown;
     if (processSpec) {
@@ -91,7 +97,7 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
         kind: "process", command: resolveAdapterCommand(spec), cwd: processSpec.cwd ?? ".",
         exposure: processSpec.exposure ?? "local", ports: processSpec.ports ?? [],
         environment: declaredEnvironment,
-        envAllowlist: [...(processSpec.envAllowlist ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), secretEnv: [...(processSpec.secretEnv ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0),
+        envAllowlist: [...(processSpec.envAllowlist ?? [])].sort(compareCodepoint), secretEnv: [...(processSpec.secretEnv ?? [])].sort(compareCodepoint),
       };
     } else if (serviceSpec) {
       const spec = { ...serviceSpec, env: node.environment };
@@ -100,7 +106,7 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
         kind: "service", file: serviceSpec.file ?? "compose.yaml", service: serviceSpec.service,
         projectName: serviceSpec.projectName ?? "devfn", ports: serviceSpec.ports ?? {},
         environment: declaredEnvironment,
-        envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0),
+        envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort(compareCodepoint), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort(compareCodepoint),
         source: await fingerprintComposeSource(spec, root, resolved.ownerId, environment),
       };
     } else continue;
@@ -116,7 +122,7 @@ function portSpecFingerprints(config: DevFnConfig, names: readonly string[]): Re
     if (!canonical.exact) delete canonical.exact;
     if (!canonical.ephemeral) delete canonical.ephemeral;
     return [name, createHash("sha256")
-      .update(JSON.stringify(Object.entries(canonical).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)))
+      .update(JSON.stringify(Object.entries(canonical).sort(([a], [b]) => compareCodepoint(a, b))))
       .digest("hex")];
   }));
 }

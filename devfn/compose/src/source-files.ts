@@ -63,32 +63,28 @@ function mergeService(base: Record<string, unknown>, child: Record<string, unkno
   return merged;
 }
 
+function addMaterializedSize(size: number, item: unknown, remaining: number, active: Set<object>, keyBytes = 0): number {
+  const next = size + keyBytes + materializedSize(item, remaining - size - keyBytes, active) + 1;
+  if (next > remaining) throw new Error("Compose source graph exceeds the materialization limit");
+  return next;
+}
+
 function materializedSize(value: unknown, remaining: number, active = new Set<object>()): number {
   if (remaining < 0) throw new Error("Compose source graph exceeds the materialization limit");
   if (typeof value === "string") return Buffer.byteLength(value) + 2;
-  if (value && typeof value === "object") {
-    if (active.has(value)) throw new Error("cyclic Compose source alias");
-    active.add(value);
-  }
+  if (!value || typeof value !== "object") return 8;
+  if (active.has(value)) throw new Error("cyclic Compose source alias");
+  active.add(value);
+  let size = 2;
   if (Array.isArray(value)) {
-    let size = 2;
-    for (const item of value) {
-      size += materializedSize(item, remaining - size, active) + 1;
-      if (size > remaining) throw new Error("Compose source graph exceeds the materialization limit");
+    for (const item of value) size = addMaterializedSize(size, item, remaining, active);
+  } else {
+    for (const [key, item] of Object.entries(value)) {
+      size = addMaterializedSize(size, item, remaining, active, Buffer.byteLength(key) + 2);
     }
-    active.delete(value);
-    return size;
   }
-  if (record(value)) {
-    let size = 2;
-    for (const [key, item] of Object.entries(record(value)!)) {
-      size += Buffer.byteLength(key) + 3 + materializedSize(item, remaining - size, active);
-      if (size > remaining) throw new Error("Compose source graph exceeds the materialization limit");
-    }
-    active.delete(value as object);
-    return size;
-  }
-  return 8;
+  active.delete(value);
+  return size;
 }
 
 export function normalizeComposeRawService(service: Record<string, unknown>): Record<string, unknown> {
@@ -99,6 +95,20 @@ export function normalizeComposeRawService(service: Record<string, unknown>): Re
   const build = record(normalized.build);
   if (build && Array.isArray(build.args)) normalized.build = { ...build, args: envMapping(build.args) };
   return normalized;
+}
+
+function* pathInterpolationNames(value: string): Generator<string> {
+  let index = 0;
+  while (index < value.length) {
+    if (value[index] !== "$" || index + 1 >= value.length) { index += 1; continue; }
+    if (value[index + 1] === "$") { index += 2; continue; }
+    const start = index + (value[index + 1] === "{" ? 2 : 1);
+    if (!/[A-Za-z_]/.test(value[start] ?? "")) { index += 1; continue; }
+    let end = start + 1;
+    while (end < value.length && /[A-Za-z0-9_]/.test(value[end])) end += 1;
+    yield value.slice(start, end);
+    index = end;
+  }
 }
 
 /** Bound files and alias materialization before invoking Docker Compose. Compose owns merge semantics. */
@@ -149,18 +159,10 @@ export async function assertComposeSourceGraphBounded(
   async function checkPathExpressions(names: string[], directory: string, envFiles: string[]): Promise<void> {
     await checkInterpolationFiles(directory, envFiles);
     for (const name of names) {
-      for (let index = 0; index < name.length; index += 1) {
-        if (name[index] !== "$" || index + 1 >= name.length) continue;
-        if (name[index + 1] === "$") { index += 1; continue; }
-        const start = index + (name[index + 1] === "{" ? 2 : 1);
-        if (!/[A-Za-z_]/.test(name[start] ?? "")) continue;
-        let end = start + 1;
-        while (end < name.length && /[A-Za-z0-9_]/.test(name[end])) end += 1;
-        const variable = name.slice(start, end);
+      for (const variable of pathInterpolationNames(name)) {
         if (secretNames.has(variable) || forbiddenInterpolation.has(variable)) {
           throw new Error("Compose source path interpolates an undeclared host or secret value");
         }
-        index = end - 1;
       }
     }
   }
@@ -237,6 +239,37 @@ export async function assertComposeSourceGraphBounded(
     return merged;
   }
 
+  async function resolveInclude(file: string, include: unknown, envFiles: string[]): Promise<{
+    includedFiles: string[]; projectDirectory: string; localEnvFiles: string[];
+  }> {
+    const descriptor = typeof include === "string" ? { path: include } : record(include);
+    if (!descriptor) throw new Error("invalid Compose include declaration");
+    const origin = path.dirname(file);
+    const rawNames = paths(descriptor.path);
+    const rawProject = typeof descriptor.project_directory === "string" ? [descriptor.project_directory] : [];
+    const rawEnvFiles = descriptor.env_file === undefined ? [] : paths(descriptor.env_file, true);
+    await checkPathExpressions([...rawNames, ...rawProject, ...rawEnvFiles], origin, envFiles);
+    const resolved = await interpolateBounded([...rawNames, ...rawProject, ...rawEnvFiles], origin, envFiles);
+    const includedFiles = resolved.slice(0, rawNames.length).map((name) => path.resolve(origin, name));
+    const projectDirectory = rawProject.length ? path.resolve(origin, resolved[rawNames.length]) : path.dirname(includedFiles[0]);
+    const localEnvFiles = descriptor.env_file === undefined ? envFiles : resolved.slice(rawNames.length + rawProject.length)
+      .map((name) => path.resolve(origin, name));
+    return { includedFiles, projectDirectory, localEnvFiles };
+  }
+
+  async function mergedIncludedService(files: string[], directory: string, envFiles: string[]): Promise<Record<string, unknown> | null> {
+    // A long-form include path list is one merged Compose model. Later files
+    // may add env_file while earlier files supplied secret-bearing expressions.
+    let merged: Record<string, unknown> | null = null;
+    for (const file of files) {
+      const loaded = await load(file);
+      if (!record(record(loaded.data.services)?.[serviceName])) continue;
+      const item = await visitService(file, serviceName, directory, envFiles);
+      if (item) merged = mergeService(merged ?? {}, item, loaded.tags.get(serviceName) ?? new Set());
+    }
+    return merged;
+  }
+
   async function visitDocument(file: string, directory: string, envFiles: string[]): Promise<void> {
     if (!mark(`document\0${file}\0${directory}\0${envFiles.join("\0")}`)) return;
     await checkInterpolationFiles(directory, envFiles);
@@ -249,35 +282,9 @@ export async function assertComposeSourceGraphBounded(
     }
     const includes = data.include === undefined ? [] : Array.isArray(data.include) ? data.include : [data.include];
     for (const include of includes) {
-      const descriptor = typeof include === "string" ? { path: include } : record(include);
-      if (!descriptor) throw new Error("invalid Compose include declaration");
-      const rawNames = paths(descriptor.path);
-      const rawProject = typeof descriptor.project_directory === "string" ? [descriptor.project_directory] : [];
-      const rawEnvFiles = descriptor.env_file === undefined ? [] : paths(descriptor.env_file, true);
-      await checkPathExpressions([...rawNames, ...rawProject, ...rawEnvFiles], path.dirname(file), envFiles);
-      const resolved = await interpolateBounded([...rawNames, ...rawProject, ...rawEnvFiles], path.dirname(file), envFiles);
-      const names = resolved.slice(0, rawNames.length);
-      const firstFile = path.resolve(path.dirname(file), names[0]);
-      const projectDirectory = rawProject.length
-        ? path.resolve(path.dirname(file), resolved[rawNames.length])
-        : path.dirname(firstFile);
-      let localEnvFiles = envFiles;
-      if (descriptor.env_file !== undefined) {
-        localEnvFiles = resolved.slice(rawNames.length + rawProject.length)
-          .map((name) => path.resolve(path.dirname(file), name));
-      }
-      const includedFiles = names.map((name) => path.resolve(path.dirname(file), name));
+      const { includedFiles, projectDirectory, localEnvFiles } = await resolveInclude(file, include, envFiles);
       for (const includedFile of includedFiles) await visitDocument(includedFile, projectDirectory, localEnvFiles);
-      // A long-form include path list is one merged Compose model. The later
-      // file may add env_file while an earlier layer supplied secret-bearing
-      // environment expressions; keep both in the fallback provenance.
-      let merged: Record<string, unknown> | null = null;
-      for (const includedFile of includedFiles) {
-        const loaded = await load(includedFile);
-        if (!record(record(loaded.data.services)?.[serviceName])) continue;
-        const item = await visitService(includedFile, serviceName, projectDirectory, localEnvFiles);
-        if (item) merged = mergeService(merged ?? {}, item, loaded.tags.get(serviceName) ?? new Set());
-      }
+      const merged = await mergedIncludedService(includedFiles, projectDirectory, localEnvFiles);
       if (merged) {
         selectedService = merged;
         selectedDirectory = projectDirectory;

@@ -7,6 +7,67 @@ import { createComposeEnvironment, fingerprintComposeSource } from "../src/index
 const live = process.env.DEVFN_REAL_COMPOSE === "1";
 
 describe.skipIf(!live)("effective Compose startup fingerprint", () => {
+  it("masks dotted and hyphenated environment keys after secret interpolation", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-mapped-credential-"));
+    const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["CUSTOM"], secretEnv: ["CUSTOM"] };
+    const fingerprint = (secret: string) => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec, {}, { ...process.env, CUSTOM: secret }));
+    try {
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    environment:\n      db.password: ${CUSTOM}\n      db-password: ${CUSTOM}\n      MODE: one\n");
+      const first = await fingerprint("private-one");
+      expect(await fingerprint("private-two")).toBe(first);
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    environment:\n      db.password: ${CUSTOM}\n      db-password: ${CUSTOM}\n      MODE: two\n");
+      expect(await fingerprint("private-two")).not.toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("accepts credential keys that are not Compose interpolation variables", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-credential-keys-"));
+    const spec = { adapter: "compose" as const, service: "api" };
+    try {
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    env_file: service.env\n");
+      await writeFile(path.join(root, "service.env"), "db.password=private-one\ndb-password=private-one\nMODE=one\n");
+      const first = await fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      await writeFile(path.join(root, "service.env"), "db.password=private-two\ndb-password=private-two\nMODE=one\n");
+      expect(await fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec))).toBe(first);
+      await writeFile(path.join(root, "service.env"), "db.password=private-two\ndb-password=private-two\nMODE=two\n");
+      expect(await fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec))).not.toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("masks selected Boolean resources using a type-valid sentinel", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-resource-boolean-"));
+    const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["FLAG"], secretEnv: ["FLAG"] };
+    const fingerprint = (flag: string) => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec, {}, { ...process.env, FLAG: flag }));
+    try {
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    networks: [shared]\nnetworks:\n  shared:\n    name: shared\n    external: ${FLAG}\n");
+      const first = await fingerprint("true");
+      expect(await fingerprint("false")).toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("applies parent project environment precedence to included services", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-parent-env-"));
+    const spec = { adapter: "compose" as const, service: "api", secretEnv: ["CUSTOM"] };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await mkdir(path.join(root, "child"));
+      await writeFile(path.join(root, "compose.yaml"), "include:\n  - path: child/compose.yaml\n    env_file: child/scope.env\n");
+      await writeFile(path.join(root, "child", "scope.env"), "CUSTOM=scope-private\nMODE=one\n");
+      await writeFile(path.join(root, "child", "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: echo ${CUSTOM:-${MODE}}\n");
+      await writeFile(path.join(root, ".env"), "CUSTOM=private-one\n");
+      const first = await fingerprint();
+      await writeFile(path.join(root, ".env"), "CUSTOM=private-two\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, "child", "scope.env"), "CUSTOM=scope-private\nMODE=two\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, ".env"), "CUSTOM=\n");
+      const fallback = await fingerprint();
+      expect(fallback).not.toBe(first);
+      await writeFile(path.join(root, "child", "scope.env"), "CUSTOM=scope-private\nMODE=three\n");
+      expect(await fingerprint()).not.toBe(fallback);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
   it("tracks an ordinary fallback when an optional secret is absent", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-absent-secret-"));
     const spec = { adapter: "compose" as const, service: "api", secretEnv: ["CUSTOM"] };

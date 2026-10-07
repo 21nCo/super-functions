@@ -148,23 +148,31 @@ function portSpec(value: unknown, field: string): PortSpec {
   };
 }
 
+function assertUniqueEnvironmentKeys(keys: string[] | undefined, field: string): void {
+  const seen = new Set<string>();
+  for (const key of keys ?? []) {
+    const folded = key.toUpperCase();
+    if (seen.has(folded)) fail(`${field} has colliding environment keys for ${key}.`, field);
+    seen.add(folded);
+  }
+}
+
+function assertSecretEnvironmentChannels(env: Record<string, string> | undefined, envAllowlist: string[] | undefined,
+  secretEnv: string[] | undefined, field: string): void {
+  for (const key of Object.keys(env ?? {})) if (isCredentialKey(key)) fail(`${field}.env.${key} must not contain a literal secret; inherit it through envAllowlist and declare it in secretEnv.`, `${field}.env.${key}`);
+  for (const key of secretEnv ?? []) if (!envAllowlist?.includes(key)) fail(`${field}.secretEnv contains ${key}, which is not present in envAllowlist.`, `${field}.secretEnv`);
+  for (const key of envAllowlist ?? []) if (isCredentialKey(key) && !secretEnv?.includes(key)) fail(`${field}.envAllowlist contains sensitive key ${key}; declare it in secretEnv for log redaction.`, `${field}.envAllowlist`);
+}
+
 function environmentFields(input: RecordValue, field: string, allowHost = false): Pick<ProcessSpec, "env" | "envAllowlist" | "secretEnv"> {
   const env = stringMap(input.env, `${field}.env`, allowHost);
   const envAllowlist = stringArray(input.envAllowlist, `${field}.envAllowlist`);
   const secretEnv = stringArray(input.secretEnv, `${field}.secretEnv`);
-  for (const [label, keys] of [["envAllowlist", envAllowlist], ["secretEnv", secretEnv]] as const) {
-    const seen = new Set<string>();
-    for (const key of keys ?? []) {
-      const folded = key.toUpperCase();
-      if (seen.has(folded)) fail(`${field}.${label} has colliding environment keys for ${key}.`, `${field}.${label}`);
-      seen.add(folded);
-    }
-  }
+  assertUniqueEnvironmentKeys(envAllowlist, `${field}.envAllowlist`);
+  assertUniqueEnvironmentKeys(secretEnv, `${field}.secretEnv`);
   for (const key of envAllowlist ?? []) environmentKey(key, `${field}.envAllowlist`, allowHost);
   for (const key of secretEnv ?? []) environmentKey(key, `${field}.secretEnv`, allowHost);
-  for (const key of Object.keys(env ?? {})) if (isCredentialKey(key)) fail(`${field}.env.${key} must not contain a literal secret; inherit it through envAllowlist and declare it in secretEnv.`, `${field}.env.${key}`);
-  for (const key of secretEnv ?? []) if (!envAllowlist?.includes(key)) fail(`${field}.secretEnv contains ${key}, which is not present in envAllowlist.`, `${field}.secretEnv`);
-  for (const key of envAllowlist ?? []) if (isCredentialKey(key) && !secretEnv?.includes(key)) fail(`${field}.envAllowlist contains sensitive key ${key}; declare it in secretEnv for log redaction.`, `${field}.envAllowlist`);
+  assertSecretEnvironmentChannels(env, envAllowlist, secretEnv, field);
   return { ...(env ? { env } : {}), ...(envAllowlist ? { envAllowlist } : {}), ...(secretEnv ? { secretEnv } : {}) };
 }
 

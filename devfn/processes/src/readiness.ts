@@ -60,6 +60,28 @@ async function readLogWindow(logPath: string): Promise<string> {
   } finally { await handle.close(); }
 }
 
+function appendHttpHealthPath(url: string, healthPath: string): string {
+  const parsed = new URL(url);
+  const baseSearch = parsed.search;
+  const baseHash = parsed.hash;
+  parsed.search = "";
+  parsed.hash = "";
+  parsed.pathname = `${parsed.pathname.replace(/\/$/, "")}/`;
+  const appended = new URL(healthPath.replace(/^\/+/, ""), parsed);
+  if (appended.origin !== parsed.origin) throw new Error("HTTP readiness path must stay on the configured URL origin.");
+  if (appended.username || appended.password) throw new Error("HTTP readiness URL credentials must use the secret channel.");
+  if (!appended.search) appended.search = baseSearch;
+  if (!appended.hash) appended.hash = baseHash;
+  return appended.toString();
+}
+
+function leasedHttpHealthUrl(url: string, healthPath: string | undefined, port: number): string {
+  const source = url ? new URL(url) : undefined;
+  const protocol = source?.protocol ?? "http:";
+  const suffix = source ? `${source.pathname}${source.search}${source.hash}` : healthPath ?? "/";
+  return `${protocol}//127.0.0.1:${port}${suffix}`;
+}
+
 /** Resolve the endpoint used by startup and later readiness probes. */
 export function resolveHttpReadinessUrl(health: Extract<HealthCheck, { type: "http" }>, ports: Readonly<Record<string, number>>): string {
   const port = health.port ? ports[health.port] : undefined;
@@ -67,26 +89,10 @@ export function resolveHttpReadinessUrl(health: Extract<HealthCheck, { type: "ht
   if (configured && configured.protocol !== "http:" && configured.protocol !== "https:") throw new Error("HTTP readiness URL must use http or https.");
   if (configured && (configured.username || configured.password)) throw new Error("HTTP readiness URL credentials must use the secret channel.");
   let url = health.url ?? "";
-  if (health.url && health.path) {
-    const parsed = new URL(url);
-    const baseSearch = parsed.search;
-    const baseHash = parsed.hash;
-    parsed.search = "";
-    parsed.hash = "";
-    parsed.pathname = `${parsed.pathname.replace(/\/$/, "")}/`;
-    const appended = new URL(health.path.replace(/^\/+/, ""), parsed);
-    if (appended.origin !== parsed.origin) throw new Error("HTTP readiness path must stay on the configured URL origin.");
-    if (appended.username || appended.password) throw new Error("HTTP readiness URL credentials must use the secret channel.");
-    if (!appended.search) appended.search = baseSearch;
-    if (!appended.hash) appended.hash = baseHash;
-    url = appended.toString();
-  }
+  if (health.url && health.path) url = appendHttpHealthPath(url, health.path);
   // Validate an absolute path against the configured origin first. The direct
   // lease replaces the origin only after that relationship is established.
-  if (port !== undefined) {
-    const source = url ? new URL(url) : undefined;
-    url = `${source?.protocol ?? "http:"}//127.0.0.1:${port}${source ? `${source.pathname}${source.search}${source.hash}` : (health.path ?? "/")}`;
-  }
+  if (port !== undefined) url = leasedHttpHealthUrl(url, health.path, port);
   const parsed = new URL(url);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("HTTP readiness URL must use http or https.");
   return parsed.toString();

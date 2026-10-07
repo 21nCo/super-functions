@@ -100,14 +100,13 @@ function implicitInterpolationKeys(spec: ComposeServiceSpec): Set<string> {
 function* interpolationTokens(value: string): Generator<{ start: number; end: number; name: string }> {
   let nextClose = -1;
   let noMoreCloses = false;
-  for (let index = 0; index + 1 < value.length; index += 1) {
-    if (value[index] !== "$" || value[index + 1] === "$") {
-      if (value[index] === "$" && value[index + 1] === "$") index += 1;
-      continue;
-    }
+  let index = 0;
+  while (index + 1 < value.length) {
+    if (value[index] !== "$") { index += 1; continue; }
+    if (value[index + 1] === "$") { index += 2; continue; }
     const braced = value[index + 1] === "{";
     const start = index + (braced ? 2 : 1);
-    if (!/[A-Za-z_]/.test(value[start] ?? "")) continue;
+    if (!/[A-Za-z_]/.test(value[start] ?? "")) { index += 1; continue; }
     let nameEnd = start + 1;
     while (nameEnd < value.length && /[A-Za-z0-9_]/.test(value[nameEnd])) nameEnd += 1;
     if (braced && nextClose < nameEnd && !noMoreCloses) {
@@ -115,7 +114,7 @@ function* interpolationTokens(value: string): Generator<{ start: number; end: nu
       noMoreCloses = nextClose < 0;
     }
     yield { start: index, end: braced && nextClose >= nameEnd ? nextClose + 1 : nameEnd, name: value.slice(start, nameEnd) };
-    index = nameEnd - 1;
+    index = nameEnd;
   }
 }
 
@@ -163,18 +162,47 @@ function canonicalDeclaredEnvironment(values: Record<string, unknown>, secretNam
       ? "<secret-channel>" : canonicalComposeValue(value, secretNames)]));
 }
 
-function booleanComposeInterpolations(service: Record<string, unknown>): Set<string> {
+function booleanResourceValues(resources: Record<string, unknown>): unknown[] {
+  const values: unknown[] = [];
+  for (const kind of ["volumes", "networks", "configs", "secrets"] as const) {
+    const entries = resources[kind];
+    if (!entries || typeof entries !== "object" || Array.isArray(entries)) continue;
+    for (const resource of Object.values(entries)) {
+      if (!resource || typeof resource !== "object" || Array.isArray(resource)) continue;
+      const definition = resource as Record<string, unknown>;
+      for (const field of ["external", "internal", "attachable", "enable_ipv4", "enable_ipv6"]) values.push(definition[field]);
+    }
+  }
+  return values;
+}
+
+function booleanComposeInterpolations(service: Record<string, unknown>, resources: Record<string, unknown>): Set<string> {
   const names = new Set<string>();
-  const fields = ["attach", "init", "privileged", "read_only", "stdin_open", "tty"];
-  const selected = fields.map((name) => service[name]);
+  const selected = ["attach", "init", "privileged", "read_only", "stdin_open", "tty"].map((name) => service[name]);
   for (const [parent, keys] of [["healthcheck", ["disable"]], ["build", ["no_cache", "pull"]]] as const) {
     const value = service[parent];
     if (value && typeof value === "object" && !Array.isArray(value)) {
       for (const key of keys) selected.push((value as Record<string, unknown>)[key]);
     }
   }
+  selected.push(...booleanResourceValues(resources));
   for (const value of selected) if (typeof value === "string") {
     for (const token of interpolationTokens(value)) names.add(token.name);
+  }
+  return names;
+}
+
+function referencedResourceNames(kind: "volumes" | "networks" | "configs" | "secrets", references: unknown): string[] {
+  if (kind === "networks" && references && typeof references === "object" && !Array.isArray(references)) {
+    return Object.keys(references);
+  }
+  if (!Array.isArray(references)) return [];
+  const names: string[] = [];
+  for (const entry of references) {
+    if (typeof entry === "string") names.push(kind === "volumes" ? entry.split(":", 1)[0] : entry);
+    else if (entry && typeof entry === "object" && typeof (entry as Record<string, unknown>).source === "string") {
+      names.push((entry as Record<string, string>).source);
+    }
   }
   return names;
 }
@@ -187,19 +215,20 @@ function selectedComposeResources(
   for (const kind of ["volumes", "networks", "configs", "secrets"] as const) {
     const declared = configuration[kind];
     if (!declared || typeof declared !== "object" || Array.isArray(declared)) continue;
-    const references = service[kind];
-    const names = kind === "networks"
-      ? Array.isArray(references) ? references : Object.keys(references && typeof references === "object" ? references : {})
-      : Array.isArray(references) ? references.map((entry: unknown) => {
-        if (typeof entry === "string") return kind === "volumes" ? entry.split(":", 1)[0] : entry;
-        if (entry && typeof entry === "object") return (entry as Record<string, unknown>).source;
-        return undefined;
-      }) : [];
-    const resources = Object.fromEntries(names.filter((name): name is string => typeof name === "string" && Object.hasOwn(declared, name))
+    const names = referencedResourceNames(kind, service[kind]);
+    const resources = Object.fromEntries(names.filter((name) => Object.hasOwn(declared, name))
       .map((name) => [name, (declared as Record<string, unknown>)[name]]));
     if (Object.keys(resources).length) selected[kind] = resources;
   }
   return selected;
+}
+
+async function boundedConfigFileBytes(file: string, remaining: number): Promise<Buffer> {
+  const size = (await stat(file)).size;
+  if (size > remaining) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Selected Compose config files exceed the byte limit.");
+  const bytes = await readFile(file);
+  if (bytes.length > remaining) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Selected Compose config files exceed the byte limit.");
+  return bytes;
 }
 
 async function selectedConfigFileState(resources: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -210,10 +239,7 @@ async function selectedConfigFileState(resources: Record<string, unknown>): Prom
   for (const [name, value] of Object.entries(configs)) {
     const file = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>).file : undefined;
     if (typeof file !== "string") continue;
-    const size = (await stat(file)).size;
-    if (size > 10 * 1024 * 1024 - totalBytes) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Selected Compose config files exceed the byte limit.");
-    const bytes = await readFile(file);
-    if (bytes.length > 10 * 1024 * 1024 - totalBytes) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Selected Compose config files exceed the byte limit.");
+    const bytes = await boundedConfigFileBytes(file, 10 * 1024 * 1024 - totalBytes);
     totalBytes += bytes.length;
     state[name] = createHash("sha256").update(bytes).digest("hex");
   }
@@ -241,41 +267,52 @@ function quotedEnvFileValue(lines: string[], startLine: number, startCursor: num
   throw new Error("unterminated env_file quote");
 }
 
+function skipEnvSpaces(line: string, start: number): number {
+  let cursor = start;
+  while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+  return cursor;
+}
+
+function unquotedEnvFileValue(line: string, start: number): string {
+  const tail = line.slice(start);
+  for (let offset = 1; offset < tail.length; offset += 1) {
+    if (tail[offset] === "#" && (tail[offset - 1] === " " || tail[offset - 1] === "\t")) {
+      return tail.slice(0, offset).trimEnd();
+    }
+  }
+  return tail.trimEnd();
+}
+
+function envFileAssignment(lines: string[], lineIndex: number): { name: string; value: string; lastLine: number } | undefined {
+  const line = lines[lineIndex];
+  let cursor = skipEnvSpaces(line, 0);
+  if (line[cursor] === "#" || cursor === line.length) return undefined;
+  if (line.startsWith("export ", cursor)) cursor = skipEnvSpaces(line, cursor + 7);
+  const start = cursor;
+  if (!/[A-Za-z_]/.test(line[cursor] ?? "")) throw new Error("unsupported env_file assignment");
+  while (cursor < line.length && /[A-Za-z0-9_.-]/.test(line[cursor])) cursor += 1;
+  const name = line.slice(start, cursor);
+  cursor = skipEnvSpaces(line, cursor);
+  if (cursor === line.length) return { name, value: `$${name}`, lastLine: lineIndex };
+  if (line[cursor] !== "=" && line[cursor] !== ":") throw new Error("unsupported env_file assignment");
+  cursor = skipEnvSpaces(line, cursor + 1);
+  const quote = line[cursor] === "'" || line[cursor] === '"' ? line[cursor] : null;
+  if (quote) {
+    // Single-quoted values are literal in Compose, even across lines.
+    const result = quotedEnvFileValue(lines, lineIndex, cursor + 1, quote);
+    return { name, value: result.value, lastLine: result.lastLine };
+  }
+  return { name, value: unquotedEnvFileValue(line, cursor), lastLine: lineIndex };
+}
+
 function envFileAssignments(content: string): Record<string, string> {
   const values: Record<string, string> = {};
   const lines = content.split(/\r?\n/);
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex];
-    let cursor = 0;
-    while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
-    if (line[cursor] === "#" || cursor === line.length) continue;
-    if (line.startsWith("export ", cursor)) {
-      cursor += 7;
-      while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
-    }
-    const start = cursor;
-    if (!/[A-Za-z_]/.test(line[cursor] ?? "")) throw new Error("unsupported env_file assignment");
-    while (cursor < line.length && /[A-Za-z0-9_.-]/.test(line[cursor])) cursor += 1;
-    const name = line.slice(start, cursor);
-    while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
-    if (cursor === line.length) { values[name] = `$${name}`; continue; }
-    if (line[cursor] !== "=" && line[cursor] !== ":") throw new Error("unsupported env_file assignment");
-    cursor += 1;
-    while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
-    const quote = line[cursor] === "'" || line[cursor] === '"' ? line[cursor++] : null;
-    if (quote) {
-      // Single-quoted values are literal in Compose, even across lines.
-      const quoted = quotedEnvFileValue(lines, lineIndex, cursor, quote);
-      values[name] = quoted.value;
-      lineIndex = quoted.lastLine;
-    } else {
-      const tail = line.slice(cursor);
-      let comment = tail.length;
-      for (let offset = 1; offset < tail.length; offset += 1) {
-        if (tail[offset] === "#" && (tail[offset - 1] === " " || tail[offset - 1] === "\t")) { comment = offset; break; }
-      }
-      values[name] = tail.slice(0, comment).trimEnd();
-    }
+  let lineIndex = 0;
+  while (lineIndex < lines.length) {
+    const assignment = envFileAssignment(lines, lineIndex);
+    if (assignment) values[assignment.name] = assignment.value;
+    lineIndex = (assignment?.lastLine ?? lineIndex) + 1;
   }
   return values;
 }
@@ -343,8 +380,8 @@ async function interpolateComposePaths(paths: string[], root: string, environmen
 }
 
 /** Ask Compose about selected-scope presence without rendering credential bytes. */
-async function composeInterpolationPresence(
-  names: ReadonlySet<string>, inventory: ComposeSourceInventory, environment: NodeJS.ProcessEnv,
+async function probeComposeInterpolationPresence(
+  names: readonly string[], projectDirectory: string, envFiles: readonly string[], environment: NodeJS.ProcessEnv,
 ): Promise<Map<string, boolean | null>> {
   const directory = await mkdtemp(path.join(tmpdir(), "devfn-compose-presence-"));
   const helper = path.join(directory, "compose.yaml");
@@ -353,9 +390,9 @@ async function composeInterpolationPresence(
       present: `\${${name}+x}`, nonempty: `\${${name}:+x}`,
     }]));
     await writeFile(helper, JSON.stringify({ "x-devfn-presence": probes, services: { placeholder: { image: "busybox" } } }), { mode: 0o600 });
-    const output = (await execFileAsync("docker", ["compose", ...inventory.interpolationEnvFiles.flatMap((file) => ["--env-file", file]),
-      "--project-directory", inventory.serviceDirectory, "-f", helper, "config", "--format", "json"],
-    { cwd: inventory.serviceDirectory, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+    const output = (await execFileAsync("docker", ["compose", ...envFiles.flatMap((file) => ["--env-file", file]),
+      "--project-directory", projectDirectory, "-f", helper, "config", "--format", "json"],
+    { cwd: projectDirectory, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
     const resolved = (JSON.parse(output) as { "x-devfn-presence"?: Record<string, { present?: unknown; nonempty?: unknown }> })["x-devfn-presence"];
     if (!resolved || typeof resolved !== "object") throw new Error("invalid Compose presence probe");
     return new Map([...names].map((name) => {
@@ -370,6 +407,24 @@ async function composeInterpolationPresence(
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+async function composeInterpolationPresence(
+  names: ReadonlySet<string>, inventory: ComposeSourceInventory, projectDirectory: string, environment: NodeJS.ProcessEnv,
+): Promise<Map<string, boolean | null>> {
+  // Compose variable names cannot contain dots or hyphens. Such names can
+  // still be environment keys, but placing them in ${...} makes the probe
+  // invalid before the valid service is started.
+  const variableNames = [...names].filter((name) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name));
+  if (variableNames.length === 0) return new Map();
+  const scoped = await probeComposeInterpolationPresence(variableNames, inventory.serviceDirectory,
+    inventory.interpolationEnvFiles, environment);
+  if (inventory.serviceDirectory === projectDirectory && inventory.interpolationEnvFiles.length === 0) return scoped;
+  // An included service has its own env-file defaults, but the parent
+  // project environment takes precedence. Probe both scopes without ever
+  // emitting the values, then use the parent presence when it is defined.
+  const parent = await probeComposeInterpolationPresence(variableNames, projectDirectory, [], environment);
+  return new Map(variableNames.map((name) => [name, parent.get(name) ?? scoped.get(name) ?? null]));
 }
 
 /** Fingerprint effective Compose inputs without hashing inherited host or secret values. */
@@ -424,12 +479,12 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   let safeConfiguration = configuration;
   if (secretNames.size > 0) {
     try {
-      const presence = await composeInterpolationPresence(secretNames, inventory, environment);
+      const presence = await composeInterpolationPresence(secretNames, inventory, path.dirname(sourceFile), environment);
       // A missing variable must stay missing so Compose can choose the same
       // default branch. Typed fields need stable valid sentinels: numeric
       // ports accept 1, while Boolean service fields require true.
-      const booleanNames = booleanComposeInterpolations(rawService);
-      const masked = [...secretNames].filter((name) => presence.get(name) !== null).map((name) => {
+      const booleanNames = booleanComposeInterpolations(rawService, rawSelectedResources);
+      const masked = [...secretNames].filter((name) => presence.has(name) && presence.get(name) !== null).map((name) => {
         let value = "";
         if (presence.get(name)) value = booleanNames.has(name) ? "true" : "1";
         return [name, value];

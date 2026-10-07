@@ -58,8 +58,14 @@ export async function writeEnvironmentOutputs(root: string, runtimeDir: string, 
   const written: string[] = [];
   for (const { output, target } of effective) {
     await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
-    const ordered = Object.entries(environment).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-    const content = output.format === "json" ? `${JSON.stringify(Object.fromEntries(ordered), null, 2)}\n` : `${ordered.map(([key, value]) => `${key}=${dotenv(value)}`).join("\n")}\n`;
+    const ordered = Object.entries(environment).sort(([a], [b]) => {
+      if (a < b) return -1;
+      if (a > b) return 1;
+      return 0;
+    });
+    const content = output.format === "json"
+      ? JSON.stringify(Object.fromEntries(ordered), null, 2) + "\n"
+      : ordered.map(([key, value]) => `${key}=${dotenv(value)}`).join("\n") + "\n";
     await writeFile(target, content, { encoding: "utf8", mode: output.mode ?? 0o600 });
     await chmod(target, output.mode ?? 0o600);
     written.push(target);

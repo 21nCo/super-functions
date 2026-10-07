@@ -56,24 +56,28 @@ interface CheckedValues {
   checked: Record<string, string>;
 }
 
-function resolveValues(values: Record<string, string>, base: CheckedValues, generated: CheckedValues, field: string, budget: { remaining: number }): CheckedValues {
-  const resolved: Record<string, string> = Object.assign(Object.create(null), base.values);
-  const resolvedChecked: Record<string, string> = Object.assign(Object.create(null), base.checked);
+function valueDependencies(key: string, value: string, values: Record<string, string>, resolved: Record<string, string>, generated: CheckedValues, field: string): Set<string> {
+  const dependencies = new Set<string>();
+  for (const match of value.matchAll(REFERENCE)) {
+    const reference = match[1];
+    if (reference === key && Object.hasOwn(generated.values, key)) continue;
+    if (Object.hasOwn(values, reference)) dependencies.add(reference);
+    else if (!Object.hasOwn(generated.values, reference) && !Object.hasOwn(resolved, reference)) invalid(field, `missing reference ${reference}.`);
+  }
+  return dependencies;
+}
+
+function resolutionGraph(values: Record<string, string>, resolved: CheckedValues, generated: CheckedValues, field: string): {
+  dependents: Map<string, string[]>; outstanding: Map<string, number>;
+} {
   const generatedKeys = new Map(Object.keys(generated.values).map((key) => [key.toUpperCase(), key]));
   const dependents = new Map<string, string[]>();
   const outstanding = new Map<string, number>();
   for (const key of Object.keys(values)) {
     const generatedKey = generatedKeys.get(key.toUpperCase());
     if (generatedKey && generatedKey !== key) invalid(`${field}.${key}`, `collides with generated environment key ${generatedKey}.`);
-    if (!generatedKey) { delete resolved[key]; delete resolvedChecked[key]; }
-    const dependencies = new Set<string>();
-    for (const match of values[key].matchAll(REFERENCE)) {
-      const reference = match[1];
-      if (reference === key && Object.hasOwn(generated.values, key)) continue;
-      if (Object.hasOwn(values, reference)) dependencies.add(reference);
-      else if (Object.hasOwn(generated.values, reference)) continue;
-      else if (!Object.hasOwn(resolved, reference)) invalid(field, `missing reference ${reference}.`);
-    }
+    if (!generatedKey) { delete resolved.values[key]; delete resolved.checked[key]; }
+    const dependencies = valueDependencies(key, values[key], values, resolved.values, generated, field);
     outstanding.set(key, dependencies.size);
     for (const dependency of dependencies) {
       const consumers = dependents.get(dependency) ?? [];
@@ -81,18 +85,27 @@ function resolveValues(values: Record<string, string>, base: CheckedValues, gene
       dependents.set(dependency, consumers);
     }
   }
+  return { dependents, outstanding };
+}
+
+function resolveValues(values: Record<string, string>, base: CheckedValues, generated: CheckedValues, field: string, budget: { remaining: number }): CheckedValues {
+  const resolved: CheckedValues = {
+    values: Object.assign(Object.create(null), base.values),
+    checked: Object.assign(Object.create(null), base.checked),
+  };
+  const { dependents, outstanding } = resolutionGraph(values, resolved, generated, field);
   const queue = [...outstanding].filter(([, count]) => count === 0).map(([key]) => key);
   let visited = 0;
   for (let index = 0; index < queue.length; index += 1) {
     const key = queue[index];
     const expanded = expand(values[key], `${field}.${key}`, (reference) => {
       if (Object.hasOwn(generated.values, reference)) return [generated.values[reference], generated.checked[reference]];
-      if (Object.hasOwn(resolved, reference)) return [resolved[reference], resolvedChecked[reference]];
+      if (Object.hasOwn(resolved.values, reference)) return [resolved.values[reference], resolved.checked[reference]];
       invalid(field, `missing reference ${reference}.`);
     }, budget);
     if (!Object.hasOwn(generated.values, key)) {
-      resolved[key] = expanded[0];
-      resolvedChecked[key] = expanded[1];
+      resolved.values[key] = expanded[0];
+      resolved.checked[key] = expanded[1];
     }
     visited += 1;
     for (const dependent of dependents.get(key) ?? []) {
@@ -105,7 +118,7 @@ function resolveValues(values: Record<string, string>, base: CheckedValues, gene
     const participant = [...outstanding].find(([, count]) => count > 0)?.[0];
     invalid(field, `cyclic reference containing ${participant}.`);
   }
-  return { values: resolved, checked: resolvedChecked };
+  return resolved;
 }
 
 function expand(value: string, field: string, lookup: (name: string) => [string, string], budget: { remaining: number }): [string, string] {
@@ -164,44 +177,53 @@ function rejectCredentialArgument(value: string, field: string): void {
   rejectCredentialVector([value], field);
 }
 
+interface EmbeddedScanState {
+  inTag: boolean;
+  tagQuote: string;
+  jsonDepth: number;
+  jsonQuote: string;
+  jsonEscape: boolean;
+}
+
+/** Consume structural text that cannot declare an embedded assignment. */
+function advanceEmbeddedContext(value: string, index: number, state: EmbeddedScanState): number | null {
+  const char = value[index];
+  // Structured field names are checked by rejectStructuredCredentialPayload.
+  // JSON string content is data even when it resembles XML or an assignment.
+  if (state.jsonQuote) {
+    if (state.jsonEscape) state.jsonEscape = false;
+    else if (char === "\\") state.jsonEscape = true;
+    else if (char === state.jsonQuote) state.jsonQuote = "";
+    return index + 1;
+  }
+  if (!state.inTag && state.jsonDepth > 0 && (char === '"' || char === "'")) {
+    state.jsonQuote = char;
+    return index + 1;
+  }
+  if (!state.inTag && (char === "{" || char === "[")) state.jsonDepth += 1;
+  else if (!state.inTag && state.jsonDepth > 0 && (char === "}" || char === "]")) state.jsonDepth -= 1;
+  if (value.startsWith("<!--", index)) {
+    const close = value.indexOf("-->", index + 4);
+    state.inTag = false;
+    state.tagQuote = "";
+    return close < 0 ? value.length : close + 3;
+  }
+  if (char === "<" && !state.tagQuote) { state.inTag = true; return index + 1; }
+  if (state.inTag && (char === '"' || char === "'")) {
+    if (!state.tagQuote) state.tagQuote = char;
+    else if (state.tagQuote === char) state.tagQuote = "";
+    return index + 1;
+  }
+  if (state.tagQuote) return index + 1;
+  if (char === ">" && state.inTag) { state.inTag = false; return index + 1; }
+  return null;
+}
+
 function scanEmbeddedCredentialNames(value: string, field: string): void {
-  let inTag = false;
-  let tagQuote = "";
-  let jsonDepth = 0;
-  let jsonQuote = "";
-  let jsonEscape = false;
+  const state: EmbeddedScanState = { inTag: false, tagQuote: "", jsonDepth: 0, jsonQuote: "", jsonEscape: false };
   for (let index = 0; index < value.length;) {
-    // Structured field names are checked by rejectStructuredCredentialPayload.
-    // Text inside a JSON string is data, even if it resembles an XML tag or
-    // assignment; it must not be reinterpreted by this embedded-name scan.
-    if (jsonQuote) {
-      if (jsonEscape) jsonEscape = false;
-      else if (value[index] === "\\") jsonEscape = true;
-      else if (value[index] === jsonQuote) jsonQuote = "";
-      index += 1;
-      continue;
-    }
-    if (!inTag && jsonDepth > 0 && (value[index] === '"' || value[index] === "'")) {
-      jsonQuote = value[index]; index += 1; continue;
-    }
-    if (!inTag && (value[index] === "{" || value[index] === "[")) jsonDepth += 1;
-    else if (!inTag && jsonDepth > 0 && (value[index] === "}" || value[index] === "]")) jsonDepth -= 1;
-    if (value.startsWith("<!--", index)) {
-      const close = value.indexOf("-->", index + 4);
-      index = close < 0 ? value.length : close + 3;
-      inTag = false;
-      tagQuote = "";
-      continue;
-    }
-    if (value[index] === "<" && !tagQuote) { inTag = true; index += 1; continue; }
-    if (inTag && (value[index] === '"' || value[index] === "'")) {
-      if (!tagQuote) tagQuote = value[index];
-      else if (tagQuote === value[index]) tagQuote = "";
-      index += 1;
-      continue;
-    }
-    if (tagQuote) { index += 1; continue; }
-    if (value[index] === ">" && inTag) { inTag = false; index += 1; continue; }
+    const nextIndex = advanceEmbeddedContext(value, index, state);
+    if (nextIndex !== null) { index = nextIndex; continue; }
     if (!/[A-Za-z_]/.test(value[index])) { index += 1; continue; }
     if (index > 0 && /[A-Za-z0-9_.-]/.test(value[index - 1])) { index += 1; continue; }
     const start = index;
@@ -213,6 +235,52 @@ function scanEmbeddedCredentialNames(value: string, field: string): void {
       invalid(field, "credential-bearing argv must use the secret channel.");
     }
   }
+}
+
+function readXmlTag(value: string, start: number): { tag: string; lastIndex: number } {
+  let quote = "";
+  const unquoted: string[] = [];
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === quote) quote = "";
+      unquoted.push(" ");
+    } else if (char === '"' || char === "'") {
+      quote = char;
+      unquoted.push(" ");
+    } else if (char === "<" && index !== start) {
+      // A malformed tag must not hide the next one.
+      return { tag: unquoted.join(""), lastIndex: index - 1 };
+    } else {
+      unquoted.push(char);
+      if (char === ">") return { tag: unquoted.join(""), lastIndex: index };
+    }
+  }
+  return { tag: unquoted.join(""), lastIndex: value.length };
+}
+
+function rejectXmlAttributes(tag: string, cursor: number, field: string): void {
+  while (cursor < tag.length) {
+    if (!/\s/.test(tag[cursor])) { cursor += 1; continue; }
+    while (cursor < tag.length && /\s/.test(tag[cursor])) cursor += 1;
+    if (!/[A-Za-z_]/.test(tag[cursor] ?? "")) continue;
+    const nameStart = cursor;
+    while (cursor < tag.length && /[A-Za-z0-9_.:-]/.test(tag[cursor])) cursor += 1;
+    while (cursor < tag.length && /\s/.test(tag[cursor])) cursor += 1;
+    if (tag[cursor] === "=" && isCredentialKey(tag.slice(nameStart, cursor).trim())) {
+      invalid(field, "credential-bearing structured argv must use the secret channel.");
+    }
+  }
+}
+
+function rejectXmlTagNames(tag: string, field: string): void {
+  let cursor = 1;
+  while (cursor < tag.length && /\s|\//.test(tag[cursor])) cursor += 1;
+  if (!/[A-Za-z_]/.test(tag[cursor] ?? "")) return;
+  const elementStart = cursor;
+  while (cursor < tag.length && /[A-Za-z0-9_.:-]/.test(tag[cursor])) cursor += 1;
+  if (isCredentialKey(tag.slice(elementStart, cursor))) invalid(field, "credential-bearing structured argv must use the secret channel.");
+  rejectXmlAttributes(tag, cursor, field);
 }
 
 /** Inspect XML names outside comments and quoted attribute values, including incomplete tags. */
@@ -229,175 +297,146 @@ function rejectXmlCredentialFields(value: string, field: string, jsonStrings: re
       index = close < 0 ? value.length : close + 2;
       continue;
     }
-    const start = index;
-    let quote = "";
-    const unquoted: string[] = [];
-    for (; index < value.length; index += 1) {
-      const char = value[index];
-      if (quote) {
-        if (char === quote) quote = "";
-        unquoted.push(" ");
-      } else if (char === '"' || char === "'") {
-        quote = char;
-        unquoted.push(" ");
-      } else if (char === "<" && index !== start) {
-        index -= 1; // A malformed tag must not hide the next one.
-        break;
-      } else {
-        unquoted.push(char);
-        if (char === ">") break;
-      }
-    }
-    const tag = unquoted.join("");
-    let cursor = 1;
-    while (cursor < tag.length && /\s|\//.test(tag[cursor])) cursor += 1;
-    if (!/[A-Za-z_]/.test(tag[cursor] ?? "")) continue;
-    const elementStart = cursor;
-    while (cursor < tag.length && /[A-Za-z0-9_.:-]/.test(tag[cursor])) cursor += 1;
-    if (isCredentialKey(tag.slice(elementStart, cursor))) invalid(field, "credential-bearing structured argv must use the secret channel.");
-    while (cursor < tag.length) {
-      if (!/\s/.test(tag[cursor])) { cursor += 1; continue; }
-      while (cursor < tag.length && /\s/.test(tag[cursor])) cursor += 1;
-      if (!/[A-Za-z_]/.test(tag[cursor] ?? "")) continue;
-      const nameStart = cursor;
-      while (cursor < tag.length && /[A-Za-z0-9_.:-]/.test(tag[cursor])) cursor += 1;
-      while (cursor < tag.length && /\s/.test(tag[cursor])) cursor += 1;
-      if (tag[cursor] === "=" && isCredentialKey(tag.slice(nameStart, cursor).trim())) {
-        invalid(field, "credential-bearing structured argv must use the secret channel.");
-      }
+    const result = readXmlTag(value, index);
+    rejectXmlTagNames(result.tag, field);
+    index = result.lastIndex;
+  }
+}
+
+function rejectStructuredKey(raw: string, quote: string, field: string): void {
+  let key = raw;
+  if (quote === '"') {
+    try { key = JSON.parse(`"${raw}"`) as string; } catch { /* inspect malformed keys too */ }
+  }
+  // JSON.parse handles valid escapes; malformed and shell-quoted bodies may
+  // lose another escape layer at their eventual consumer.
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
+    const decoded = key.replace(/\\(?:u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|(.))/g, (_match, unicode: string | undefined, hex: string | undefined, escaped: string | undefined) =>
+      unicode ? String.fromCodePoint(Number.parseInt(unicode, 16)) : hex ? String.fromCodePoint(Number.parseInt(hex, 16)) : escaped ?? "");
+    if (decoded === key) break;
+    key = decoded;
+  }
+}
+
+function rejectParsedJsonKeys(root: unknown, field: string): void {
+  const pending: unknown[] = [root];
+  while (pending.length) {
+    const node = pending.pop();
+    if (Array.isArray(node)) { for (const child of node) pending.push(child); continue; }
+    if (node === null || typeof node !== "object") continue;
+    for (const [key, child] of Object.entries(node)) {
+      if (isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
+      pending.push(child);
     }
   }
 }
 
-/** Inspect JSON bodies as data, including JSON escapes in field names. */
-function rejectStructuredCredentialPayload(value: string, field: string): void {
-  const rejectKey = (raw: string, quote: string): void => {
-    let key = raw;
-    if (quote === '"') {
-      try { key = JSON.parse(`"${raw}"`) as string; } catch { /* inspect malformed keys too */ }
-    }
-    // JSON.parse handles valid JSON escapes. Also inspect malformed and
-    // shell-quoted bodies, where another consumer may remove one escape layer.
-    for (let depth = 0; depth < 3; depth += 1) {
-      if (isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
-      const decoded = key.replace(/\\(?:u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|(.))/g, (_match, unicode: string | undefined, hex: string | undefined, escaped: string | undefined) =>
-        unicode ? String.fromCodePoint(Number.parseInt(unicode, 16)) : hex ? String.fromCodePoint(Number.parseInt(hex, 16)) : escaped ?? "");
-      if (decoded === key) break;
-      key = decoded;
-    }
-  };
-  const inspect = (root: unknown): void => {
-    const pending: unknown[] = [root];
-    while (pending.length) {
-      const node = pending.pop();
-      if (Array.isArray(node)) { for (const child of node) pending.push(child); continue; }
-      if (node === null || typeof node !== "object") continue;
-      for (const [key, child] of Object.entries(node)) {
-        if (isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
-        pending.push(child);
-      }
-    }
-  };
-  // A script or --data-raw= argument may contain a JSON body after other
-  // text. Include shell-quoted JSON in package scripts without executing it.
+function structuredCandidates(value: string): string[] {
   const candidates = [value];
   for (let depth = 0; depth < 2; depth += 1) {
     const unquoted = candidates.at(-1)!.replaceAll('\\"', '"');
     if (unquoted === candidates.at(-1)) break;
     candidates.push(unquoted);
   }
-  for (const candidate of candidates) {
-    const stack: Array<{ delimiter: "{" | "["; expectsKey: boolean }> = [];
-    const jsonStrings: Array<[number, number]> = [];
-    let start = -1;
-    let stringStart = -1;
-    let quote = "";
-    let escaped = false;
-    let pendingKey: { raw: string; quote: string } | undefined;
-    for (let end = 0; end < candidate.length; end += 1) {
-      const char = candidate[end];
-      if (stack.length === 0) {
-        if (char !== "{" && char !== "[") continue;
-        start = end;
-      }
-      if (quote) {
-        if (escaped) escaped = false;
-        else if (char === "\\") escaped = true;
-        else if (char === quote) {
-          const closedQuote = quote;
-          quote = "";
-          if (stack.length) jsonStrings.push([stringStart, end]);
-          // Inspect a key even when the object cannot be parsed. A missing
-          // comma leaves expectsKey false, so hold the quoted token until the
-          // next significant character establishes whether it is a key.
-          if (stack.at(-1)?.delimiter === "{") {
-            const raw = candidate.slice(stringStart + 1, end);
-            if (stack.at(-1)!.expectsKey) rejectKey(raw, closedQuote);
-            else pendingKey = { raw, quote: closedQuote };
-          }
-        }
-        continue;
-      }
-      if (/\s/.test(char)) continue;
-      // Comments are invalid JSON, but clients can still consume these bodies.
-      // Skip their content so quoted words inside comments are not fields, and
-      // preserve a possible key across comments before its colon.
-      if (char === "/" && candidate[end + 1] === "*") {
-        const close = candidate.indexOf("*/", end + 2);
-        end = close < 0 ? candidate.length : close + 1;
-        continue;
-      }
-      if (char === "/" && candidate[end + 1] === "/") {
-        const newline = candidate.indexOf("\n", end + 2);
-        end = newline < 0 ? candidate.length : newline;
-        continue;
-      }
-      if (pendingKey) {
-        if (char === ":") rejectKey(pendingKey.raw, pendingKey.quote);
-        pendingKey = undefined;
-      }
-      // Permissive object syntaxes also allow bare field names. Inspect the
-      // field before its value even when a comment separates it from ':';
-      // the eventual JSON.parse failure must not turn it into unchecked argv.
-      if (stack.at(-1)?.delimiter === "{" && /[A-Za-z_]/.test(char)) {
-        let bareEnd = end + 1;
-        while (bareEnd < candidate.length && /[A-Za-z0-9_.-]/.test(candidate[bareEnd])) bareEnd += 1;
-        const bare = candidate.slice(end, bareEnd);
-        if (bare) {
-          let after = bareEnd;
-          while (after < candidate.length) {
-            if (/\s/.test(candidate[after])) { after += 1; continue; }
-            if (candidate.startsWith("/*", after)) {
-              const close = candidate.indexOf("*/", after + 2);
-              after = close < 0 ? candidate.length : close + 2;
-              continue;
-            }
-            if (candidate.startsWith("//", after)) {
-              const newline = candidate.indexOf("\n", after + 2);
-              after = newline < 0 ? candidate.length : newline + 1;
-              continue;
-            }
-            break;
-          }
-          if (candidate[after] === ":") rejectKey(bare, "");
-          end = bareEnd - 1;
-          continue;
-        }
-      }
-      if (char === '"' || char === "'") { quote = char; stringStart = end; continue; }
-      if (char === "{" || char === "[") stack.push({ delimiter: char, expectsKey: char === "{" });
-      else if (char === ":" && stack.at(-1)?.delimiter === "{") stack.at(-1)!.expectsKey = false;
-      else if (char === "," && stack.at(-1)?.delimiter === "{") stack.at(-1)!.expectsKey = true;
-      else if (char === "}" || char === "]") {
-        if (stack.pop()?.delimiter !== (char === "}" ? "{" : "[")) { stack.length = 0; quote = ""; continue; }
-        if (stack.length === 0) {
-          try { inspect(JSON.parse(candidate.slice(start, end + 1)) as unknown); }
-          catch (error) { if (error instanceof DevFnError) throw error; }
-        }
-      }
+  return candidates;
+}
+
+/** Return the next significant character without treating comments as data. */
+function afterJsonTrivia(value: string, start: number): number {
+  let index = start;
+  while (index < value.length) {
+    if (/\s/.test(value[index])) { index += 1; continue; }
+    if (value.startsWith("/*", index)) {
+      const close = value.indexOf("*/", index + 2);
+      index = close < 0 ? value.length : close + 2;
+      continue;
     }
-    // Body arguments can be XML as well as JSON. A JSON string containing an
-    // XML-shaped word is data; an actual XML attribute remains a declaration.
+    if (value.startsWith("//", index)) {
+      const newline = value.indexOf("\n", index + 2);
+      index = newline < 0 ? value.length : newline + 1;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function bareJsonKeyEnd(value: string, start: number, field: string): number {
+  let end = start + 1;
+  while (end < value.length && /[A-Za-z0-9_.-]/.test(value[end])) end += 1;
+  if (value[afterJsonTrivia(value, end)] === ":") rejectStructuredKey(value.slice(start, end), "", field);
+  return end;
+}
+
+interface StructuredScanState {
+  stack: Array<{ delimiter: "{" | "["; expectsKey: boolean }>;
+  jsonStrings: Array<[number, number]>;
+  start: number;
+  stringStart: number;
+  quote: string;
+  escaped: boolean;
+  pendingKey?: { raw: string; quote: string };
+}
+
+function scanStructuredQuote(value: string, index: number, state: StructuredScanState, field: string): void {
+  const char = value[index];
+  if (state.escaped) { state.escaped = false; return; }
+  if (char === "\\") { state.escaped = true; return; }
+  if (char !== state.quote) return;
+  const closedQuote = state.quote;
+  state.quote = "";
+  if (state.stack.length) state.jsonStrings.push([state.stringStart, index]);
+  if (state.stack.at(-1)?.delimiter !== "{") return;
+  const raw = value.slice(state.stringStart + 1, index);
+  if (state.stack.at(-1)!.expectsKey) rejectStructuredKey(raw, closedQuote, field);
+  else state.pendingKey = { raw, quote: closedQuote };
+}
+
+function scanStructuredDelimiter(value: string, index: number, state: StructuredScanState, field: string): void {
+  const char = value[index];
+  if (char === "{" || char === "[") { state.stack.push({ delimiter: char, expectsKey: char === "{" }); return; }
+  if (char === ":" && state.stack.at(-1)?.delimiter === "{") { state.stack.at(-1)!.expectsKey = false; return; }
+  if (char === "," && state.stack.at(-1)?.delimiter === "{") { state.stack.at(-1)!.expectsKey = true; return; }
+  if (char !== "}" && char !== "]") return;
+  if (state.stack.pop()?.delimiter !== (char === "}" ? "{" : "[")) { state.stack.length = 0; state.quote = ""; return; }
+  if (state.stack.length > 0) return;
+  try { rejectParsedJsonKeys(JSON.parse(value.slice(state.start, index + 1)) as unknown, field); }
+  catch (error) { if (error instanceof DevFnError) throw error; }
+}
+
+function scanStructuredCandidate(value: string, field: string): Array<[number, number]> {
+  const state: StructuredScanState = { stack: [], jsonStrings: [], start: -1, stringStart: -1, quote: "", escaped: false };
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (state.stack.length === 0) {
+      if (char !== "{" && char !== "[") continue;
+      state.start = index;
+    }
+    if (state.quote) { scanStructuredQuote(value, index, state, field); continue; }
+    const afterTrivia = afterJsonTrivia(value, index);
+    if (afterTrivia > index) { index = afterTrivia - 1; continue; }
+    if (state.pendingKey) {
+      if (char === ":") rejectStructuredKey(state.pendingKey.raw, state.pendingKey.quote, field);
+      state.pendingKey = undefined;
+    }
+    if (state.stack.at(-1)?.delimiter === "{" && /[A-Za-z_]/.test(char)) {
+      index = bareJsonKeyEnd(value, index, field) - 1;
+      continue;
+    }
+    if (char === '"' || char === "'") { state.quote = char; state.stringStart = index; continue; }
+    scanStructuredDelimiter(value, index, state, field);
+  }
+  return state.jsonStrings;
+}
+
+/** Inspect JSON bodies as data, including JSON escapes in field names. */
+function rejectStructuredCredentialPayload(value: string, field: string): void {
+  // A script or --data-raw= argument may contain a JSON body after other
+  // text. Include shell-quoted JSON in package scripts without executing it.
+  for (const candidate of structuredCandidates(value)) {
+    const jsonStrings = scanStructuredCandidate(candidate, field);
+    // An XML-shaped JSON string is data; an actual XML attribute is a field.
     rejectXmlCredentialFields(candidate, field, jsonStrings);
   }
 }
@@ -470,6 +509,87 @@ function trimArgumentQuotes(value: string): string {
   return value.slice(start, end);
 }
 
+type ShortValueOption = ReturnType<typeof curlShortValueOption>;
+
+function rejectAssignmentOptions(token: string, next: string | undefined, short: ShortValueOption, field: string): void {
+  // Bare assignments, forwarding options, and attached short options all
+  // reach persisted argv, so they share the same credential-key grammar.
+  const bare = /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=)/.exec(token);
+  if (bare && isCredentialKey(bare[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+  const longValue = /^--[A-Za-z][A-Za-z0-9_-]*=(.*)$/.exec(token)?.[1];
+  if (longValue !== undefined) {
+    const value = trimArgumentQuotes(longValue);
+    const assignment = /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/.exec(value);
+    if (assignment && isCredentialKey(assignment[1]) &&
+        (/^--(?:env|build-arg)=/i.test(token) || /(?:=|:=|@)/.test(value.slice(assignment[1].length)))) {
+      invalid(field, "credential-bearing argv must use the secret channel.");
+    }
+  }
+  if (/^--(?:env|build-arg)$/i.test(token) && next !== undefined) {
+    const assignment = /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/.exec(trimArgumentQuotes(next));
+    if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+  }
+  if (!short) return;
+  const raw = short.attached || next;
+  if (raw === undefined) return;
+  for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
+    const assignment = /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@)/.exec(candidate);
+    if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+  }
+}
+
+function rejectCertificateOption(token: string, next: string | undefined, short: ShortValueOption, field: string): void {
+  const option = /^--cert(?:=(.*))?$/i.exec(token);
+  if (!option && short?.option !== "E") return;
+  const raw = option ? option[1] ?? next : short!.attached || next;
+  if (raw === undefined) return;
+  for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
+    // Curl's certificate:password form is a credential; a Windows drive
+    // prefix is a path separator and must remain ordinary data.
+    const pathOrPair = /^[A-Za-z]:[\\/]/.test(candidate) ? candidate.slice(2) : candidate;
+    if (pathOrPair.includes(":")) invalid(field, "credential-bearing argv must use the secret channel.");
+  }
+}
+
+function rejectHeaderOption(token: string, next: string | undefined, short: ShortValueOption, field: string): void {
+  const option = /^--(?:proxy-)?header(?:=(.*))?$/i.exec(token);
+  if (!option && short?.option !== "H") return;
+  const raw = option ? option[1] ?? next : short!.attached || next;
+  if (raw === undefined) return;
+  const name = /^([A-Za-z][A-Za-z0-9_-]*)\s*:/.exec(raw.replace(/["'`]/g, "").trimStart())?.[1];
+  if (name && isCredentialKey(name)) invalid(field, "credential-bearing header must use the secret channel.");
+}
+
+function rejectUserOption(token: string, next: string | undefined, short: ShortValueOption, field: string): void {
+  const option = /^(--(?:proxy-)?user(?:name)?|-u|-U)(?:=(.*))?$/i.exec(token);
+  if (!option && short?.option !== "u" && short?.option !== "U") return;
+  const raw = option ? option[2] ?? next : short!.attached || next;
+  if (raw === undefined) return;
+  for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
+    if (candidate.includes(":")) invalid(field, "credential-bearing argv must use the secret channel.");
+  }
+}
+
+function rejectFormOption(token: string, next: string | undefined, short: ShortValueOption, field: string): void {
+  const option = /^(--(?:data(?:-ascii|-binary|-raw|-urlencode)?|form(?:-string)?|url-query)|-[dF])(?:=(.*))?$/i.exec(token);
+  if (!option && short?.option !== "d" && short?.option !== "F") return;
+  const raw = option ? option[2] ?? next : short!.attached || next;
+  if (raw === undefined) return;
+  for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, "").replace(/^\+/, ""))) {
+    const assignment = /^([^=:@\s]+)(?:=|:=|@)/.exec(candidate);
+    if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+  }
+}
+
+function rejectCookieOption(token: string, tokens: readonly string[], index: number, nextOption: readonly number[], short: ShortValueOption, field: string): void {
+  const option = /^--cookie(?:=(.*))?$/i.exec(token);
+  if (!option && short?.option !== "b") return;
+  // Quoted cookie lists may have been split for inspection at spaces.
+  const raw = [option ? option[1] ?? "" : short!.attached,
+    ...tokens.slice(index + 1, nextOption[index + 1])].join(" ");
+  if (raw) rejectCredentialCookies(raw, field);
+}
+
 /** Check options that become credential-bearing only with their value. */
 function rejectCredentialVector(values: readonly string[], field: string): void {
   // Package scripts are one string; native commands and health probes are
@@ -477,9 +597,8 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
   const variants = values.map(decodedVariants);
   for (let depth = 0; depth <= 2; depth += 1) {
     const tokens = variants.flatMap((items) => maskJsonStrings(items[depth] ?? items.at(-1)!).match(/\S+/g) ?? []);
-    // Each cookie option owns only the operands up to the next option. Find
-    // those boundaries once; copying every remaining suffix is quadratic for
-    // commands containing many ordinary cookie options.
+    // Find each cookie operand boundary once to avoid suffix copying at
+    // every ordinary --cookie option.
     const nextOption = new Array<number>(tokens.length + 1);
     nextOption[tokens.length] = tokens.length;
     for (let index = tokens.length - 1; index >= 0; index -= 1) {
@@ -487,87 +606,35 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
     }
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index].replace(/^["']|["']$/g, "");
-      // `env`, `cross-env`, make and shells accept assignment operands with
-      // no flag at all. They are still persisted in resolved command plans.
-      const assignmentOperand = /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=)/.exec(token);
-      if (assignmentOperand && isCredentialKey(assignmentOperand[1])) invalid(field, "credential-bearing argv must use the secret channel.");
-      // Long options can wrap an environment or build assignment in their
-      // attached value. Inspect the value after the option's first '=' with
-      // the same key grammar used for bare and split assignment operands.
-      // `tokens` already contains the bounded decoded variants, so encoded
-      // option delimiters and assignment delimiters take this path too.
-      const longOptionValue = /^--[A-Za-z][A-Za-z0-9_-]*=(.*)$/.exec(token)?.[1];
-      const attachedValue = longOptionValue === undefined ? undefined : trimArgumentQuotes(longOptionValue);
-      const attachedAssignment = attachedValue === undefined ? undefined : /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/.exec(attachedValue);
-      const forwardingOption = /^--(?:env|build-arg)=/i.test(token);
-      if (attachedAssignment && isCredentialKey(attachedAssignment[1]) &&
-          (forwardingOption || /(?:=|:=|@)/.test(attachedValue!.slice(attachedAssignment[1].length)))) {
-        invalid(field, "credential-bearing argv must use the secret channel.");
-      }
-      if (/^--(?:env|build-arg)$/i.test(token)) {
-        const next = tokens[index + 1] === undefined ? undefined : trimArgumentQuotes(tokens[index + 1]);
-        const assignment = next === undefined ? undefined : /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/.exec(next);
-        if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
-      }
+      const next = tokens[index + 1];
       const short = curlShortValueOption(token);
-      // Curl and JVM both allow attached values on short options. A value
-      // that declares a credential key is sensitive regardless of the option
-      // letter (for example Java -Ddb.password=x).
-      if (short) {
-        const raw = short.attached || tokens[index + 1];
-        if (raw !== undefined) for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
-          const assignment = /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@)/.exec(candidate);
-          if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
-        }
-      }
-      const certOption = /^--cert(?:=(.*))?$/i.exec(token);
-      if (certOption || short?.option === "E") {
-        const raw = certOption ? certOption[1] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
-        if (raw !== undefined) for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
-          // Curl's certificate:password form is a credential. Keep a Windows
-          // drive path, whose colon is a path separator, as ordinary data.
-          const pathOrPair = /^[A-Za-z]:[\\/]/.test(candidate) ? candidate.slice(2) : candidate;
-          if (pathOrPair.includes(":")) invalid(field, "credential-bearing argv must use the secret channel.");
-        }
-      }
-      // curl accepts both -Hname:value and -H name:value, as well as long
-      // header options. A short attached header has no word boundary before
-      // its name, so the general header scan above cannot identify it.
-      const headerOption = /^--(?:proxy-)?header(?:=(.*))?$/i.exec(token);
-      if (headerOption || short?.option === "H") {
-        const raw = headerOption ? headerOption[1] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
-        if (raw !== undefined) {
-          const name = /^([A-Za-z][A-Za-z0-9_-]*)\s*:/.exec(raw.replace(/["'`]/g, "").trimStart())?.[1];
-          if (name && isCredentialKey(name)) invalid(field, "credential-bearing header must use the secret channel.");
-        }
-      }
-      const option = /^(--(?:proxy-)?user(?:name)?|-u|-U)(?:=(.*))?$/i.exec(token);
-      if (option || short?.option === "u" || short?.option === "U") {
-        const raw = option ? option[2] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
-        if (raw !== undefined) for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
-          if (candidate.includes(":")) invalid(field, "credential-bearing argv must use the secret channel.");
-        }
-      }
-      // Form and query options carry name=value data that may be decoded by
-      // the client after DevFn has already persisted the resolved argv.
-      const formOption = /^(--(?:data(?:-ascii|-binary|-raw|-urlencode)?|form(?:-string)?|url-query)|-[dF])(?:=(.*))?$/i.exec(token);
-      if (formOption || short?.option === "d" || short?.option === "F") {
-        const raw = formOption ? formOption[2] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
-        if (raw === undefined) continue;
-        for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, "").replace(/^\+/, ""))) {
-          const assignment = /^([^=:@\s]+)(?:=|:=|@)/.exec(candidate);
-          if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
-        }
-      }
-      const cookieOption = /^--cookie(?:=(.*))?$/i.exec(token);
-      if (cookieOption || short?.option === "b") {
-        // Quoted cookie lists may have been split for inspection at spaces.
-        const raw = [cookieOption ? cookieOption[1] ?? "" : short!.attached,
-          ...tokens.slice(index + 1, nextOption[index + 1])].join(" ");
-        if (raw) rejectCredentialCookies(raw, field);
-      }
+      rejectAssignmentOptions(token, next, short, field);
+      rejectCertificateOption(token, next, short, field);
+      rejectHeaderOption(token, next, short, field);
+      rejectUserOption(token, next, short, field);
+      rejectFormOption(token, next, short, field);
+      rejectCookieOption(token, tokens, index, nextOption, short, field);
     }
   }
+}
+
+function decodedJsonStrings(value: string): string[] {
+  const strings: string[] = [];
+  let start = -1;
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (start < 0) { if (char === '"') start = index; continue; }
+    if (escaped) { escaped = false; continue; }
+    if (char === "\\") { escaped = true; continue; }
+    if (char !== '"') continue;
+    try {
+      const decoded = JSON.parse(value.slice(start, index + 1)) as unknown;
+      if (typeof decoded === "string") strings.push(decoded);
+    } catch { /* A malformed quoted value cannot hide later strings. */ }
+    start = -1;
+  }
+  return strings;
 }
 
 function rejectUrlCredentials(value: string, field: string): void {
@@ -584,37 +651,27 @@ function rejectUrlCredentials(value: string, field: string): void {
     const next: string[] = [];
     for (const item of layer) {
       for (const checked of decodedVariants(item)) rejectUrlCredentialsDecoded(checked, field);
-      if (depth === 2) continue;
-      let start = -1;
-      let escaped = false;
-      for (let index = 0; index < item.length; index += 1) {
-        const char = item[index];
-        if (start < 0) { if (char === '"') start = index; continue; }
-        if (escaped) { escaped = false; continue; }
-        if (char === "\\") { escaped = true; continue; }
-        if (char !== '"') continue;
-        try {
-          const decoded = JSON.parse(item.slice(start, index + 1)) as unknown;
-          if (typeof decoded === "string") next.push(decoded);
-        } catch { /* A malformed quoted value cannot hide later strings. */ }
-        start = -1;
-      }
+      if (depth < 2) next.push(...decodedJsonStrings(item));
     }
     layer = next;
   }
 }
 
-function rejectUrlCredentialsDecoded(source: string, field: string): void {
-  // WHATWG URL parsing removes ASCII tab, LF and CR anywhere in a URL. Check
-  // that effective representation before an HTTP readiness origin is replaced:
-  // the replacement would otherwise erase userinfo from the configured URL.
-  const value = source.replace(/[\t\n\r]/g, "");
+function specialSchemeLength(lower: string, index: number): number {
+  for (const scheme of SPECIAL_URL_SCHEMES) {
+    if (lower.startsWith(scheme, index)) return scheme.length;
+  }
+  return 0;
+}
+
+function rejectUrlQueryCredentials(value: string, field: string): void {
   for (const match of value.matchAll(/[?&#]([^=?#&]+)=([^&#]*)/g)) {
     const key = new URLSearchParams(`${match[1]}=x`).keys().next().value ?? match[1];
-    if (isCredentialKey(key)) {
-      invalid(field, "credential-bearing URL must use the secret channel.");
-    }
+    if (isCredentialKey(key)) invalid(field, "credential-bearing URL must use the secret channel.");
   }
+}
+
+function rejectSchemeRelativeUserinfo(value: string, field: string): void {
   // Any // can start a scheme-relative authority, including in a query,
   // bracketed value, or after punctuation. Inspect the authority itself,
   // rather than guessing which preceding separator permits a URL. A single
@@ -628,18 +685,14 @@ function rejectUrlCredentialsDecoded(source: string, field: string): void {
     }
     index = end - 1;
   }
+}
+
+function rejectSpecialSchemeUserinfo(value: string, lower: string, field: string): void {
   // WHATWG normalizes special-scheme URLs with no `//`, and treats a
   // backslash before the authority as a slash. Inspect that authority too:
   // the `//` scan above intentionally does not reinterpret UNC paths.
-  const lower = value.toLowerCase();
-  const specialSchemeLength = (index: number): number => {
-    for (const scheme of SPECIAL_URL_SCHEMES) {
-      if (lower.startsWith(scheme, index)) return scheme.length;
-    }
-    return 0;
-  };
   for (let index = 0; index < value.length; index += 1) {
-    const schemeLength = specialSchemeLength(index);
+    const schemeLength = specialSchemeLength(lower, index);
     if (!schemeLength) continue;
     index += schemeLength;
     while (value[index] === "/" || value[index] === "\\") index += 1;
@@ -647,16 +700,19 @@ function rejectUrlCredentialsDecoded(source: string, field: string): void {
     // rather than rescanning its suffix keeps repeated prefixes linear.
     for (; index < value.length && !/[\s\\/?#<>"'`{}|]/.test(value[index]); index += 1) {
       if (value[index] === "@") invalid(field, "credential-bearing URL must use the secret channel.");
-      if (specialSchemeLength(index)) { index -= 1; break; }
+      if (specialSchemeLength(lower, index)) { index -= 1; break; }
     }
   }
+}
+
+function rejectUrlPathCredentials(value: string, lower: string, field: string): void {
   // A URL path can carry credential-named assignments as matrix parameters
   // or segments. Recognize URL context first so ordinary shell assignments
   // remain argv data. Each path segment is visited at most once.
   let inUrl = false;
   let inPath = false;
   for (let index = 0; index < value.length; index += 1) {
-    const schemeLength = specialSchemeLength(index);
+    const schemeLength = specialSchemeLength(lower, index);
     if (schemeLength) { inUrl = true; inPath = false; index += schemeLength - 1; continue; }
     if (value[index] === "/" && value[index + 1] === "/") { inUrl = true; inPath = false; index += 1; continue; }
     const char = value[index];
@@ -672,6 +728,18 @@ function rejectUrlCredentialsDecoded(source: string, field: string): void {
       invalid(field, "credential-bearing URL must use the secret channel.");
     }
   }
+}
+
+function rejectUrlCredentialsDecoded(source: string, field: string): void {
+  // WHATWG URL parsing removes ASCII tab, LF and CR anywhere in a URL. Check
+  // that effective representation before an HTTP readiness origin is replaced:
+  // the replacement would otherwise erase userinfo from the configured URL.
+  const value = source.replace(/[\t\n\r]/g, "");
+  const lower = value.toLowerCase();
+  rejectUrlQueryCredentials(value, field);
+  rejectSchemeRelativeUserinfo(value, field);
+  rejectSpecialSchemeUserinfo(value, lower, field);
+  rejectUrlPathCredentials(value, lower, field);
 }
 
 function normalized(name: string): string {
@@ -691,10 +759,166 @@ export function resolveLocalHostname(configured: string | undefined, key: string
   return result;
 }
 
+interface NodeResolutionContext {
+  input: EndpointResolutionInput;
+  config: DevFnConfig;
+  generated: Record<string, string>;
+  checkedGenerated: CheckedValues;
+  environment: CheckedValues;
+  directUrls: Record<string, string>;
+  composeUrls: Record<string, string>;
+  healthUrls: ReadonlyMap<string, string>;
+  budget: { remaining: number };
+}
+
+function serviceGeneratedValues(node: LifecyclePlan["nodes"][number], context: NodeResolutionContext, field: string): CheckedValues {
+  const { input, config, directUrls, composeUrls, checkedGenerated } = context;
+  const generated: CheckedValues = { values: { ...context.generated }, checked: { ...checkedGenerated.checked } };
+  if (node.kind !== "service") return generated;
+  const consumerProject = composeProjectName(config.services![node.name].projectName ?? "devfn", input.ownerId);
+  const unreachable = new Set<string>();
+  for (const producer of input.plan.nodes) {
+    const producerPorts = producer.kind === "service" ? config.services![producer.name].ports ?? {} :
+      Object.fromEntries((config.processes![producer.name].ports ?? []).map((port) => [port, true]));
+    for (const port of Object.keys(producerPorts)) {
+      const key = `DEVFN_URL_${normalized(port)}`;
+      if (!Object.hasOwn(directUrls, port)) continue;
+      const producerNetworks = input.composeNetworks?.[producer.name] ?? [];
+      const consumerNetworks = input.composeNetworks?.[node.name] ?? [];
+      const reachable = producerNetworks.some((name) => consumerNetworks.includes(name));
+      if (producer.kind === "service" && composeProjectName(config.services![producer.name].projectName ?? "devfn", input.ownerId) === consumerProject && reachable) {
+        generated.values[key] = composeUrls[port];
+        generated.checked[key] = composeUrls[port];
+      } else { delete generated.values[key]; delete generated.checked[key]; unreachable.add(key); }
+    }
+  }
+  const profile = config.profiles[input.plan.profile];
+  const spec = config.services![node.name];
+  for (const value of [...Object.values(profile.environment ?? {}), ...Object.values(spec.env ?? {})]) {
+    for (const match of value.matchAll(REFERENCE)) if (unreachable.has(match[1])) {
+      invalid(field, producerIsNative(input.plan, config, match[1]) ?
+        `reference ${match[1]} points to a native loopback process unreachable from Compose.` :
+        `reference ${match[1]} has no shared effective Compose network.`);
+    }
+  }
+  return generated;
+}
+
+function expandedArgv(item: string, location: string, lookup: (key: string) => [string, string], budget: { remaining: number }): [string, string] {
+  const pair = expand(item, location, lookup, budget);
+  if (!pair[0].length) invalid(location, "argv value cannot be empty.");
+  return pair;
+}
+
+function resolveNodeStartup(node: LifecyclePlan["nodes"][number], context: NodeResolutionContext): ResolvedNodeStartup {
+  const { input, config, checkedGenerated, environment, healthUrls, budget } = context;
+  const spec = node.kind === "process" ? config.processes?.[node.name] : config.services?.[node.name];
+  if (!spec) invalid(`nodes.${node.name}`, "selected node is missing.");
+  const field = `${node.kind === "process" ? "processes" : "services"}.${node.name}`;
+  const profile = config.profiles[input.plan.profile];
+  const profileKeys = new Map(Object.keys(profile.environment ?? {}).map((key) => [key.toUpperCase(), key]));
+  for (const key of Object.keys(spec.env ?? {})) {
+    const profileKey = profileKeys.get(key.toUpperCase());
+    if (profileKey && profileKey !== key) invalid(`${field}.env.${key}`, `collides with profile environment key ${profileKey}.`);
+  }
+  const processSpec = node.kind === "process" ? config.processes![node.name] : undefined;
+  const nativeBind: Record<string, string> = processSpec && processSpec.exposure !== "public" ? { HOST: "127.0.0.1", DEVFN_HOST: "127.0.0.1" } : {};
+  const nodeGenerated = serviceGeneratedValues(node, context, field);
+  const profileEnvironment = node.kind === "service" ? resolveValues(profile.environment ?? {}, nodeGenerated, nodeGenerated, `profiles.${input.plan.profile}.environment`, budget) : environment;
+  const nodeEnvironment = resolveValues(spec.env ?? {},
+    { values: { ...profileEnvironment.values, ...nativeBind }, checked: { ...profileEnvironment.checked, ...nativeBind } },
+    { values: { ...nodeGenerated.values, ...nativeBind }, checked: { ...nodeGenerated.checked, ...nativeBind } }, `${field}.env`, budget);
+  const readinessEnvironment = node.kind === "service" ?
+    resolveValues(spec.env ?? {}, environment, checkedGenerated, `${field}.env`, budget) : nodeEnvironment;
+  const lookup = (values: CheckedValues) => (key: string): [string, string] => {
+    if (!Object.hasOwn(values.values, key)) invalid(field, `missing reference ${key}.`);
+    return [values.values[key], values.checked[key]];
+  };
+  const commandPairs = processSpec?.command?.map((item, index) => expandedArgv(item, `${field}.command[${index}]`, lookup(nodeEnvironment), budget));
+  if (commandPairs) rejectCredentialVector(commandPairs.map((pair) => pair[1]), `${field}.command`);
+  const command = commandPairs?.map((pair) => pair[0]);
+  const scriptPair = processSpec?.script !== undefined ? expandedArgv(processSpec.script, `${field}.script`, lookup(nodeEnvironment), budget) : undefined;
+  if (scriptPair) rejectCredentialVector([scriptPair[1]], `${field}.script`);
+  const script = scriptPair?.[0];
+  const healthPairs = spec.health?.type === "command" ? spec.health.command.map((item, index) =>
+    expandedArgv(item, `${field}.health.command[${index}]`, lookup(readinessEnvironment), budget)) : undefined;
+  if (healthPairs) rejectCredentialVector(healthPairs.map((pair) => pair[1]), `${field}.health.command`);
+  const healthCommand = healthPairs?.map((pair) => pair[0]);
+  try {
+    if (processSpec) createProcessEnvironment({ ...processSpec, env: nodeEnvironment.values });
+    else createComposeEnvironment({ ...config.services![node.name], env: nodeEnvironment.values });
+  } catch (error) { invalid(field, error instanceof Error ? error.message : "environment keys collide after case folding."); }
+  return { environment: nodeEnvironment.values, readinessEnvironment: readinessEnvironment.values, ...(healthUrls.has(node.name) ? { healthUrl: healthUrls.get(node.name) } : {}), ...(command ? { command } : {}), ...(script ? { script } : {}), ...(healthCommand ? { healthCommand } : {}) };
+}
+
+function selectedProxyHostnames(input: EndpointResolutionInput, config: DevFnConfig, httpPorts: Set<string>): Set<string> {
+  const hostnames = new Set<string>();
+  if (!input.plan.proxy) return hostnames;
+  for (const [name, hostname] of Object.entries(config.hostnames ?? {})) {
+    if (hostname.profiles && !hostname.profiles.includes(input.plan.profile)) continue;
+    hostnames.add(resolveLocalHostname(hostname.hostname, name, config.project.id, input.ownerId, input.hostnameSuffix).toLowerCase());
+    if (hostname.hostname && !hostname.hostname.includes("{instance}")) {
+      hostnames.add(hostname.hostname.replaceAll("{project}", config.project.id).toLowerCase());
+    }
+    httpPorts.add(hostname.target);
+  }
+  return hostnames;
+}
+
+function directHealthUrl(node: LifecyclePlan["nodes"][number], input: EndpointResolutionInput, config: DevFnConfig,
+  selectedRouteHostnames: ReadonlySet<string>, httpPorts: Set<string>, httpSchemes: Map<string, string>): string | undefined {
+  const health = node.kind === "process" ? config.processes?.[node.name]?.health : config.services?.[node.name]?.health;
+  if (health?.type !== "http") return undefined;
+  const field = `${node.kind === "process" ? "processes" : "services"}.${node.name}.health`;
+  if (health.url) rejectUrlCredentials(health.url, `${field}.url`);
+  if (health.path) rejectUrlCredentials(health.path, `${field}.path`);
+  let url: URL;
+  try { url = new URL(resolveHttpReadinessUrl(health, input.ports)); }
+  catch { invalid(field, "invalid direct HTTP readiness URL."); }
+  rejectUrlCredentials(url.toString(), field);
+  const selectedProxyHost = selectedRouteHostnames.has(url.hostname.toLowerCase().replace(/\.$/, ""));
+  if (!health.port && selectedProxyHost) invalid(field, "URL-only readiness cannot wait for a selected proxy route before installation; use its leased port.");
+  if (health.port) {
+    if (health.url && selectedRouteHostnames.has(new URL(health.url).hostname.toLowerCase().replace(/\.$/, ""))) {
+      url.protocol = "http:";
+      // URL drops an explicit default HTTPS port before the scheme changes.
+      url.port = String(input.ports[health.port]);
+    }
+    httpPorts.add(health.port);
+    httpSchemes.set(health.port, url.protocol.slice(0, -1));
+  }
+  return url.toString();
+}
+
+function generatedPortValues(input: EndpointResolutionInput, config: DevFnConfig, generated: Record<string, string>,
+  httpPorts: ReadonlySet<string>, httpSchemes: ReadonlyMap<string, string>): { directUrls: Record<string, string>; composeUrls: Record<string, string> } {
+  const directUrls: Record<string, string> = Object.create(null);
+  const composeUrls: Record<string, string> = Object.create(null);
+  for (const name of input.plan.portNames) {
+    const port = input.ports[name];
+    if (!Number.isInteger(port) || port < 1 || port > 65535) invalid(`ports.${name}`, "requires a leased port between 1 and 65535.");
+    generated[`DEVFN_PORT_${normalized(name)}`] = String(port);
+    const alias = config.ports?.[name]?.env;
+    if (alias) generated[alias] = String(port);
+    if (!httpPorts.has(name) || config.ports?.[name]?.protocol === "udp") continue;
+    const scheme = httpSchemes.get(name) ?? "http";
+    const url = `${scheme}://127.0.0.1:${port}`;
+    directUrls[name] = url;
+    generated[`DEVFN_URL_${normalized(name)}`] = url;
+    for (const node of input.plan.nodes) {
+      if (node.kind !== "service") continue;
+      const service = config.services?.[node.name];
+      const internal = service?.ports?.[name];
+      if (internal !== undefined && input.composeNetworks?.[node.name]?.length) composeUrls[name] = `${scheme}://${service!.service}:${internal}`;
+    }
+  }
+  return { directUrls, composeUrls };
+}
+
 /** Resolve one selected profile before launch; no process, lease, or filesystem mutation occurs here. */
 export function resolveEndpointTemplates(input: EndpointResolutionInput): EndpointResolution {
   const budget = { remaining: MAX_TEMPLATE_AGGREGATE_BYTES };
-  const { plan, ownerId, ports } = input;
+  const { plan, ownerId } = input;
   const config = validateDevFnConfig(input.config);
   if (!ownerId || ownerId.includes("\0")) invalid("ownerId", "must be a non-empty opaque value without NUL.");
   const profile = config.profiles[plan.profile];
@@ -704,142 +928,20 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     DEVFN_INSTANCE_ID: ownerId,
     DEVFN_PROFILE: plan.profile,
   };
-  const directUrls: Record<string, string> = Object.create(null);
-  const composeUrls: Record<string, string> = Object.create(null);
   const httpPorts = new Set<string>();
   const httpSchemes = new Map<string, string>();
   const healthUrls = new Map<string, string>();
-  const selectedRouteHostnames = new Set<string>();
-  if (plan.proxy) for (const [name, hostname] of Object.entries(config.hostnames ?? {})) {
-    if (!hostname.profiles || hostname.profiles.includes(plan.profile)) {
-      selectedRouteHostnames.add(resolveLocalHostname(hostname.hostname, name, config.project.id, ownerId, input.hostnameSuffix).toLowerCase());
-      if (hostname.hostname && !hostname.hostname.includes("{instance}")) {
-        selectedRouteHostnames.add(hostname.hostname.replaceAll("{project}", config.project.id).toLowerCase());
-      }
-      httpPorts.add(hostname.target);
-    }
-  }
+  const selectedRouteHostnames = selectedProxyHostnames(input, config, httpPorts);
   for (const node of plan.nodes) {
-    const health = node.kind === "process" ? config.processes?.[node.name]?.health : config.services?.[node.name]?.health;
-    if (health?.type !== "http") continue;
-    const field = `${node.kind === "process" ? "processes" : "services"}.${node.name}.health`;
-    if (health.url) rejectUrlCredentials(health.url, `${field}.url`);
-    if (health.path) rejectUrlCredentials(health.path, `${field}.path`);
-    let url: URL;
-    try { url = new URL(resolveHttpReadinessUrl(health, ports)); }
-    catch { invalid(field, "invalid direct HTTP readiness URL."); }
-    rejectUrlCredentials(url.toString(), field);
-    if (!health.port && selectedRouteHostnames.has(url.hostname.toLowerCase().replace(/\.$/, ""))) invalid(field, "URL-only readiness cannot wait for a selected proxy route before installation; use its leased port.");
-    if (health.port) {
-      if (health.url && selectedRouteHostnames.has(new URL(health.url).hostname.toLowerCase().replace(/\.$/, ""))) {
-        url.protocol = "http:";
-        // URL drops an explicit default HTTPS port before the scheme changes.
-        // Restore the actual lease so startup, status and retry probe the same endpoint.
-        url.port = String(ports[health.port]);
-      }
-      httpPorts.add(health.port);
-      httpSchemes.set(health.port, url.protocol.slice(0, -1));
-    }
-    healthUrls.set(node.name, url.toString());
+    const url = directHealthUrl(node, input, config, selectedRouteHostnames, httpPorts, httpSchemes);
+    if (url) healthUrls.set(node.name, url);
   }
-  for (const name of plan.portNames) {
-    const port = ports[name];
-    if (!Number.isInteger(port) || port < 1 || port > 65535) invalid(`ports.${name}`, "requires a leased port between 1 and 65535.");
-    generated[`DEVFN_PORT_${normalized(name)}`] = String(port);
-    const alias = config.ports?.[name]?.env;
-    if (alias) generated[alias] = String(port);
-    if (httpPorts.has(name) && config.ports?.[name]?.protocol !== "udp") {
-      const url = `${httpSchemes.get(name) ?? "http"}://127.0.0.1:${port}`;
-      directUrls[name] = url;
-      generated[`DEVFN_URL_${normalized(name)}`] = url;
-      for (const node of plan.nodes) {
-        if (node.kind !== "service") continue;
-        const service = config.services?.[node.name];
-        const internal = service?.ports?.[name];
-        if (internal !== undefined && input.composeNetworks?.[node.name]?.length) composeUrls[name] = `${httpSchemes.get(name) ?? "http"}://${service!.service}:${internal}`;
-      }
-    }
-  }
+  const { directUrls, composeUrls } = generatedPortValues(input, config, generated, httpPorts, httpSchemes);
   const checkedGenerated: CheckedValues = { values: generated, checked: { ...generated, DEVFN_INSTANCE_ID: "devfnopaqueowner" } };
   const environment = resolveValues(profile.environment ?? {}, checkedGenerated, checkedGenerated, `profiles.${plan.profile}.environment`, budget);
   const nodes: Record<string, ResolvedNodeStartup> = Object.create(null);
-  for (const node of plan.nodes) {
-    const spec = node.kind === "process" ? config.processes?.[node.name] : config.services?.[node.name];
-    if (!spec) invalid(`nodes.${node.name}`, "selected node is missing.");
-    const field = `${node.kind === "process" ? "processes" : "services"}.${node.name}`;
-    const profileKeys = new Map(Object.keys(profile.environment ?? {}).map((key) => [key.toUpperCase(), key]));
-    for (const key of Object.keys(spec.env ?? {})) {
-      const profileKey = profileKeys.get(key.toUpperCase());
-      if (profileKey && profileKey !== key) invalid(`${field}.env.${key}`, `collides with profile environment key ${profileKey}.`);
-    }
-    const processSpec = node.kind === "process" ? config.processes![node.name] : undefined;
-    const nativeBind: Record<string, string> = processSpec && processSpec.exposure !== "public" ? { HOST: "127.0.0.1", DEVFN_HOST: "127.0.0.1" } : {};
-    const nodeGenerated: CheckedValues = { values: { ...generated }, checked: { ...checkedGenerated.checked } };
-    if (node.kind === "service") {
-      const consumerProject = composeProjectName(config.services![node.name].projectName ?? "devfn", ownerId);
-      const unreachable = new Set<string>();
-      for (const producer of plan.nodes) {
-        const producerPorts = producer.kind === "service" ? config.services![producer.name].ports ?? {} :
-          Object.fromEntries((config.processes![producer.name].ports ?? []).map((port) => [port, true]));
-        for (const port of Object.keys(producerPorts)) {
-          const key = `DEVFN_URL_${normalized(port)}`;
-          if (!Object.hasOwn(directUrls, port)) continue;
-          const producerNetworks = input.composeNetworks?.[producer.name] ?? [];
-          const consumerNetworks = input.composeNetworks?.[node.name] ?? [];
-          const reachable = producerNetworks.some((name) => consumerNetworks.includes(name));
-          if (producer.kind === "service" && composeProjectName(config.services![producer.name].projectName ?? "devfn", ownerId) === consumerProject && reachable) {
-            nodeGenerated.values[key] = composeUrls[port];
-            nodeGenerated.checked[key] = composeUrls[port];
-          } else { delete nodeGenerated.values[key]; delete nodeGenerated.checked[key]; unreachable.add(key); }
-        }
-      }
-      for (const value of [...Object.values(profile.environment ?? {}), ...Object.values(spec.env ?? {})]) {
-        for (const match of value.matchAll(REFERENCE)) if (unreachable.has(match[1])) {
-          invalid(field, producerIsNative(plan, config, match[1]) ?
-            `reference ${match[1]} points to a native loopback process unreachable from Compose.` :
-            `reference ${match[1]} has no shared effective Compose network.`);
-        }
-      }
-    }
-    const profileEnvironment = node.kind === "service" ? resolveValues(profile.environment ?? {}, nodeGenerated, nodeGenerated, `profiles.${plan.profile}.environment`, budget) : environment;
-    const nodeEnvironment = resolveValues(spec.env ?? {},
-      { values: { ...profileEnvironment.values, ...nativeBind }, checked: { ...profileEnvironment.checked, ...nativeBind } },
-      { values: { ...nodeGenerated.values, ...nativeBind }, checked: { ...nodeGenerated.checked, ...nativeBind } }, `${field}.env`, budget);
-    const readinessEnvironment = node.kind === "service" ?
-      resolveValues(spec.env ?? {}, environment, checkedGenerated, `${field}.env`, budget) : nodeEnvironment;
-    const lookup = (key: string): [string, string] => {
-      if (!Object.hasOwn(nodeEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
-      return [nodeEnvironment.values[key], nodeEnvironment.checked[key]];
-    };
-    const argv = (item: string, location: string): [string, string] => {
-      const [value, checked] = expand(item, location, lookup, budget);
-      if (value.length === 0) invalid(location, "argv value cannot be empty.");
-      return [value, checked];
-    };
-    const commandPairs = processSpec?.command?.map((item, index) => argv(item, `${field}.command[${index}]`));
-    if (commandPairs) rejectCredentialVector(commandPairs.map((pair) => pair[1]), `${field}.command`);
-    const command = commandPairs?.map((pair) => pair[0]);
-    const scriptPair = processSpec?.script !== undefined ? argv(processSpec.script, `${field}.script`) : undefined;
-    if (scriptPair) rejectCredentialVector([scriptPair[1]], `${field}.script`);
-    const script = scriptPair?.[0];
-    const healthLookup = (key: string): [string, string] => {
-      if (!Object.hasOwn(readinessEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
-      return [readinessEnvironment.values[key], readinessEnvironment.checked[key]];
-    };
-    const healthPairs = spec.health?.type === "command" ? spec.health.command.map((item, index): [string, string] => {
-      const location = `${field}.health.command[${index}]`;
-      const [value, checked] = expand(item, location, healthLookup, budget);
-      if (!value.length) invalid(location, "argv value cannot be empty.");
-      return [value, checked];
-    }) : undefined;
-    if (healthPairs) rejectCredentialVector(healthPairs.map((pair) => pair[1]), `${field}.health.command`);
-    const healthCommand = healthPairs?.map((pair) => pair[0]);
-    try {
-      if (processSpec) createProcessEnvironment({ ...processSpec, env: nodeEnvironment.values });
-      else createComposeEnvironment({ ...config.services![node.name], env: nodeEnvironment.values });
-    } catch (error) { invalid(field, error instanceof Error ? error.message : "environment keys collide after case folding."); }
-    nodes[node.name] = { environment: nodeEnvironment.values, readinessEnvironment: readinessEnvironment.values, ...(healthUrls.has(node.name) ? { healthUrl: healthUrls.get(node.name) } : {}), ...(command ? { command } : {}), ...(script ? { script } : {}), ...(healthCommand ? { healthCommand } : {}) };
-  }
+  const context: NodeResolutionContext = { input, config, generated, checkedGenerated, environment, directUrls, composeUrls, healthUrls, budget };
+  for (const node of plan.nodes) nodes[node.name] = resolveNodeStartup(node, context);
   return { ownerId, generated, environment: environment.values, directUrls, composeUrls, nodes };
 }
 
