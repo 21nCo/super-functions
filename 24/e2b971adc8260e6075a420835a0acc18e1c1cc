@@ -1,0 +1,32 @@
+devfn/cli/test/cli.test.ts
+  h_bdc5b81c173ee9 443-479
+devfn/compose/README.md
+  h_bdc5b81c173ee9 4-5
+devfn/compose/src/index.ts
+  h_bdc5b81c173ee9 3,10,14,83,90-94,106,114,116-149,174-179,183-185,189,193-199,201-203,210,263,270
+devfn/compose/src/source-files.ts
+  h_bdc5b81c173ee9 1,3,5-6,8,12,14-15,18-47,51-55,57-67,69,72-74,76-78,80,82,87-102,104-106,108-119,122-124,132-134,136,138-139,141-143,150-154
+devfn/compose/test/override.test.ts
+  h_bdc5b81c173ee9 14-25,57-59,69-176,265-266
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 57-63,89,91,100,236-242,552,554
+devfn/core/src/runtime.ts
+  h_bdc5b81c173ee9 61-62
+devfn/core/test/startup-fixture.test.ts
+  h_bdc5b81c173ee9 53-86
+devfn/docs/configuration.md
+  h_bdc5b81c173ee9 69
+devfn/ports/src/listeners.ts
+  h_bdc5b81c173ee9 121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "24e2b971adc8260e6075a420835a0acc18e1c1cc",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
