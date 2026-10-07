@@ -933,6 +933,106 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects URL userinfo after WHATWG control stripping across all template consumers", async () => {
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-url-controls-"));
+    const stateDir = path.join(root, "state");
+    const sources = ["profile", "process-env", "command", "script", "health", "compose-health"] as const;
+    const configure = (source: typeof sources[number], value: string): DevFnConfig => {
+      const config = fixture();
+      if (source === "profile") config.profiles.default.environment = { TARGET: value };
+      if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, TARGET: value };
+      if (source === "command") config.processes!.worker.command = ["tool", value];
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    try {
+      for (const source of sources) {
+        for (const control of ["\n", "\r", "\t"]) {
+          for (const value of [
+            `https://alice:${marker}${control}@host.test/path`,
+            `https:alice:${marker}${control}@host.test/path`,
+            `{"next":"https:\\/\\/alice:${marker}${control}@host.test/path"}`,
+            `https://outer.test/?next=${encodeURIComponent(`//alice:${marker}${control}@host.test/path`)}`,
+          ]) expect(() => resolve(configure(source, value)), source).toThrow(/secret channel/);
+        }
+        const config = configure(source, `https://alice:${marker}\n@host.test/path`);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        for (const ordinary of ["https://host.test/path", "https://outer.test/?next=//host.test/path", "\\\\server\\share", "literal $HOME `id` ; & |"]) {
+          expect(() => resolve(configure(source, ordinary)), source).not.toThrow();
+        }
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
+  it("rejects normalized HTTP health URL credentials before leased-origin replacement", async () => {
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-health-controls-"));
+    const stateDir = path.join(root, "state");
+    try {
+      for (const kind of ["process", "service"] as const) for (const leased of [true, false]) for (const control of ["\n", "\r", "\t", "%0A"]) {
+        const config = fixture();
+        const health = { type: "http" as const, ...(leased ? { port: "api" } : {}), url: `https://alice:${marker}${control}@host.test/ready` };
+        if (kind === "process") {
+          config.processes!.api.health = health;
+          config.profiles.default.processes = ["api"];
+          config.profiles.default.environment = {};
+        }
+        else {
+          config.services = { web: { adapter: "compose", service: "web", ...(leased ? { ports: { api: 8080 } } : {}), health } };
+          config.profiles.default.processes = [];
+          config.profiles.default.services = ["web"];
+          config.profiles.default.environment = {};
+        }
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
+        const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      for (const kind of ["process", "service"] as const) {
+        const config = fixture();
+        const health = { type: "http" as const, url: "https://host.test/ready?theme=dark" };
+        if (kind === "process") {
+          config.processes!.api.health = health;
+          config.profiles.default.processes = ["api"];
+          config.profiles.default.environment = {};
+        }
+        else {
+          config.services = { web: { adapter: "compose", service: "web", health } };
+          config.profiles.default.processes = [];
+          config.profiles.default.services = ["web"];
+          config.profiles.default.environment = {};
+        }
+        expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).not.toThrow();
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
+  it("scans repeated ordinary cookie operands with bounded work", () => {
+    const measure = (pairs: number): number => {
+      const config = fixture();
+      config.processes!.worker.command = ["tool", ...Array.from({ length: pairs }, () => ["--cookie", "theme=dark"]).flat()];
+      const started = performance.now();
+      resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+      return performance.now() - started;
+    };
+    const short = measure(4_000);
+    const long = measure(32_000);
+    expect(long, `${short.toFixed(1)}ms vs ${long.toFixed(1)}ms`).toBeLessThan(short * 12 + 250);
+  }, 20_000);
+
   it("rejects credential-named effective HTTP health path parameters for process and Compose", async () => {
     const marker = "SYNTHETIC_DO_NOT_USE";
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-health-url-secret-"));

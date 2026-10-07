@@ -449,6 +449,14 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
   const variants = values.map(decodedVariants);
   for (let depth = 0; depth <= 2; depth += 1) {
     const tokens = variants.flatMap((items) => maskJsonStrings(items[depth] ?? items.at(-1)!).match(/\S+/g) ?? []);
+    // Each cookie option owns only the operands up to the next option. Find
+    // those boundaries once; copying every remaining suffix is quadratic for
+    // commands containing many ordinary cookie options.
+    const nextOption = new Array<number>(tokens.length + 1);
+    nextOption[tokens.length] = tokens.length;
+    for (let index = tokens.length - 1; index >= 0; index -= 1) {
+      nextOption[index] = /^--?[A-Za-z]/.test(tokens[index]) ? index : nextOption[index + 1];
+    }
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index].replace(/^["']|["']$/g, "");
       // `env`, `cross-env`, make and shells accept assignment operands with
@@ -522,10 +530,8 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       const cookieOption = token.match(/^--cookie(?:=(.*))?$/i);
       if (cookieOption || short?.option === "b") {
         // Quoted cookie lists may have been split for inspection at spaces.
-        const following = tokens.slice(index + 1);
-        const nextOption = following.findIndex((item) => /^--?[A-Za-z]/.test(item));
         const raw = [cookieOption ? cookieOption[1] ?? "" : short!.attached,
-          ...following.slice(0, nextOption < 0 ? undefined : nextOption)].join(" ");
+          ...tokens.slice(index + 1, nextOption[index + 1])].join(" ");
         if (raw) rejectCredentialCookies(raw, field);
       }
     }
@@ -566,7 +572,11 @@ function rejectUrlCredentials(value: string, field: string): void {
   }
 }
 
-function rejectUrlCredentialsDecoded(value: string, field: string): void {
+function rejectUrlCredentialsDecoded(source: string, field: string): void {
+  // WHATWG URL parsing removes ASCII tab, LF and CR anywhere in a URL. Check
+  // that effective representation before an HTTP readiness origin is replaced:
+  // the replacement would otherwise erase userinfo from the configured URL.
+  const value = source.replace(/[\t\n\r]/g, "");
   for (const match of value.matchAll(/[?&#]([^=?#&]+)=([^&#]*)/g)) {
     const key = new URLSearchParams(`${match[1]}=x`).keys().next().value ?? match[1];
     if (isCredentialKey(key)) {
