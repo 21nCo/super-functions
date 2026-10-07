@@ -52,8 +52,8 @@ function mergeService(base: Record<string, unknown>, child: Record<string, unkno
     const parent = merged[key];
     if (key === "environment" && !replace.has(key)) {
       merged[key] = { ...(envMapping(parent) ?? {}), ...(envMapping(value) ?? {}) };
-    } else if (key === "env_file" && !replace.has(key) && Array.isArray(parent) && Array.isArray(value)) {
-      merged[key] = [...parent, ...value];
+    } else if (key === "env_file" && !replace.has(key) && parent != null && value != null) {
+      merged[key] = [...(Array.isArray(parent) ? parent : [parent]), ...(Array.isArray(value) ? value : [value])];
     } else if (!replace.has(key) && record(parent) && record(value)) {
       merged[key] = mergeService(record(parent)!, record(value)!, new Set());
     } else {

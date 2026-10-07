@@ -139,44 +139,28 @@ export function createComposeReadinessEnvironment(spec: ComposeServiceSpec, reso
   return createComposeEnvironment({ ...spec, env: resolved }, resolved, source);
 }
 
-function referencesSecret(value: unknown, names: ReadonlySet<string>): boolean {
-  if (typeof value !== "string") return false;
-  for (const { name } of interpolationTokens(value)) if (names.has(name)) return true;
-  return false;
+function compareCanonicalKeys(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
-function canonicalSecretExpression(raw: string, names: ReadonlySet<string>): string {
-  const pieces: string[] = [];
-  let cursor = 0;
-  for (const token of interpolationTokens(raw)) {
-    if (token.start < cursor || !names.has(token.name)) continue;
-    pieces.push(raw.slice(cursor, token.start), "<secret-channel>");
-    cursor = token.end;
-  }
-  pieces.push(raw.slice(cursor));
-  return pieces.join("");
-}
-
-function canonicalComposeValue(value: unknown, raw: unknown, secretNames: ReadonlySet<string>, key?: string): unknown {
+function canonicalComposeValue(value: unknown, secretNames: ReadonlySet<string>, key?: string): unknown {
   if (key === "environment" && value && typeof value === "object" && !Array.isArray(value)) {
-    return canonicalDeclaredEnvironment(value as Record<string, unknown>, raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {}, secretNames);
+    return canonicalDeclaredEnvironment(value as Record<string, unknown>, secretNames);
   }
-  if (typeof raw === "string" && referencesSecret(raw, secretNames)) {
-    return { source: canonicalSecretExpression(raw, secretNames) };
-  }
-  if (Array.isArray(value)) return value.map((item, index) => canonicalComposeValue(item, Array.isArray(raw) ? raw[index] : undefined, secretNames));
+  if (Array.isArray(value)) return value.map((item) => canonicalComposeValue(item, secretNames));
   if (value && typeof value === "object") {
-    const rawFields = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-    return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
-      .map(([name, item]) => [name, canonicalComposeValue(item, rawFields[name], secretNames, name)]));
+    return Object.fromEntries(Object.entries(value).sort(([left], [right]) => compareCanonicalKeys(left, right))
+      .map(([name, item]) => [name, canonicalComposeValue(item, secretNames, name)]));
   }
   return value;
 }
 
-function canonicalDeclaredEnvironment(values: Record<string, unknown>, raw: Record<string, unknown>, secretNames: ReadonlySet<string>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(values).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+function canonicalDeclaredEnvironment(values: Record<string, unknown>, secretNames: ReadonlySet<string>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(values).sort(([left], [right]) => compareCanonicalKeys(left, right))
     .map(([key, value]) => [key, isCredentialKey(key) || secretNames.has(key)
-      ? "<secret-channel>" : canonicalComposeValue(value, raw[key], secretNames)]));
+      ? "<secret-channel>" : canonicalComposeValue(value, secretNames)]));
 }
 
 function selectedComposeResources(
@@ -220,13 +204,73 @@ async function selectedConfigFileState(resources: Record<string, unknown>): Prom
   return state;
 }
 
+function quotedEnvFileValue(lines: string[], startLine: number, startCursor: number, quote: string): { value: string; lastLine: number } {
+  const parts: string[] = [];
+  for (let lineIndex = startLine; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    let cursor = lineIndex === startLine ? startCursor : 0;
+    const valueStart = cursor;
+    while (cursor < line.length) {
+      if (line[cursor] === "\\" && cursor + 1 < line.length) { cursor += 2; continue; }
+      if (line[cursor] === quote) {
+        parts.push(line.slice(valueStart, cursor));
+        const rest = line.slice(cursor + 1).trimStart();
+        if (rest && !rest.startsWith("#")) throw new Error("unsupported env_file assignment");
+        return { value: quote === "'" ? "" : parts.join("\n"), lastLine: lineIndex };
+      }
+      cursor += 1;
+    }
+    parts.push(line.slice(valueStart));
+  }
+  throw new Error("unterminated env_file quote");
+}
+
+function envFileAssignments(content: string): Record<string, string> {
+  const values: Record<string, string> = {};
+  const lines = content.split(/\r?\n/);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    let cursor = 0;
+    while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+    if (line[cursor] === "#" || cursor === line.length) continue;
+    if (line.startsWith("export ", cursor)) {
+      cursor += 7;
+      while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+    }
+    const start = cursor;
+    if (!/[A-Za-z_]/.test(line[cursor] ?? "")) throw new Error("unsupported env_file assignment");
+    while (cursor < line.length && /[A-Za-z0-9_]/.test(line[cursor])) cursor += 1;
+    const name = line.slice(start, cursor);
+    while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+    if (cursor === line.length) { values[name] = `$${name}`; continue; }
+    if (line[cursor] !== "=" && line[cursor] !== ":") throw new Error("unsupported env_file assignment");
+    cursor += 1;
+    while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+    const quote = line[cursor] === "'" || line[cursor] === '"' ? line[cursor++] : null;
+    if (quote) {
+      // Single-quoted values are literal in Compose, even across lines.
+      const quoted = quotedEnvFileValue(lines, lineIndex, cursor, quote);
+      values[name] = quoted.value;
+      lineIndex = quoted.lastLine;
+    } else {
+      const tail = line.slice(cursor);
+      let comment = tail.length;
+      for (let offset = 1; offset < tail.length; offset += 1) {
+        if (tail[offset] === "#" && (tail[offset - 1] === " " || tail[offset - 1] === "\t")) { comment = offset; break; }
+      }
+      values[name] = tail.slice(0, comment).trimEnd();
+    }
+  }
+  return values;
+}
+
 async function rawEnvFileValues(inventory: ComposeSourceInventory, environment: NodeJS.ProcessEnv, service: string): Promise<Record<string, string>> {
   try {
     const declared = inventory.service?.env_file;
     const files = declared == null ? [] : Array.isArray(declared) ? declared : [declared];
     const entries = files.map((entry) => typeof entry === "string"
       ? { path: entry, required: true, devfnOrigin: inventory.serviceDirectory }
-      : entry as { path: string; required?: boolean; devfnOrigin?: string });
+      : entry as { path: string; required?: boolean; format?: string; devfnOrigin?: string });
     if (entries.some((entry) => typeof entry.path !== "string")) throw new Error("invalid env_file path");
     const resolved = new Array<string>(entries.length);
     const byOrigin = new Map<string, number[]>();
@@ -255,12 +299,7 @@ async function rawEnvFileValues(inventory: ComposeSourceInventory, environment: 
       }
       totalBytes += Buffer.byteLength(content);
       if (totalBytes > 10 * 1024 * 1024) throw new Error("env_file byte limit");
-      for (const line of content.split(/\r?\n/)) {
-        if (!line.trim() || /^\s*#/.test(line)) continue;
-        const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*(.*))?$/.exec(line);
-        if (!match) throw new Error("unsupported env_file assignment");
-        values[match[1]] = match[2] ?? `$${match[1]}`;
-      }
+      if (entry.format !== "raw") Object.assign(values, envFileAssignments(content));
     }
     return values;
   } catch {
@@ -306,13 +345,17 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   } catch {
     throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve effective Compose configuration for ${spec.service}.`);
   }
-  const configuration = JSON.parse(effective) as { services?: Record<string, Record<string, unknown>> };
+  let configuration: { services?: Record<string, Record<string, unknown>> };
+  try {
+    configuration = JSON.parse(effective) as typeof configuration;
+  } catch {
+    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve effective Compose configuration for ${spec.service}.`);
+  }
   const rawConfiguration = await uninterpolatedComposeConfiguration(args, root, environment, spec.service, inventory);
   const service = configuration.services?.[spec.service];
   const rawFound = rawConfiguration.services?.[spec.service];
   const rawService = rawFound ? normalizeComposeRawService(rawFound) : undefined;
   if (!service || !rawService) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose service ${spec.service} is absent from the effective configuration.`);
-  const { env_file: _envFiles, environment: _serviceEnvironment, ...effectiveService } = service;
   const { env_file: _rawEnvFiles, environment: _rawServiceEnvironment, ...rawEffectiveService } = rawService;
   const selectedResources = selectedComposeResources(configuration, service);
   const rawSelectedResources = selectedComposeResources(rawConfiguration, service);
@@ -325,20 +368,36 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   assertSelectedInterpolation(inventory.service?.env_file, new Set([...implicitInterpolationKeys(spec), ...secretNames]), referencedInterpolation);
   const rawDeclaredEnvironment = inventory.service?.environment;
   const rawEnvironment = {
-    ...(inventory.service?.env_file !== undefined && secretNames.size > 0
+    ...(inventory.service?.env_file !== undefined
       ? await rawEnvFileValues(inventory, environment, spec.service) : {}),
     ...(rawDeclaredEnvironment && typeof rawDeclaredEnvironment === "object" && !Array.isArray(rawDeclaredEnvironment)
       ? rawDeclaredEnvironment as Record<string, unknown> : {}),
   };
   assertSelectedInterpolation(rawEnvironment, implicitInterpolationKeys(spec), referencedInterpolation);
-  const safeService = canonicalComposeValue(effectiveService, rawEffectiveService, secretNames);
-  const safeResources = canonicalComposeValue(selectedResources, rawSelectedResources, secretNames);
+  let safeConfiguration = configuration;
+  if (secretNames.size > 0) {
+    try {
+      const maskedEnvironment = { ...environment, ...Object.fromEntries([...secretNames].map((name) => [name, "devfn-secret-channel"])) };
+      const output = (await execFileAsync("docker", args, { cwd: root, env: maskedEnvironment,
+        timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+      safeConfiguration = JSON.parse(output) as typeof configuration;
+    } catch {
+      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve credential-safe Compose configuration for ${spec.service}.`);
+    }
+  }
+  const safeSelected = safeConfiguration.services?.[spec.service];
+  if (!safeSelected) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose service ${spec.service} is absent from the effective configuration.`);
+  const { env_file: _safeEnvFiles, environment: _safeEnvironment, ...safeEffectiveService } = safeSelected;
+  const safeService = canonicalComposeValue(safeEffectiveService, secretNames);
+  const safeResources = canonicalComposeValue(selectedComposeResources(safeConfiguration, safeSelected), secretNames);
   const configFiles = await selectedConfigFileState(selectedResources);
   const ordinaryInterpolation = [...referencedInterpolation].filter((name) => !secretNames.has(name))
-    .sort().map((name) => [name, environment[name] ?? null]);
+    .sort(compareCanonicalKeys).map((name) => [name, environment[name] ?? null]);
   return createHash("sha256")
     .update(JSON.stringify(safeService))
-    .update("\0").update(JSON.stringify(canonicalDeclaredEnvironment(effectiveEnvironment, rawEnvironment, secretNames)))
+    .update("\0").update(JSON.stringify(canonicalDeclaredEnvironment(
+      safeSelected.environment && typeof safeSelected.environment === "object" && !Array.isArray(safeSelected.environment)
+        ? safeSelected.environment as Record<string, unknown> : {}, secretNames)))
     .update("\0").update(JSON.stringify(safeResources))
     .update("\0").update(JSON.stringify(configFiles))
     .update("\0").update(JSON.stringify(ordinaryInterpolation)).digest("hex");

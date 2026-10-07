@@ -55,7 +55,8 @@ describe("real local startup fixtures", () => {
     const stateDir = path.join(root, "state");
     const envFile = path.join(root, "service.env");
     const oldSecret = process.env.CUSTOM;
-    await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n    env_file: service.env\n");
+    await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sh, -c, 'sleep 3600 # ${MODE} ${CUSTOM}']\n    env_file: service.env\n");
+    await writeFile(path.join(root, ".env"), "MODE=one\n");
     await writeFile(envFile, "CUSTOM=${CUSTOM}\nALIAS=prefix-${CUSTOM}\nMODE=10\n");
     const config = validateDevFnConfig({ version: 1, project: { id: "envfile-lifecycle-fixture" },
       services: { api: { adapter: "compose", service: "api", envAllowlist: ["CUSTOM"], secretEnv: ["CUSTOM"] } },
@@ -73,10 +74,14 @@ describe("real local startup fixtures", () => {
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect((await readReceipt(config, root, first.instanceId))?.invocationId).toBe(first.invocationId);
+      await writeFile(path.join(root, ".env"), "MODE=two\n");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const replacedForMode = await orchestrator.up({ config, root, stateDir });
+      expect(replacedForMode.invocationId).not.toBe(first.invocationId);
       await writeFile(envFile, "CUSTOM=${CUSTOM}\nALIAS=prefix-${CUSTOM}\nMODE=11\n");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
       const next = await orchestrator.up({ config, root, stateDir });
-      expect(next.invocationId).not.toBe(first.invocationId);
+      expect(next.invocationId).not.toBe(replacedForMode.invocationId);
       expect(await inspect(next.services[0].containerIds[0])).toEqual(expect.arrayContaining(["CUSTOM=SYNTHETIC_DO_NOT_USE", "ALIAS=prefix-SYNTHETIC_DO_NOT_USE", "MODE=11"]));
       expect(JSON.stringify(await readReceipt(config, root, next.instanceId))).not.toContain("SYNTHETIC_DO_NOT_USE");
     } finally {
