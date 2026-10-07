@@ -50,6 +50,83 @@ if (process.env.SECRET_TOKEN) console.log(process.env.SECRET_TOKEN);
 `;
 
 describe("real local startup fixtures", () => {
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("keeps an owned Compose container running when a replacement source is invalid", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-replacement-"));
+    const stateDir = path.join(root, "state");
+    const source = path.join(root, "compose.yaml");
+    const original = "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n";
+    await writeFile(source, original);
+    const config = validateDevFnConfig({ version: 1, project: { id: "replacement-fixture" },
+      services: { api: { adapter: "compose", service: "api" } }, profiles: { default: { services: ["api"] } } });
+    const orchestrator = new DevFnOrchestrator();
+    let containerId: string | undefined;
+    try {
+      const receipt = await orchestrator.up({ config, root, stateDir });
+      containerId = receipt.services[0].containerIds[0];
+      await writeFile(source, "services:\n  api: [invalid\n");
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toThrow();
+      const inspection = await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", containerId]);
+      expect(inspection.stdout.trim()).toBe("true");
+      expect((await readReceipt(config, root, receipt.instanceId))?.invocationId).toBe(receipt.invocationId);
+    } finally {
+      await writeFile(source, original);
+      await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+      if (containerId) await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", containerId]).then(
+        () => { throw new Error("Fixture container survived cleanup"); }, () => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("uses a declared profile value for Compose interpolation at startup and status", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-profile-env-"));
+    const stateDir = path.join(root, "state");
+    await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n    environment:\n      WORK_DIR: '${HOME}'\n");
+    const config = validateDevFnConfig({ version: 1, project: { id: "profile-env-fixture" },
+      services: { api: { adapter: "compose", service: "api" } },
+      profiles: { default: { services: ["api"], environment: { HOME: "/tmp/project" } } } });
+    const orchestrator = new DevFnOrchestrator();
+    try {
+      const receipt = await orchestrator.up({ config, root, stateDir });
+      expect(receipt.services).toHaveLength(1);
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+    } finally {
+      await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("keeps secret rotation ready but restarts for a matching literal Compose command edit", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-secret-drift-"));
+    const stateDir = path.join(root, "state");
+    const source = path.join(root, "compose.yaml");
+    const oldSecret = process.env.CUSTOM;
+    const document = (command: string) => `services:\n  api:\n    image: busybox\n    command: [sh, -c, 'sleep 3600 # ${command}']\n    environment:\n      CUSTOM: \${CUSTOM}\n      SESSION_VALUE: prefix-\${CUSTOM}\n`;
+    await writeFile(source, document("10"));
+    const config = validateDevFnConfig({ version: 1, project: { id: "secret-drift-fixture" },
+      services: { api: { adapter: "compose", service: "api", envAllowlist: ["CUSTOM"], secretEnv: ["CUSTOM"] } },
+      profiles: { default: { services: ["api"] } } });
+    const orchestrator = new DevFnOrchestrator();
+    process.env.CUSTOM = "10";
+    try {
+      const first = await orchestrator.up({ config, root, stateDir });
+      process.env.CUSTOM = "SYNTHETIC_DO_NOT_USE";
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      expect(JSON.stringify(await readReceipt(config, root, first.instanceId))).not.toContain("SYNTHETIC_DO_NOT_USE");
+      process.env.CUSTOM = "20";
+      await writeFile(source, document("20"));
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const next = await orchestrator.up({ config, root, stateDir });
+      expect(next.invocationId).not.toBe(first.invocationId);
+      expect(next.services[0].containerIds[0]).not.toBe(first.services[0].containerIds[0]);
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+    } finally {
+      await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+      if (oldSecret === undefined) delete process.env.CUSTOM;
+      else process.env.CUSTOM = oldSecret;
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it("avoids prelock Docker config calls when the selected graph has no sibling URL reference", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-preflight-"));
     const originalPath = process.env.PATH;

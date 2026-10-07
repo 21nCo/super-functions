@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, type ManagedComposeService } from "@devfn/compose";
-import { defaultStateDir, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
+import { defaultStateDir, isCredentialKey, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
 import { CaddyProxyController, type ProxyRoute } from "@devfn/proxy";
@@ -71,7 +71,7 @@ async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePl
     if (node.kind !== "service") continue;
     const spec = config.services![node.name];
     const environment = createComposeEnvironment({ ...spec, env: provisional.nodes[node.name].environment }, provisional.nodes[node.name].environment);
-    composeNetworks[node.name] = await effectiveComposeServiceNetworks(spec, root, ownerId, environment);
+    composeNetworks[node.name] = await effectiveComposeServiceNetworks({ ...spec, env: provisional.nodes[node.name].environment }, root, ownerId, environment);
   }
   return resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks });
 }
@@ -81,13 +81,16 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
   for (const [name, node] of Object.entries(resolved.nodes)) {
     const processSpec = config.processes?.[name];
     const serviceSpec = config.services?.[name];
+    const secretNames = new Set([...(processSpec?.secretEnv ?? []), ...(serviceSpec?.secretEnv ?? [])]);
+    const declaredEnvironment = Object.entries(node.environment).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+      .map(([key, value]) => [key, secretNames.has(key) || isCredentialKey(key) ? "<secret-channel>" : value]);
     let startup: unknown;
     if (processSpec) {
       const spec = { ...processSpec, env: node.environment, command: node.command, script: node.script };
       startup = {
         kind: "process", command: resolveAdapterCommand(spec), cwd: processSpec.cwd ?? ".",
         exposure: processSpec.exposure ?? "loopback", ports: processSpec.ports ?? [],
-        environment: Object.entries(node.environment).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0),
+        environment: declaredEnvironment,
         envAllowlist: [...(processSpec.envAllowlist ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), secretEnv: [...(processSpec.secretEnv ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0),
       };
     } else if (serviceSpec) {
@@ -96,7 +99,7 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
       startup = {
         kind: "service", file: serviceSpec.file ?? "compose.yaml", service: serviceSpec.service,
         projectName: serviceSpec.projectName ?? "devfn", ports: serviceSpec.ports ?? {},
-        environment: Object.entries(node.environment).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0),
+        environment: declaredEnvironment,
         envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0),
         source: await fingerprintComposeSource(spec, root, resolved.ownerId, environment),
       };
@@ -257,6 +260,13 @@ export class DevFnOrchestrator {
       const allReady = allRunning && existing.profile === (options.profile ?? options.config.defaultProfile ?? "default") &&
         await receiptIsReady(options.config, options.root, existing, processStates, serviceStates);
       if (existing.state === "ready" && allReady) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
+      // Validate the replacement while the old lifecycle still owns its ports
+      // and containers. A malformed source must never turn a ready service off.
+      const replacementPlan = createPlan(options.config, options.profile);
+      const existingPorts = Object.fromEntries(existing.allocations.map((allocation) => [allocation.service, allocation.port]));
+      const replacementPorts = Object.fromEntries(replacementPlan.portNames.map((name) => [name, existingPorts[name] ?? 1]));
+      const replacement = await resolveWithComposeNetworks(options.config, replacementPlan, options.root, identity.instanceId, replacementPorts, loadedPolicy?.policy.hostnameSuffix);
+      await startupFingerprints(options.config, options.root, replacement);
       const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
       if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
       existing.cleanup = recovered;

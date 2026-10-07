@@ -9,7 +9,7 @@ import { runCli } from "../src/index.js";
 
 async function withListenerTools<T>(action: () => Promise<T>): Promise<T> {
   const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-tools-"));
-  await symlink("/bin/ps", path.join(toolsDir, "ps"));
+  if (process.platform !== "win32") await symlink("/bin/ps", path.join(toolsDir, "ps"));
   const originalPath = process.env.PATH;
   try {
     process.env.PATH = toolsDir;

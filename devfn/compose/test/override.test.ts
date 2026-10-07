@@ -95,13 +95,19 @@ describe("ComposeController", () => {
       await writeFile(configFile, "application-neutral\n");
       await writeFile(source, document("first", "settings.txt"));
       const first = await fingerprint();
-      await writeFile(source, document("second", "settings.txt"));
+      await writeFile(configFile, "application-neutral\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(configFile, "application-changed\n");
       expect(await fingerprint()).not.toBe(first);
+      await writeFile(configFile, "application-neutral\n");
+      const restored = await fingerprint();
+      await writeFile(source, document("second", "settings.txt"));
+      expect(await fingerprint()).not.toBe(restored);
       await writeFile(path.join(root, "other.txt"), "application-neutral\n");
       await writeFile(source, document("first", "other.txt"));
       expect(await fingerprint()).not.toBe(first);
       await writeFile(source, document("first", "settings.txt", "changed"));
-      expect(await fingerprint()).toBe(first);
+      expect(await fingerprint()).toBe(restored);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
@@ -154,16 +160,16 @@ describe("ComposeController", () => {
     const dockerConfig = process.env.DOCKER_CONFIG ?? path.join(process.env.HOME ?? "", ".docker");
     try {
       await writeFile(source, "services:\n  api:\n    image: busybox\n    environment:\n      WORK_DIR: ${HOME}\n");
-      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inventory Compose sources/);
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inherited host value/);
       const first = await fingerprintComposeSource(explicit, root, "owner", createComposeEnvironment(explicit, {}, { ...process.env, DOCKER_CONFIG: dockerConfig, HOME: "/tmp/first" }));
       const second = await fingerprintComposeSource(explicit, root, "owner", createComposeEnvironment(explicit, {}, { ...process.env, DOCKER_CONFIG: dockerConfig, HOME: "/tmp/second" }));
       expect(second).not.toBe(first);
-      await writeFile(source, "services:\n  api:\n    image: busybox\n    command: [echo, '$HOME']\n");
+      await writeFile(source, "services:\n  api:\n    image: busybox\n    command: [echo, '$$HOME']\n");
       await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).resolves.toMatch(/^[a-f0-9]{64}$/);
       await writeFile(source, "services:\n  api:\n    image: busybox\n  unrelated:\n    image: busybox\n    environment:\n      WORK_DIR: ${HOME}\n");
       await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).resolves.toMatch(/^[a-f0-9]{64}$/);
       await writeFile(source, "services:\n  api:\n    image: busybox\n    networks: [selected]\nnetworks:\n  selected:\n    name: ${USER}\n");
-      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inventory Compose sources/);
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inherited host value/);
       await writeFile(source, "include: ${HOME}/included.yaml\nservices:\n  api:\n    image: busybox\n");
       await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inventory Compose sources/);
       await writeFile(path.join(root, "base.yaml"), "services:\n  base:\n    image: busybox\n    environment:\n      WORK_DIR: ${HOME}\n");
