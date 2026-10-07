@@ -1,0 +1,21 @@
+devfn/core/test/endpoints.test.ts
+  s_3d9cf2f71e25cd::t_ef35a10ebeedec 888-896,899-927,929-971,998,1000,1005-1012
+devfn/docs/configuration.md
+  s_3d9cf2f71e25cd::t_c75eacdb694a0f 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "17119fdbb7812fcf6c82ae48d2647f0e60bd448a",
+  "prompts": {},
+  "sessions": {
+    "s_3d9cf2f71e25cd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1139c-4793-73e3-92a4-57fc99ae0685",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
