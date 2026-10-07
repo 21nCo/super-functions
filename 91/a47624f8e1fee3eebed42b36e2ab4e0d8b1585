@@ -1,0 +1,32 @@
+devfn/compose/package.json
+  h_bdc5b81c173ee9 11
+devfn/compose/src/index.ts
+  h_bdc5b81c173ee9 3-4,8,10,95-132,138,144-156,158-164,167,169-170,173-176,178-179,239,246,254
+devfn/compose/src/source-files.ts
+  h_bdc5b81c173ee9 1-108
+devfn/compose/test/override.test.ts
+  h_bdc5b81c173ee9 47-50,52,76-132
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 104-107
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 82-83,91-92,108,489,538-544
+devfn/core/test/endpoints.test.ts
+  h_bdc5b81c173ee9 66
+devfn/docs/configuration.md
+  h_bdc5b81c173ee9 67,69
+devfn/ports/src/listeners.ts
+  h_bdc5b81c173ee9 118
+package-lock.json
+  h_bdc5b81c173ee9 9462-9463,9484-9498
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "91a47624f8e1fee3eebed42b36e2ab4e0d8b1585",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
