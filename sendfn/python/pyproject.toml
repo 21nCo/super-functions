@@ -28,7 +28,7 @@ dependencies = [
   "cryptography>=42.0.0",
   "pydantic>=2.5.0",
   "email-validator>=2.0.0",
-  "superfunctions>=0.1.1,<0.2.0",
+  "superfunctions-core>=0.1.1,<0.2.0",
 ]
 
 [project.optional-dependencies]
@@ -44,14 +44,14 @@ sms = [
 ]
 database = [
   "sqlalchemy>=2.0.0",
-  "superfunctions-sqlalchemy>=0.1.0,<0.2.0",
+  "superfunctions-sqlalchemy>=0.1.1,<0.2.0",
 ]
 all = [
   "boto3>=1.34.0",
   "firebase-admin>=6.5.0",
   "aioapns>=3.1.0",
   "sqlalchemy>=2.0.0",
-  "superfunctions-sqlalchemy>=0.1.0,<0.2.0",
+  "superfunctions-sqlalchemy>=0.1.1,<0.2.0",
 ]
 dev = [
   "pytest>=7.4.0",
@@ -64,11 +64,11 @@ dev = [
 ]
 fastapi = [
   "fastapi>=0.104.0",
-  "superfunctions-fastapi>=0.1.0",
+  "superfunctions-fastapi>=0.1.1",
 ]
 flask = [
   "flask>=3.0.0",
-  "superfunctions-flask>=0.1.0",
+  "superfunctions-flask>=0.1.1",
 ]
 
 [project.urls]

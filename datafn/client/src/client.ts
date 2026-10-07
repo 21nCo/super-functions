@@ -185,10 +185,13 @@ export interface DatafnSyncConfig {
    */
   remote?: string;
 
+  /** Canonical bootstrap for direct regional transport; mutually exclusive with remoteAdapter/native. */
+  routeProvider?: import("@datafn/core").DatafnRouteProvider;
+
   /**
-   * Options for the default HTTP transport used when `remote` is configured.
+   * Options for the default HTTP transport used with `remote` or `routeProvider`.
    */
-  http?: DatafnHttpTransportOptions;
+  http?: Omit<DatafnHttpTransportOptions, "routeProvider">;
 
   /**
    * Optional injected adapter used instead of DefaultHttpTransport.
@@ -211,6 +214,8 @@ export interface DatafnSyncConfig {
    * WebSocket URL. If not provided, derived from `remote` when `ws` is enabled.
    */
   wsUrl?: string;
+  /** Optional application-auth subprotocols. The server negotiates only datafn-sync-v1. */
+  wsProtocols?: () => readonly string[] | Promise<readonly string[]>;
 
   /**
    * Batch push interval in milliseconds.
@@ -577,7 +582,7 @@ function _buildRawClient<S extends DatafnSchema>(
 
     // CFG-001: In sync mode, require remote or remoteAdapter
     if (syncMode === "sync") {
-      if (!config.sync.remote && !config.sync.remoteAdapter) {
+      if (!config.sync.remote && !config.sync.remoteAdapter && !config.sync.routeProvider) {
         throw createClientError(
           "DFQL_INVALID",
           "Invalid client config: remote or remoteAdapter is required in sync mode",
@@ -596,12 +601,16 @@ function _buildRawClient<S extends DatafnSchema>(
       });
     }
 
+    if (config.sync.routeProvider && (config.sync.remoteAdapter || syncOwner === "native")) {
+      throw createClientError("DFQL_INVALID", "routeProvider requires JavaScript-owned HTTP transport", { path: "sync.routeProvider" });
+    }
     // CFG-002: In local-only mode, forbid ws without remote/wsUrl
     if (syncMode === "local-only") {
       if (
         config.sync.ws === true &&
         !config.sync.remote &&
-        !config.sync.wsUrl
+        !config.sync.wsUrl &&
+        !config.sync.routeProvider
       ) {
         throw createClientError(
           "DFQL_INVALID",
@@ -721,6 +730,10 @@ function _buildRawClient<S extends DatafnSchema>(
       // Direct storage adapter
       resolvedStorage = config.storage;
     }
+  }
+
+  if (config.sync?.routeProvider && config.sync.ws && !resolvedStorage) {
+    throw createClientError("DFQL_INVALID", "Regional WebSocket sync requires storage for cursors and checkpoints", { path: "storage" });
   }
 
   // Validate offlinability requires resolved storage
@@ -1093,9 +1106,9 @@ function _buildRawClient<S extends DatafnSchema>(
         },
       );
     }
-  } else if (config.sync?.remote) {
+  } else if (config.sync?.remote || config.sync?.routeProvider) {
     // Precedence 2: Create DefaultHttpTransport from remote URL
-    remote = new DefaultHttpTransport(config.sync.remote, config.sync.http);
+    remote = new DefaultHttpTransport(config.sync.remote ?? "", { ...config.sync.http, routeProvider: config.sync.routeProvider });
   } else {
     // Precedence 3: Create throwing adapter for local-only mode
     // This adapter should only be called if code violates routing invariants
@@ -1169,7 +1182,7 @@ function _buildRawClient<S extends DatafnSchema>(
   // Create SyncEngine (for offline push)
   let syncEngine: SyncEngine | undefined;
   if (
-    config.sync?.offlinability &&
+    (config.sync?.offlinability || (config.sync?.routeProvider && config.sync.ws)) &&
     resolvedStorage &&
     resolvedSyncOwner !== "native"
   ) {
@@ -1206,7 +1219,7 @@ function _buildRawClient<S extends DatafnSchema>(
     {
       schema: schema as DatafnSchema,
       storage: resolvedStorage,
-      remote: config.sync?.remote ? remote : undefined,
+      remote: config.sync?.remote || config.sync?.routeProvider ? remote : undefined,
       clientId: config.clientId,
       syncConfig: config.sync,
       eventBus,
@@ -1692,6 +1705,8 @@ function _buildRawClient<S extends DatafnSchema>(
           }
         }
       } finally {
+        syncEngine?.stop();
+        if (remote instanceof DefaultHttpTransport) remote.dispose();
         // Mark the client unusable even if a cleanup step throws.
         destroyed = true;
         destroying = false;
@@ -1967,7 +1982,7 @@ function _buildRawClient<S extends DatafnSchema>(
       const normalizedRaw = await normalizeSearchTemporalParams(raw);
       assertSearchNotAborted(signal);
 
-      const hasRemote = !!(config.sync?.remote || config.sync?.remoteAdapter);
+      const hasRemote = !!(config.sync?.remote || config.sync?.remoteAdapter || config.sync?.routeProvider);
       const isOffline =
         typeof navigator !== "undefined" && navigator.onLine === false;
       const hasLocalSearch =

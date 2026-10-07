@@ -1,6 +1,6 @@
-import { describe, afterAll } from "vitest";
+import { describe } from "vitest";
 import { IndexedDbAdapter } from "../../src/index";
-import { runConformanceSuite } from "./shared";
+import { runConformanceSuite } from "@searchfn/adapter-contracts/testing";
 
 let testCounter = 0;
 

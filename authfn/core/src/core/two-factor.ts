@@ -27,6 +27,11 @@ import {
 import { hashSecret } from './sessions.js';
 import { findUserById } from './users.js';
 import { readPluginRuntimeConfig } from './plugin-runtime.js';
+import {
+  AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  assertAuthFnDatabaseKeyLength
+} from './limits.js';
 
 const DEFAULT_ISSUER = 'authfn';
 const DEFAULT_DIGITS = 6;
@@ -95,15 +100,31 @@ export async function createTwoFactorEnrollment(
   user: Pick<AuthFnUserRecord, 'id' | 'primaryEmail'>,
   pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<CreatedTwoFactorEnrollment> {
+  const userIdLength = Array.from(user.id).length;
+  assertAuthFnDatabaseKeyLength(
+    user.id,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, user.id)
+    : null;
+  const userId = legacyUser
+    ? assertAuthFnDatabaseKeyLength(
+        user.id,
+        'userId',
+        AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+      )
+    : assertAuthFnDatabaseKeyLength(user.id, 'userId');
   const existing = await config.database.findOne<AuthFnTwoFactorEnrollmentRecord>({
     model: 'two_factor_enrollments',
-    where: [{ field: 'userId', operator: 'eq', value: user.id }],
+    where: [{ field: 'userId', operator: 'eq', value: userId }],
     namespace: namespace(config)
   });
 
   if (existing?.confirmedAt) {
     throw new AuthFnConflictError('Two-factor authentication is already enabled', {
-      userId: user.id
+      userId
     });
   }
 
@@ -113,7 +134,7 @@ export async function createTwoFactorEnrollment(
   const recoveryCodes = generateRecoveryCodes(pluginConfig.recoveryCodeCount ?? DEFAULT_RECOVERY_CODE_COUNT);
   const enrollment: AuthFnTwoFactorEnrollmentRecord = {
     id: existing?.id ?? createIdentifier('tfa'),
-    userId: user.id,
+    userId,
     secretEncrypted: encryptedSecret,
     lastUsedCounter: null,
     confirmedAt: null,
@@ -198,7 +219,23 @@ export async function createTwoFactorChallenge(
   primaryMethod: Exclude<AuthFnAuthMethod, 'two-factor' | 'api-key'>,
   pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<CreatedTwoFactorChallenge | null> {
-  const enrollment = await requireConfirmedEnrollment(config, user.id);
+  const userIdLength = Array.from(user.id).length;
+  assertAuthFnDatabaseKeyLength(
+    user.id,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, user.id)
+    : null;
+  const userId = legacyUser
+    ? assertAuthFnDatabaseKeyLength(
+        user.id,
+        'userId',
+        AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+      )
+    : assertAuthFnDatabaseKeyLength(user.id, 'userId');
+  const enrollment = await requireConfirmedEnrollment(config, userId);
   if (!enrollment) {
     return null;
   }
@@ -206,7 +243,7 @@ export async function createTwoFactorChallenge(
   const now = resolveNow(pluginConfig);
   const challenge: AuthFnTwoFactorChallengeRecord = {
     id: createIdentifier('signin_2fa'),
-    userId: user.id,
+    userId,
     primaryMethod,
     expiresAt: new Date(now.getTime() + ((pluginConfig.challengeTtlSeconds ?? DEFAULT_CHALLENGE_TTL_SECONDS) * 1000)),
     consumedAt: null,

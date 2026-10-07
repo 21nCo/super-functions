@@ -1,5 +1,5 @@
-import { createTRPCProxyClient, httpLink } from '@trpc/client';
-import type { AppRouter } from './core';
+import { createTRPCProxyClient, httpLink, type CreateTRPCProxyClient } from '@trpc/client';
+import type { AppRouter } from './core.js';
 
 export function createPersistenceClient(apiUrl: string) {
   return createTRPCProxyClient<AppRouter>({
@@ -11,4 +11,4 @@ export function createPersistenceClient(apiUrl: string) {
   });
 }
 
-export type PersistenceClient = ReturnType<typeof createPersistenceClient>;
+export type PersistenceClient = CreateTRPCProxyClient<AppRouter>;

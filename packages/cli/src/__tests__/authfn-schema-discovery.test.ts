@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getSchema } from '../../../../authfn/core/src/index.js';
+import { getSchema as getPlugFnSchema } from '../../../../plugfn/core/src/schema.js';
 import { authFnApiKeyPlugin } from '../../../../authfn/api-keys/src/index.js';
 import { authFnEmailOtpPlugin } from '../../../../authfn/email-otp/src/index.js';
 import { authFnMultiRegionPlugin } from '../../../../authfn/multi-region/src/index.js';
@@ -155,6 +156,7 @@ describe('authfn modular schema discovery', () => {
       }
     );
 
+    expect(schema.version).toBe(2);
     expect(schema.schemas.map((table) => table.modelName)).toEqual([
       'users',
       'sessions',
@@ -184,12 +186,31 @@ describe('authfn modular schema discovery', () => {
     expect(drizzleSchema).toContain("uniqueIndex('idx_authfn_users_primary_email').on(table.primaryEmail)");
     expect(drizzleSchema).toContain("uniqueIndex('idx_authfn_sessions_token_hash').on(table.tokenHash)");
     expect(drizzleSchema).toContain("index('idx_authfn_sessions_user_id_created_at').on(table.userId, table.createdAt)");
+
+    const mysqlSchema = generateDrizzleSchemaFile(schema, 'authfn', 'authfn_pw_demo', 'mysql');
+    expect(mysqlSchema).toContain("id: varchar('id', { length: 255 })");
+    expect(mysqlSchema).toContain("providerAccountId: varchar('provider_account_id', { length: 255 })");
+    expect(mysqlSchema).toContain("connectionId: varchar('connection_id', { length: 768 })");
+    expect(mysqlSchema).toContain("connection_id: varchar('connection_id', { length: 768 })");
+
+    const legacyConnectionId = `soc_github_${'u'.repeat(700)}_${'a'.repeat(16)}`;
+    expect(legacyConnectionId.length).toBeGreaterThan(512);
+    expect(legacyConnectionId.length).toBeLessThanOrEqual(768);
   });
 
   it('resolves the published authfn default export entry point for CLI imports', () => {
     const packageJson = JSON.parse(fs.readFileSync(authFnPackageJsonPath, 'utf-8'));
 
     expect(resolveLibraryPackageEntryPoint(packageJson)).toBe('./dist/index.js');
+  });
+
+  it('does not impose the AuthFn MySQL key contract on unmigrated libraries', () => {
+    expect(() => generateDrizzleSchemaFile(
+      getPlugFnSchema(),
+      'plugfn',
+      'plugfn',
+      'mysql'
+    )).not.toThrow();
   });
 
   it('fails with a structured invalid-config error when authfn plugins are omitted', async () => {

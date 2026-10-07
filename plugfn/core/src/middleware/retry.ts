@@ -59,7 +59,7 @@ export class RetryMiddleware {
         const retryableError = error as any;
 
         if (!this.isRetryable(retryableError, opts)) {
-          this.logger?.warn(`${context || 'Action'} failed with non-retryable error`, { error });
+          this.logger?.warn(`${context || 'Action'} failed with non-retryable error`, { status: typeof retryableError?.status === 'number' ? retryableError.status : undefined });
           throw error;
         }
 
@@ -67,13 +67,13 @@ export class RetryMiddleware {
           if (this.isProviderRateLimitError(retryableError)) {
             const rateLimitedError = new ProviderRateLimitedError('max retry attempts exceeded');
             this.logger?.error(`${context || 'Action'} rate-limited after ${attempt} attempts`, {
-              error: retryableError,
+              status: typeof retryableError?.status === 'number' ? retryableError.status : undefined,
             });
             throw rateLimitedError;
           }
 
           this.logger?.error(`${context || 'Action'} failed after ${attempt} attempts`, {
-            error: retryableError,
+            status: typeof retryableError?.status === 'number' ? retryableError.status : undefined,
           });
           throw error;
         }
@@ -82,7 +82,7 @@ export class RetryMiddleware {
 
         this.logger?.warn(
           `${context || 'Action'} failed (attempt ${attempt}/${opts.maxAttempts}), retrying in ${delay}ms`,
-          { error: retryableError }
+          { status: typeof retryableError?.status === 'number' ? retryableError.status : undefined }
         );
 
         await this.sleepFn(delay);

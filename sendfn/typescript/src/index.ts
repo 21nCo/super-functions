@@ -32,3 +32,5 @@ export { ConsoleSmsAdapter, consoleSmsAdapter } from './sms/console-adapter';
 export type { SmsProvider } from './sms/provider';
 export type { WhatsAppProvider } from './whatsapp/provider';
 export type { PushProvider } from './push/provider';
+
+export { connectedMailboxAdapter, type ConnectedMailboxOptions } from './email/connected-mailbox-adapter';

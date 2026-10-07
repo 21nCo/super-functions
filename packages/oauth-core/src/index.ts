@@ -2,7 +2,10 @@ export interface OAuthProviderDescriptor {
   id: string;
   authorizationUrl: string;
   tokenUrl: string;
+  tokenBodyEncoding?: 'form' | 'json';
+  tokenHeaders?: Record<string, string>;
   revocationUrl?: string;
+  revocationResponse?: "http-status" | "json-ok";
   /**
    * How to call the revocation endpoint.
    * - "rfc7009" (default): POST application/x-www-form-urlencoded token body.
@@ -18,6 +21,10 @@ export interface OAuthProviderDescriptor {
   supportsPkce: boolean;
   supportsRefreshToken: boolean;
   scopeSeparator?: " " | ",";
+  /** Authorization scope field used by providers with separate user and bot grants. */
+  scopeParameter?: "scope" | "user_scope";
+  /** Provider-owned nested authorization-code token object; refresh responses remain at root. */
+  authorizationCodeTokenPath?: readonly string[];
   extraAuthParams?: Record<string, string>;
   tokenAuthMethod?: "client_secret_post" | "client_secret_basic";
 }

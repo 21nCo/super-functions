@@ -5,7 +5,7 @@ description: Wire authfn to your database — Drizzle, raw Postgres, SQLite, in-
 
 # Database adapters
 
-authfn writes through `@superfunctions/db`'s `Adapter` contract. You pick an adapter and pass it to `createAuthFn({ database: ... })`.
+authfn writes through `@superfunctions/db`'s `Adapter` contract. You pick an adapter and pass it to `authApp.createServer({ database })`, where `authApp` is the declaration returned by `authfn({ plugins })`.
 
 ```ts
 interface Adapter {
@@ -31,14 +31,12 @@ The contract is closer to a typed query builder than to an ORM — `model`, `whe
 
 ## Migrations
 
-Whatever adapter you pick, your enabled plugin set determines the schema you need. Generate migrations with the Superfunctions CLI:
-
-```bash
-npx @superfunctions/cli generate
-```
-
-The CLI reads `auth.getSchema()` and writes adapter-specific migration files. See [the CLI docs](https://github.com/21nCo/super-functions/tree/dev/clifn) for full options.
+Whatever adapter you pick, your enabled plugin set determines the schema you
+need. The [Drizzle guide](./drizzle) includes complete Superfunctions and
+Drizzle Kit configuration plus the commands to generate and apply a migration.
+The CLI imports the configured app declaration, reads `authApp.getSchema()`,
+and writes the adapter-specific schema file. See [the CLI docs](https://github.com/21nCo/super-functions/tree/dev/clifn) for full options.
 
 ## Namespacing
 
-Every read and write goes through `namespace` — the prefix you choose with `createAuthFn({ namespace: 'authfn' })`. Tables become `authfn_users`, `authfn_sessions`, `authfn_password_credentials`, etc. Run two authfn deployments in the same database by giving them different namespaces.
+Every read and write goes through `namespace` — the prefix you choose with `authfn({ namespace: 'authfn' })`. Tables become `authfn_users`, `authfn_sessions`, `authfn_password_credentials`, etc. Run two authfn deployments in the same database by giving them different namespaces.

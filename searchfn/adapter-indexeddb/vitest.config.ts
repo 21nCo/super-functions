@@ -1,10 +1,5 @@
-import { defineConfig } from "vitest/config";
+import { searchfnAdapterVitestConfig } from "../adapter-contracts/adapter-vitest.config";
 
-export default defineConfig({
-  test: {
-    globals: true,
-    environment: "node",
-    setupFiles: ["__tests__/setup.ts"],
-    include: ["src/**/*.test.ts", "__tests__/**/*.test.ts"],
-  }
+export default searchfnAdapterVitestConfig({
+  test: { setupFiles: ["__tests__/setup.ts"] }
 });

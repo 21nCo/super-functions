@@ -1,3 +1,4 @@
+import type { ExecutionCoordinator } from './execution-coordinator.js';
 import type {
   Workflow,
   WorkflowContext,
@@ -60,12 +61,14 @@ export class WorkflowEngineError extends Error {
 export class WorkflowEngine {
   private readonly triggerBindings = new Map<string, WorkflowTriggerBinding>();
   private readonly executionLocks = new Map<string, Promise<void>>();
+  private readonly persistedFailures = new WeakSet<Error>();
 
   constructor(
     private workflowStorage: WorkflowStorage,
     private webhookHandler: WebhookHandler,
     private logger: Logger,
-    private runtime: WorkflowRuntimeRegistry = {}
+    private runtime: WorkflowRuntimeRegistry = {},
+    private coordinator?: ExecutionCoordinator
   ) {}
 
   async create(workflow: Omit<Workflow, 'id' | 'createdAt' | 'updatedAt'>): Promise<Workflow> {
@@ -101,7 +104,7 @@ export class WorkflowEngine {
         failed += 1;
         this.logger.error('Workflow trigger rehydration failed', {
           workflowId: workflow.id,
-          error,
+          errorCode: 'WORKFLOW_TRIGGER_REHYDRATION_FAILED',
         });
       }
     }
@@ -145,6 +148,22 @@ export class WorkflowEngine {
   }
 
   async execute(workflowId: string, triggerPayload: any): Promise<WorkflowExecution> {
+    if (this.coordinator) {
+      const key = this.resolveIdempotencyKey(triggerPayload);
+      if (!key) throw new Error("WORKFLOW_IDEMPOTENCY_KEY_REQUIRED");
+      return this.coordinator.run(
+        JSON.stringify([workflowId, key]),
+        () => this.executeLocal(workflowId, triggerPayload),
+        {
+          classifyFailure: (error) =>
+            error instanceof Error && this.persistedFailures.has(error) ? 'known' : 'uncertain',
+        },
+      );
+    }
+    return this.executeLocal(workflowId, triggerPayload);
+  }
+
+  private async executeLocal(workflowId: string, triggerPayload: any): Promise<WorkflowExecution> {
     const workflow = await this.workflowStorage.get(workflowId);
     if (!workflow) {
       throw new Error(`Workflow ${workflowId} not found`);
@@ -290,7 +309,7 @@ export class WorkflowEngine {
         this.logger.error(`Workflow execution failed: ${workflow.name}`, {
           workflowId,
           executionId: execution.id,
-          error: failure.error,
+          errorCode: failure.code,
         });
 
         if (workflow.definition.errorHandlers) {
@@ -301,7 +320,7 @@ export class WorkflowEngine {
                 `workflow error handler${errorHandler.stepId ? ` for ${errorHandler.stepId}` : ''}`
               )(failure.error, context);
             } catch (handlerError) {
-              this.logger.error('Error handler failed', { handlerError });
+              this.logger.error('Error handler failed');
             }
           }
         }
@@ -321,6 +340,7 @@ export class WorkflowEngine {
           durationMs: Date.now() - startedAtMs,
         });
 
+        this.persistedFailures.add(failure.error);
         throw failure.error;
       }
     } finally {
@@ -534,7 +554,7 @@ export class WorkflowEngine {
       try {
         await this.execute(workflow.id, event);
       } catch (error) {
-        this.logger.error(`Workflow trigger execution failed`, { workflow: workflow.id, error });
+        this.logger.error(`Workflow trigger execution failed`, { workflow: workflow.id, errorCode: 'WORKFLOW_TRIGGER_EXECUTION_FAILED' });
         throw error;
       }
     };
@@ -660,6 +680,10 @@ export class WorkflowEngine {
     const explicit = triggerPayload.idempotencyKey;
     if (typeof explicit === 'string' && explicit.length > 0) {
       return explicit;
+    }
+
+    if (triggerPayload.webhookDelivery === true) {
+      return undefined;
     }
 
     const payloadId = triggerPayload.id;

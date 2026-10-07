@@ -296,3 +296,5 @@ function assertBareEmail(value: string, fieldName: string): void {
     );
   }
 }
+
+export { connectedMailboxAdapter, type ConnectedMailboxOptions } from './email/connected-mailbox-adapter';

@@ -40,6 +40,13 @@ function gatewayRuntime(
 }
 
 describe('authFnMultiRegionPlugin gateway mode', () => {
+  it('rejects region identifiers that exceed the database key limit', () => {
+    expect(() => authFnMultiRegionEnvironment({
+      defaultRegionId: 'r'.repeat(256),
+      regions: [{ regionId: 'r'.repeat(256), authority: 'https://region.example.com' }]
+    })).toThrow('regionId must contain at most 255 characters');
+  });
+
   it('rejects a cell region that is absent from an explicit configured-region catalog', () => {
     const directory = createInMemoryAuthFnPlacementDirectory();
     const environment = authFnMultiRegionEnvironment({

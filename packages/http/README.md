@@ -260,11 +260,16 @@ Creates a framework-agnostic router.
 interface Route<TContext> {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
   path: string;
+  decodeParams?: boolean;
   handler: RouteHandler<TContext>;
   middleware?: Middleware<TContext>[];
   meta?: Record<string, any>;
 }
 ```
+
+Path parameters are decoded with `decodeURIComponent` by default. Set
+`decodeParams: false` on a route when its handler must receive and validate the
+raw encoded path segments itself.
 
 ### Route Context
 

@@ -9,16 +9,17 @@ Every authfn server can emit an **OpenAPI 3.1 document** that describes exactly 
 
 ## Enabling generation
 
-Pass `openApi` at construction:
+Pass `openApi` on the app declaration:
 
 ```ts
-const auth = createAuthFn({
-  // ...
+const authApp = authfn({
   openApi: {
     title: 'AuthFn API',
     version: '1.0.0',
   },
+  plugins: authFnPlugins(/* … */),
 });
+const auth = authApp.createServer({ database });
 ```
 
 You can also pass `true` for default title/version, or `false` (or omit) to disable generation entirely. When disabled, `auth.openApi` is undefined.
@@ -81,7 +82,7 @@ The current document is intentionally small at the schema level. Operation IDs, 
 If you want richer schemas, we recommend either:
 
 - **Run authfn behind a typed wrapper.** The first-party SDKs (`@authfn/client`, the Python package, `AuthFnSwift`) already encode the schemas. Use them directly.
-- **Generate from the SDK types.** The TypeScript types in `@authfn/core` are the source of truth; `tsc --emitDeclarationOnly` plus a small adapter gives you a typed wire schema.
+- **Generate from the SDK types.** The TypeScript types in `authfn` are the source of truth; `tsc --emitDeclarationOnly` plus a small adapter gives you a typed wire schema.
 
 ## Build-time generation
 

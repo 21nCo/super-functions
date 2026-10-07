@@ -29,15 +29,39 @@
     "./clickup": {
       "types": "./dist/clickup/index.d.ts",
       "default": "./dist/clickup/index.js"
+    },
+    "./google-drive": {
+      "types": "./dist/google-drive/index.d.ts",
+      "default": "./dist/google-drive/index.js"
+    },
+    "./google-docs": {
+      "types": "./dist/google-docs/index.d.ts",
+      "default": "./dist/google-docs/index.js"
+    },
+    "./google-sheets": {
+      "types": "./dist/google-sheets/index.d.ts",
+      "default": "./dist/google-sheets/index.js"
+    },
+    "./google-calendar": {
+      "types": "./dist/google-calendar/index.d.ts",
+      "default": "./dist/google-calendar/index.js"
+    },
+    "./jira": {
+      "types": "./dist/jira/index.d.ts",
+      "default": "./dist/jira/index.js"
+    },
+    "./onedrive": {
+      "types": "./dist/onedrive/index.d.ts",
+      "default": "./dist/onedrive/index.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "npm --prefix ../core run build && tsc",
+    "build": "tsc",
     "test": "vitest run",
-    "typecheck": "npm --prefix ../core run build && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "author": "21n",
@@ -49,12 +73,13 @@
     "@superfunctions/oauth-providers": "0.1.0",
     "imapflow": "^1.7.0",
     "jose": "^5.10.0",
-    "plugfn": "0.1.0",
+    "plugfn": "0.2.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "typescript": "^5.3.2",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.11",
+    "zod-to-json-schema": "^3.25.2"
   }
 }

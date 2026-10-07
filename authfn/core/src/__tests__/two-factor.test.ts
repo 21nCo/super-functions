@@ -10,6 +10,7 @@ import { issueSessionCookies } from '../core/cookies.js';
 import { issueSession } from '../core/sessions.js';
 import {
   confirmTwoFactorEnrollment,
+  createTwoFactorChallenge,
   createTwoFactorEnrollment,
   verifyTwoFactorCode
 } from '../core/two-factor.js';
@@ -43,6 +44,114 @@ function createConfig(clock = createClock()): AuthFnRuntimeConfig {
     }
   };
 }
+
+describe('two-factor persistence bounds', () => {
+  it('rejects oversized user IDs in direct enrollment and challenge helpers', async () => {
+    const config = createConfig();
+    const user = await createUser(config, { primaryEmail: 'bounds@example.com' });
+    const oversizedUser = { ...user, id: 'u'.repeat(256) };
+
+    await expect(createTwoFactorEnrollment(
+      config,
+      oversizedUser,
+      config.pluginRuntime?.twoFactor
+    )).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
+    await expect(createTwoFactorChallenge(
+      config,
+      oversizedUser,
+      'password',
+      config.pluginRuntime?.twoFactor
+    )).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
+    await expect(config.database.count({
+      model: 'two_factor_enrollments',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+    await expect(config.database.count({
+      model: 'two_factor_challenges',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+  });
+
+  it('creates a persisted challenge for a confirmed legacy oversized user ID', async () => {
+    const config = createConfig();
+    const user = await createUser(config, { primaryEmail: 'legacy-2fa@example.com' });
+    const oversizedUser = { ...user, id: 'legacy-user-'.padEnd(300, 'x') };
+    const now = new Date();
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        ...oversizedUser,
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+    await config.database.create({
+      model: 'two_factor_enrollments',
+      namespace: 'authfn',
+      data: {
+        id: 'tfa_legacy',
+        userId: oversizedUser.id,
+        secretEncrypted: 'legacy-secret',
+        lastUsedCounter: null,
+        confirmedAt: now,
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const challenge = await createTwoFactorChallenge(
+      config,
+      oversizedUser,
+      'password',
+      config.pluginRuntime?.twoFactor
+    );
+    expect(challenge?.challenge.userId).toBe(oversizedUser.id);
+    await expect(config.database.count({
+      model: 'two_factor_challenges',
+      namespace: 'authfn'
+    })).resolves.toBe(1);
+    await expect(config.database.findOne({
+      model: 'two_factor_challenges',
+      namespace: 'authfn',
+      where: [{ field: 'id', operator: 'eq', value: challenge?.challenge.id }]
+    })).resolves.toMatchObject({ userId: oversizedUser.id });
+  });
+
+  it('creates an enrollment for a persisted legacy oversized user ID', async () => {
+    const config = createConfig();
+    const user = await createUser(config, { primaryEmail: 'legacy-enroll@example.com' });
+    const legacyUser = { ...user, id: 'legacy-user-'.padEnd(300, 'x') };
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: legacyUser
+    });
+
+    const enrollment = await createTwoFactorEnrollment(
+      config,
+      legacyUser,
+      config.pluginRuntime?.twoFactor
+    );
+
+    expect(enrollment.enrollment.userId).toBe(legacyUser.id);
+    await expect(config.database.count({
+      model: 'two_factor_enrollments',
+      namespace: 'authfn'
+    })).resolves.toBe(1);
+    await expect(config.database.findOne({
+      model: 'two_factor_enrollments',
+      namespace: 'authfn',
+      where: [{ field: 'id', operator: 'eq', value: enrollment.enrollment.id }]
+    })).resolves.toMatchObject({ userId: legacyUser.id });
+  });
+});
 
 function createTwoFactorPluginConfig(clock: ReturnType<typeof createClock>) {
   return {

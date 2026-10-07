@@ -1,0 +1,458 @@
+import { createRouter, ForbiddenError, TooManyRequestsError, UnauthorizedError, type Route, type RouteContext } from "@superfunctions/http";
+import { SecFnForbiddenError, SecFnValidationError } from "@secfn/core";
+import type { SecFnRequestContext, SecFnServerConfig, SecFnAdminAction, SecretScope } from "./types.js";
+import type { VaultService } from "./vault.js";
+import type { AuditService } from "./audit.js";
+import type { AccessService } from "./access.js";
+import type { SecFnRateLimiter } from "./rate-limit.js";
+import { emptyOk, errorResponse, ok, readJson } from "./envelopes.js";
+
+export interface RouterServices {
+  vault: VaultService;
+  audit: AuditService;
+  access: AccessService;
+  rateLimit: SecFnRateLimiter;
+}
+
+type Context<TContext> = TContext & RouteContext;
+
+const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
+
+export function createSecFnRouter<TContext extends SecFnRequestContext>(
+  config: SecFnServerConfig<TContext>,
+  services: RouterServices,
+) {
+  const adminRoute = (
+    method: Route<TContext>["method"],
+    path: string,
+    action: SecFnAdminAction,
+    handler: Route<TContext>["handler"],
+  ): Route<TContext> => ({
+    method,
+    path,
+    handler: async (request, ctx) => {
+      ctx = await resolveContext(config, ctx);
+      if (ctx.namespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
+      const rate = await services.rateLimit.check({
+        userId: ctx.actorId,
+        ip: ctx.ip,
+        endpoint: new URL(request.url).pathname,
+        tenantId: ctx.tenantId,
+        namespace: ctx.namespace,
+      });
+      if (!rate.allowed) throw new TooManyRequestsError("Too many requests", "SECFN_RATE_LIMITED");
+      if (!config.authorize) throw new ForbiddenError("Admin authorization is not configured", "SECFN_FORBIDDEN");
+      {
+        let authorizationRequest: Request;
+        if (method === "POST" || method === "PUT" || method === "PATCH") {
+          const body = await ctx.text();
+          authorizationRequest = new Request(request.url, {
+            method: request.method,
+            headers: request.headers,
+            body,
+            signal: request.signal,
+          });
+        } else {
+          authorizationRequest = request.clone();
+        }
+        const allowed = await config.authorize(ctx, action, { params: { ...ctx.params }, query: Object.fromEntries(ctx.query), request: authorizationRequest });
+        if (!allowed) {
+          await services.audit.write({
+            type: "permission_denied",
+            severity: "medium",
+            tenantId: ctx.tenantId,
+            namespace: ctx.namespace,
+            actorId: ctx.actorId,
+            ip: ctx.ip,
+            userAgent: ctx.userAgent,
+            requestId: ctx.requestId,
+            resource: `admin:${action}`,
+            action,
+            metadata: {},
+          });
+          throw new ForbiddenError("Authorization denied", "SECFN_FORBIDDEN");
+        }
+      }
+      if (!ctx.tenantId && ctx.query.get("namespace")) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
+      await assertAdminTenant(config, ctx, action);
+      return handler(request, ctx);
+    },
+  });
+
+  const routes: Route<TContext>[] = [
+    adminRoute("GET", "/admin/namespaces", "namespaces:list", async (_request, ctx) => {
+      const rows = await services.vault.listNamespaces({ tenantId: ctx.tenantId ?? ctx.query.get("tenantId") ?? undefined });
+      return ok(ctx.namespace ? rows.filter(row => row.slug === ctx.namespace) : rows);
+    }),
+    adminRoute("POST", "/admin/namespaces", "namespaces:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      return ok(await services.vault.createNamespace({
+        tenantId: ctx.tenantId,
+        slug: requiredString(body.slug ?? body.label ?? ""),
+        label: asOptionalString(body.label),
+        description: asOptionalString(body.description),
+        metadata: isRecord(body.metadata) ? body.metadata : undefined,
+        createdBy: ctx.actorId ?? "system",
+      }), { status: 201 });
+    }),
+    adminRoute("PATCH", "/admin/namespaces/:id", "namespaces:update", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      return ok(await services.vault.updateNamespace(ctx.params.id, {
+        slug: asOptionalString(body.slug),
+        label: asOptionalString(body.label),
+        description: body.description === null ? null : asOptionalString(body.description),
+        metadata: body.metadata === null ? null : isRecord(body.metadata) ? body.metadata : undefined,
+      }));
+    }),
+    adminRoute("GET", "/admin/environments", "environments:list", async (_request, ctx) => {
+      return ok(await services.vault.listEnvironments({
+        tenantId: ctx.tenantId ?? ctx.query.get("tenantId") ?? undefined,
+        namespaceId: ctx.query.get("namespaceId") ?? undefined,
+        namespace: ctx.namespace ?? asQueryString(ctx.query.get("namespace")),
+      }));
+    }),
+    adminRoute("POST", "/admin/environments", "environments:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      if (ctx.namespace && body.namespace !== undefined && body.namespace !== ctx.namespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");
+      if (ctx.namespace && body.namespaceId !== undefined) {
+        const namespace = await config.db.findOne<Record<string, unknown>>({ model: "secfn_namespaces", where: [
+          { field: "id", operator: "eq", value: String(body.namespaceId) },
+          { field: "tenantId", operator: "eq", value: ctx.tenantId },
+          { field: "slug", operator: "eq", value: ctx.namespace },
+        ] });
+        if (!namespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");
+      }
+      return ok(await services.vault.createEnvironment({
+        tenantId: ctx.tenantId,
+        namespaceId: asOptionalString(body.namespaceId),
+        namespace: ctx.namespace ?? asOptionalString(body.namespace),
+        name: requiredString(body.name ?? ""),
+        description: asOptionalString(body.description),
+        metadata: isRecord(body.metadata) ? body.metadata : undefined,
+        createdBy: ctx.actorId ?? "system",
+      }), { status: 201 });
+    }),
+    adminRoute("PATCH", "/admin/environments/:id", "environments:update", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      return ok(await services.vault.updateEnvironment(ctx.params.id, {
+        name: asOptionalString(body.name),
+        description: body.description === null ? null : asOptionalString(body.description),
+        metadata: body.metadata === null ? null : isRecord(body.metadata) ? body.metadata : undefined,
+      }));
+    }),
+    adminRoute("GET", "/admin/secrets", "secrets:list", async (_request, ctx) => {
+      const page = await services.vault.listSecrets({
+        ...(await scope(ctx)),
+        limit: Number(ctx.query.get("limit") ?? 50),
+        cursor: ctx.query.get("cursor") ?? undefined,
+        search: ctx.query.get("search") ?? undefined,
+        tag: ctx.query.get("tag") ?? undefined,
+      });
+      const paginated = ctx.query.has("limit") || ctx.query.has("cursor") || ctx.query.has("search") || ctx.query.has("tag");
+      return ok(paginated ? page : page.items);
+    }),
+    adminRoute("POST", "/admin/secrets", "secrets:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      return ok(await services.vault.createSecret({
+        key: requiredString(body.key ?? ""),
+        value: requiredString(body.value ?? ""),
+        description: asOptionalString(body.description),
+        tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
+        metadata: isRecord(body.metadata) ? body.metadata : undefined,
+        createdBy: ctx.actorId ?? "system",
+        ...(await scope(ctx)),
+      }), { status: 201 });
+    }),
+    adminRoute("GET", "/admin/secrets/:id", "secrets:read", async (_request, ctx) => {
+      return ok(await services.vault.getSecret(ctx.params.id));
+    }),
+    adminRoute("PATCH", "/admin/secrets/:id", "secrets:update", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      return ok(await services.vault.updateSecret(ctx.params.id, {
+        key: asOptionalString(body.key),
+        description: body.description === null ? null : asOptionalString(body.description),
+        tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
+        actorId: ctx.actorId ?? "system",
+        requireRenameConfirmation: body.confirmRename === true,
+        ...(await scope(ctx)),
+      }));
+    }),
+    adminRoute("POST", "/admin/secrets/:id/reveal", "secrets:reveal", async (_request, ctx) => {
+      const body = await readJson<{ confirm?: boolean }>(ctx);
+      if (body.confirm !== true) {
+        throw new SecFnForbiddenError("Secret reveal requires explicit confirmation");
+      }
+      return ok(await services.vault.revealSecret(ctx.params.id, {
+        actorId: ctx.actorId ?? "system",
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+      }));
+    }),
+    adminRoute("POST", "/admin/secrets/:id/rotate", "secrets:rotate", async (_request, ctx) => {
+      const body = await readJson<{ value?: string }>(ctx);
+      return ok(await services.vault.rotateSecret(ctx.params.id, {
+        value: requiredString(body.value ?? ""),
+        actorId: ctx.actorId ?? "system",
+      }));
+    }),
+    adminRoute("POST", "/admin/secrets/:id/revoke", "secrets:revoke", async (_request, ctx) => {
+      await services.vault.revokeSecret(ctx.params.id, ctx.actorId ?? "system");
+      return emptyOk();
+    }),
+    adminRoute("DELETE", "/admin/secrets/:id", "secrets:delete", async (_request, ctx) => {
+      await services.vault.deleteSecret(ctx.params.id, ctx.actorId ?? "system");
+      return emptyOk();
+    }),
+    adminRoute("GET", "/admin/secret-sets", "secret-sets:list", async (_request, ctx) => {
+      return ok(await services.vault.listSecretSets(await scope(ctx)));
+    }),
+    adminRoute("POST", "/admin/secret-sets", "secret-sets:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      return ok(await services.vault.createSecretSet({
+        name: requiredString(body.name ?? ""),
+        description: asOptionalString(body.description),
+        members: Array.isArray(body.members) ? body.members.map((member) => ({
+          secretId: requiredString((member as Record<string, unknown>).secretId ?? ""),
+          alias: asOptionalString((member as Record<string, unknown>).alias),
+        })) : undefined,
+        createdBy: ctx.actorId ?? "system",
+        ...(await scope(ctx)),
+      }), { status: 201 });
+    }),
+    adminRoute("GET", "/admin/secret-sets/:id", "secret-sets:read", async (_request, ctx) => {
+      return ok(await services.vault.getSecretSet(ctx.params.id));
+    }),
+    adminRoute("PATCH", "/admin/secret-sets/:id", "secret-sets:update", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      return ok(await services.vault.updateSecretSet(ctx.params.id, {
+        name: asOptionalString(body.name),
+        description: body.description === null ? null : asOptionalString(body.description),
+        actorId: ctx.actorId ?? "system",
+      }));
+    }),
+    adminRoute("POST", "/admin/secret-sets/:id/reveal", "secret-sets:reveal", async (_request, ctx) => {
+      const body = await readJson<{ confirm?: boolean }>(ctx);
+      if (body.confirm !== true) {
+        throw new SecFnForbiddenError("Secret set reveal requires explicit confirmation");
+      }
+      return ok(await services.vault.revealSecretSet(ctx.params.id, {
+        actorId: ctx.actorId ?? "system",
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+      }));
+    }),
+    adminRoute("DELETE", "/admin/secret-sets/:id", "secret-sets:delete", async (_request, ctx) => {
+      await services.vault.deleteSecretSet(ctx.params.id, ctx.actorId ?? "system");
+      return emptyOk();
+    }),
+    adminRoute("GET", "/admin/secret-sets/:id/members", "secret-set-members:list", async (_request, ctx) => {
+      return ok(await services.vault.listSecretSetMembers(ctx.params.id));
+    }),
+    adminRoute("POST", "/admin/secret-sets/:id/members", "secret-set-members:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      return ok(await services.vault.addSecretSetMember(
+        ctx.params.id,
+        requiredString(body.secretId ?? ""),
+        asOptionalString(body.alias),
+      ), { status: 201 });
+    }),
+    adminRoute("PATCH", "/admin/secret-sets/:id/members/:memberId", "secret-set-members:update", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      return ok(await services.vault.updateSecretSetMember(ctx.params.memberId, {
+        secretId: asOptionalString(body.secretId),
+        alias: body.alias === null ? null : asOptionalString(body.alias),
+      }));
+    }),
+    adminRoute("DELETE", "/admin/secret-sets/:id/members/:memberId", "secret-set-members:delete", async (_request, ctx) => {
+      await services.vault.removeSecretSetMember(ctx.params.memberId);
+      return emptyOk();
+    }),
+    adminRoute("POST", "/admin/service-tokens", "service-tokens:create", async (_request, ctx) => {
+      const body = await readJson<Record<string, unknown>>(ctx);
+      return ok(await services.vault.createServiceToken({
+        name: requiredString(body.name ?? ""),
+        scopes: Array.isArray(body.scopes) ? body.scopes.map(String) : [],
+        expiresAt: asOptionalString(body.expiresAt),
+        createdBy: ctx.actorId ?? "system",
+        ...(await scope(ctx)),
+      }), { status: 201 });
+    }),
+    adminRoute("POST", "/admin/service-tokens/:id/revoke", "service-tokens:revoke", async (_request, ctx) => {
+      await services.vault.revokeServiceToken(ctx.params.id, ctx.actorId ?? "system");
+      return emptyOk();
+    }),
+    adminRoute("GET", "/admin/audit-events", "audit-events:list", async (_request, ctx) => {
+      return ok(await services.audit.queryEvents({
+        tenantId: ctx.tenantId ?? ctx.query.get("tenantId") ?? undefined,
+        namespace: ctx.namespace ?? ctx.query.get("namespace") ?? undefined,
+        type: ctx.query.get("type") ?? undefined,
+        severity: ctx.query.get("severity") ?? undefined,
+        limit: Number(ctx.query.get("limit") ?? 100),
+      }));
+    }),
+    adminRoute("GET", "/admin/scan-runs", "scan-runs:list", async (_request, ctx) => {
+      return ok(await config.db.findMany({
+        model: "secfn_scan_runs",
+        where: ctx.tenantId ? [{ field: "tenantId", operator: "eq", value: ctx.tenantId }] : [],
+        orderBy: [{ field: "startedAt", direction: "desc" }],
+        limit: 100,
+      }));
+    }),
+    {
+      method: "GET",
+      path: "/runtime/secrets/:key",
+      handler: async (request, ctx) => runtimeRead(request, ctx, config, services, "secret"),
+    },
+    {
+      method: "POST",
+      path: "/runtime/secret-sets/:name/resolve",
+      handler: async (request, ctx) => runtimeRead(request, ctx, config, services, "set"),
+    },
+    {
+      method: "GET",
+      path: "/runtime/health",
+      handler: async () => ok({ status: "ok" }),
+    },
+  ];
+
+  return createRouter<TContext>({
+    basePath: config.basePath ?? "/secfn",
+    maxBodyBytes: config.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES,
+    routes,
+    context: config.context ?? ({} as TContext),
+    onError: async (error) => errorResponse(error, config.logger),
+  });
+}
+
+/** Tenant context is trusted; request identifiers may narrow it but cannot replace it. */
+async function assertAdminTenant<TContext extends SecFnRequestContext>(config: SecFnServerConfig<TContext>, ctx: Context<TContext>, action: SecFnAdminAction) {
+  if (ctx.namespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
+  if (!ctx.tenantId && !ctx.namespace) return; // Explicitly authorized global operator; host owns this privilege.
+  const reject = () => { throw new ForbiddenError("Resource is outside the authorized tenant", "SECFN_FORBIDDEN"); };
+  if (ctx.tenantId && ctx.query.has('tenantId') && ctx.query.get('tenantId') !== ctx.tenantId) reject();
+  if (ctx.namespace && ctx.query.has('namespace') && ctx.query.get('namespace') !== ctx.namespace) reject();
+  if (ctx.namespace && ['namespaces:create', 'namespaces:update', 'scan-runs:list'].includes(action)) reject();
+  const family = action.split(':')[0];
+  const models: Record<string, string> = { secrets: 'secfn_secrets', 'secret-sets': 'secfn_secret_sets', 'secret-set-members': 'secfn_secret_sets', namespaces: 'secfn_namespaces', environments: 'secfn_environments', 'service-tokens': 'secfn_service_tokens' };
+  async function owned(model: string, id: string) {
+    const row = await config.db.findOne<Record<string, unknown>>({ model, where: [{ field: 'id', operator: 'eq', value: id }, ...(ctx.tenantId ? [{ field: 'tenantId', operator: 'eq' as const, value: ctx.tenantId }] : [])] });
+    if (!row) { reject(); return; }
+    if (ctx.namespace) {
+      if (model === 'secfn_namespaces') {
+        if (row.slug !== ctx.namespace) reject();
+      } else if (model === 'secfn_service_tokens') {
+        if (row.namespace !== ctx.namespace) reject();
+      } else if (row.namespaceId) {
+        await owned('secfn_namespaces', String(row.namespaceId));
+      } else { reject(); }
+    }
+  }
+  if (ctx.params.id && models[family]) await owned(models[family], ctx.params.id);
+  for (const [key, model] of [['namespaceId','secfn_namespaces'], ['environmentId','secfn_environments']]) {
+    const id = ctx.query.get(key); if (id) await owned(model, id);
+  }
+  if (ctx.params.memberId) {
+    const member = await config.db.findOne<Record<string, unknown>>({ model: 'secfn_secret_set_members', where: [{ field: 'id', operator: 'eq', value: ctx.params.memberId }, { field: 'setId', operator: 'eq', value: ctx.params.id }] });
+    if (!member) reject();
+  }
+}
+
+async function runtimeRead<TContext extends SecFnRequestContext>(
+  request: Request,
+  ctx: Context<TContext>,
+  config: SecFnServerConfig<TContext>,
+  services: RouterServices,
+  kind: "secret" | "set",
+): Promise<Response> {
+  ctx = await resolveContext(config, ctx);
+  const endpoint = new URL(request.url).pathname;
+  const rate = await services.rateLimit.check({
+    userId: undefined,
+    ip: ctx.ip,
+    endpoint,
+    tenantId: ctx.tenantId,
+    namespace: ctx.namespace,
+  });
+  if (!rate.allowed) throw new TooManyRequestsError("Too many requests", "SECFN_RATE_LIMITED");
+
+  const tokenValue = bearerToken(request);
+  if (!tokenValue) throw new UnauthorizedError("Missing runtime token", "SECFN_UNAUTHORIZED");
+  const requestScope = await scope(ctx);
+  const environment = ctx.query.get("environment") ?? undefined;
+  const fullScope: SecretScope = {
+    ...requestScope,
+    environment: environment as SecretScope["environment"],
+  };
+  const verified = await services.vault.verifyRuntimeToken(tokenValue, fullScope);
+  try {
+    if (kind === "secret") {
+      return ok(await services.vault.readRuntimeSecret(ctx.params.key, verified, fullScope, ctx));
+    }
+    return ok(await services.vault.resolveRuntimeSet(ctx.params.name, verified, fullScope, ctx));
+  } catch (error) {
+    if (error instanceof SecFnForbiddenError) {
+      await services.audit.write({
+        type: "permission_denied",
+        severity: "medium",
+        tenantId: fullScope.tenantId,
+        namespace: fullScope.namespace,
+        actorId: verified.token.id,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+        resource: kind === "secret" ? `secret:${ctx.params.key}` : `set:${ctx.params.name}`,
+        action: "read",
+        metadata: { reason: error.message },
+      });
+    }
+    throw error;
+  }
+}
+
+async function resolveContext<TContext extends SecFnRequestContext, TRequest extends TContext>(config: SecFnServerConfig<TContext>, ctx: TRequest): Promise<TRequest> {
+  return { ...ctx, namespace: ctx.namespace ?? await config.namespaceProvider?.(ctx) };
+}
+
+async function scope<TContext extends SecFnRequestContext>(
+  ctx: Context<TContext>,
+): Promise<SecretScope> {
+  if (ctx.namespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
+  const environment = asQueryString(ctx.query.get("environment"));
+  const namespace = asQueryString(ctx.query.get("namespace"));
+  const trustedNamespace = ctx.namespace;
+  const effectiveNamespace = trustedNamespace ?? namespace;
+  if (effectiveNamespace && !ctx.tenantId) throw new ForbiddenError("Namespace-scoped access requires tenantId", "SECFN_FORBIDDEN");
+  if (trustedNamespace && namespace && namespace !== trustedNamespace) throw new ForbiddenError("Namespace is outside the authorized scope", "SECFN_FORBIDDEN");
+  return {
+    tenantId: ctx.tenantId,
+    namespaceId: ctx.query.get("namespaceId") ?? undefined,
+    namespace: effectiveNamespace,
+    environmentId: ctx.query.get("environmentId") ?? undefined,
+    environment: environment as SecretScope["environment"],
+  };
+}
+
+function bearerToken(request: Request): string | undefined {
+  const header = request.headers.get("authorization");
+  if (!header?.toLowerCase().startsWith("bearer ")) return undefined;
+  return header.slice("bearer ".length).trim();
+}
+
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function asQueryString(value: string | null): string | undefined {
+  return value && value.length > 0 ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requiredString(value: unknown): string {
+  if (typeof value !== "string") throw new SecFnValidationError("Expected a string field");
+  return value;
+}

@@ -29,6 +29,7 @@ import { createAdapterFactory } from '../../adapter/factory.js';
 import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
 import { createDrizzleInternalCrud } from './internal.js';
 import { normalizeAdapterSchema } from '../../adapter/schema-codecs.js';
+import { normalizeInternalResultCount } from '../internal-utils.js';
 
 export type DrizzleDialect = 'postgres' | 'mysql' | 'sqlite';
 
@@ -255,8 +256,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         const q = db.update(tbl).set(data as any).where(cond);
         const result = await q.execute();
         // drizzle returns driver-dependent result; for better-sqlite3 it's { changes: N, lastInsertRowid: X }
-        const n = (result as any)?.changes ?? (result as any)?.rowsAffected ?? (result as any)?.rowCount ?? 0;
-        return typeof n === 'number' ? n : 0;
+        return normalizeInternalResultCount(result);
       },
 
       async delete({ model, where }: DeleteParams): Promise<void> {
@@ -272,8 +272,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         const tbl = resolveTable(model);
         const cond = buildWhere(drizzleOps, tbl, where);
         const res = await db.delete(tbl).where(cond).execute();
-        const n = (res as any)?.changes ?? (res as any)?.rowsAffected ?? (res as any)?.rowCount ?? 0;
-        return typeof n === 'number' ? n : 0;
+        return normalizeInternalResultCount(res);
       },
 
       async upsert<T = any>({ model, where, create, update, select, conflictTarget }: UpsertParams): Promise<T> {
@@ -362,9 +361,15 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         return typeof v === 'number' ? v : Number(v ?? 0);
       },
 
-      async transaction<R>(fn: (trx: any) => Promise<R>): Promise<R> {
+      async transaction<R>(fn: (trx: any) => Promise<R>, options?: Parameters<Adapter["transaction"]>[1]): Promise<R> {
         if (dialect === 'sqlite') {
           throw new OperationNotSupportedError('transaction', 'DrizzleAdapter (SQLite async transactions)');
+        }
+        if (dialect === 'mysql' && options?.isolationLevel) {
+          throw new OperationNotSupportedError(
+            'transaction isolation',
+            'DrizzleAdapter (MySQL configurable isolation)'
+          );
         }
 
         return await db.transaction(async (trx: any) => {
@@ -379,7 +384,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
             rollback: async () => { },
           };
           return await fn(txAdapter);
-        });
+        }, options ? { isolationLevel: options.isolationLevel.replaceAll("_", " ") } : undefined);
       },
 
       async initialize(): Promise<void> { return; },
@@ -443,7 +448,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
       capabilities: {
         types: { json: true, dates: true, booleans: true, bigint: true, uuid: true, enum: true },
         operations: { batch: true, upsert: true, streaming: false, fulltext: true, returning: config.dialect !== 'mysql', strictUpdateNotFound: true },
-        transactions: { supported: config.dialect !== 'sqlite', nested: false, isolation: undefined },
+        transactions: { supported: config.dialect !== 'sqlite', nested: false, configurableIsolation: config.dialect === 'postgres', isolation: config.dialect === 'postgres' ? ['read_uncommitted', 'read_committed', 'repeatable_read', 'serializable'] : undefined },
         performance: { supportsJoins: true, supportsPreparedStatements: true },
         schema: { migrations: false, constraints: true, indexes: true },
         advanced: { customIdGeneration: false, numericIds: true, schemaNamespaces: true, customTypes: true },

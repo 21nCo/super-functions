@@ -17,11 +17,11 @@
     "@sveltejs/kit": "^2.0.0",
     "@uifn/core": "file:../../../uifn/core",
     "@uifn/svelte": "file:../../../uifn/svelte",
-    "svelte": ">=5.20.0 <6",
-    "vite": "^5.4.21"
+    "svelte": "5.57.2",
+    "vite": "^6.4.4"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^4.0.4",
+    "@sveltejs/vite-plugin-svelte": "^5.1.1",
     "typescript": "^5.0.0"
   }
 }

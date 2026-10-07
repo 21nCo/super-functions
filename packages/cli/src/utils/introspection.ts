@@ -418,6 +418,9 @@ export function mapDatabaseTypeToFieldType(dbType: string): FieldSchema['type'] 
   if (normalized.includes('json')) {
     return 'json';
   }
+  if (normalized.includes('blob')) {
+    return 'bigint';
+  }
 
   // Default to string for unknown types
   return 'string';

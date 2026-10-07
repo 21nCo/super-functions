@@ -11,9 +11,8 @@ The Python `authfn` package mirrors the TypeScript kernel: same routes, same env
 
 ```bash
 pip install authfn
-# or
-pip install "authfn[fastapi]"
-pip install "authfn[flask]"
+pip install superfunctions-fastapi
+pip install superfunctions-flask
 ```
 
 ## 2. Create the runtime
@@ -55,11 +54,11 @@ auth = create_authfn(AuthFnConfig(
 ```python
 # main.py
 from fastapi import FastAPI, Request
-from superfunctions_fastapi import to_fastapi
+from superfunctions_fastapi import create_router
 from auth import auth
 
 app = FastAPI()
-app.include_router(to_fastapi(auth.router), prefix="/auth")
+app.include_router(create_router(auth.get_routes()))
 
 @app.get("/protected")
 async def protected(request: Request):
@@ -74,11 +73,11 @@ async def protected(request: Request):
 ```python
 # main.py
 from flask import Flask, request
-from superfunctions_flask import to_flask
+from superfunctions_flask import create_blueprint
 from auth import auth
 
 app = Flask(__name__)
-to_flask(app, auth.router, base_path="/auth")
+app.register_blueprint(create_blueprint(auth.get_routes()))
 
 @app.get("/protected")
 async def protected():

@@ -36,11 +36,11 @@ Skills are how you prevent your assistant from synthesizing an outdated or wrong
     "docs/recipes/adding-2fa.md"
   ],
   "playbook": [
-    "1. Install: `npm install @authfn/core @authfn/client`",
-    "2. Add `authFnTwoFactorPlugin` to your `createAuthFn({ plugins })` array.",
-    "3. Generate schema: `npx superfunctions auth schema`",
-    "4. UI: enroll → confirm → challenge. See recipes/adding-2fa.md.",
-    "5. Encryption: provide an `encryptionKeyResolver`."
+    "1. Install: `npm install authfn @authfn/two-factor @authfn/client`",
+    "2. Add `authFnTwoFactorPlugin()` to `authfn({ plugins: authFnPlugins(...) })`.",
+    "3. Generate schema: `npx @superfunctions/cli generate-schema --config ./superfunctions.config.mjs --adapter drizzle --dialect postgres --output ./db/generated --force`.",
+    "4. Pass `encryptionKeyResolver` under `createServer({ pluginRuntime: { twoFactor } })`.",
+    "5. UI: enroll → confirm → challenge. See recipes/adding-2fa.md."
   ]
 }
 ```

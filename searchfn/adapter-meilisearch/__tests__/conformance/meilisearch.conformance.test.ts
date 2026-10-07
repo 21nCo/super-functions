@@ -1,6 +1,6 @@
 import { describe, beforeAll } from "vitest";
 import { MeilisearchAdapter } from "../../src/index";
-import { runConformanceSuite } from "./shared";
+import { runConformanceSuite } from "@searchfn/adapter-contracts/testing";
 
 const MEILI_URL = process.env.SEARCHFN_MEILI_URL ?? "http://localhost:7700";
 const MEILI_API_KEY = process.env.SEARCHFN_MEILI_API_KEY;

@@ -22,7 +22,7 @@ This keeps canonical compatibility behavior (`meta.json`, Tabs/Tab imports, Merm
 ## Minimal Integration
 
 ```ts
-// src/routes/docs/[...slug]/+page.ts
+// src/routes/docs/[...slug]/+page.server.ts
 import {
   createPageLoad,
   resolveDocsPageSurface,

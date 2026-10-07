@@ -25,6 +25,11 @@
       "types": "./dist/generated/*.d.ts",
       "import": "./dist/generated/*.mjs",
       "require": "./dist/generated/*.js"
+    },
+    "./fixture": {
+      "types": "./dist/fixture.d.ts",
+      "import": "./dist/fixture.mjs",
+      "require": "./dist/fixture.js"
     }
   },
   "scripts": {
@@ -56,7 +61,7 @@
     "redent": "^3.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^1.0.0",
+    "vitest": "4.1.11",
     "vitest-axe": "^0.1.0"
   },
   "keywords": [

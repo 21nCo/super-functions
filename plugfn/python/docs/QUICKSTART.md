@@ -359,5 +359,5 @@ pip install plugfn[all]
 ## Support
 
 - **Documentation**: https://docs.superfunctions.dev/plugfn
-- **GitHub Issues**: https://github.com/superfunctions/superfunctions/issues
+- **GitHub Issues**: https://github.com/21nCo/super-functions/issues
 - **Examples**: See the [examples](../examples/) directory

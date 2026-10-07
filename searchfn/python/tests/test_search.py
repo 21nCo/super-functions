@@ -36,18 +36,35 @@ class FakeDb:
         ]
 
 
-@pytest.mark.asyncio
-async def test_index_data_creates_index_rows_for_string_fields() -> None:
-    schema = {
-        "models": {
-            "article": {
-                "fields": {
-                    "title": {"type": "string"},
-                    "views": {"type": "number"},
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {
+            "models": {
+                "article": {
+                    "fields": {
+                        "title": {"type": "string"},
+                        "views": {"type": "number"},
+                    }
                 }
             }
-        }
-    }
+        },
+        {
+            "resources": [
+                {
+                    "name": "article",
+                    "fields": [
+                        {"name": "title", "type": "string"},
+                        {"name": "views", "type": "number"},
+                    ],
+                }
+            ]
+        },
+    ],
+    ids=["model-field-map", "datafn-resource-field-list"],
+)
+@pytest.mark.asyncio
+async def test_index_data_creates_index_rows_for_string_fields(schema: dict[str, Any]) -> None:
     db = FakeDb()
 
     result = await index_data(schema, db)

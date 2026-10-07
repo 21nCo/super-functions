@@ -6,6 +6,23 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { WebSocketManager, type WebSocketClient } from "../src/ws.js";
 
 describe("WebSocketManager", () => {
+  it("counts only successful targeted sends when a ticket expires before its timer", () => {
+    const manager = new WebSocketManager();
+    let now = Date.now();
+    const expired = { send: vi.fn(), close: vi.fn() };
+    const active = { send: vi.fn() };
+    manager.addClient(expired, { namespace: "tenant", principalIds: ["user:1"],
+      routeTicket: { id: "ticket", expiresAt: now + 1000, now: () => now } });
+    manager.addClient(active, { namespace: "tenant", principalIds: ["user:1"] });
+    now += 1001;
+    const result = manager.broadcastCursor("1", "tenant", { affectedPrincipals: ["user:1"] });
+    expect(result).toMatchObject({ mode: "targeted", wokenClients: 1 });
+    expect(expired.send).not.toHaveBeenCalled();
+    expect(expired.close).toHaveBeenCalledWith(4511, "DATAFN_ROUTE_TICKET_EXPIRED");
+    expect(active.send).toHaveBeenCalledTimes(1);
+    manager.close();
+  });
+
   it("should broadcast cursor to all connected clients", () => {
     const manager = new WebSocketManager();
     const client1: WebSocketClient = { send: vi.fn() };

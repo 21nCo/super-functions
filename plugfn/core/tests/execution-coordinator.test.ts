@@ -1,0 +1,44 @@
+import { describe, it, expect, vi } from 'vitest';
+import { createMemoryAtomicKVStore } from '@superfunctions/db/adapters/memory';
+import { ExecutionCoordinator } from '../src/core/execution-coordinator.js';
+describe('shared workflow execution admission', () => {
+  it('admits a single writer across independent coordinators', async () => {
+    const store = createMemoryAtomicKVStore(); const a = new ExecutionCoordinator(store); const b = new ExecutionCoordinator(store);
+    let release!: () => void; let effects = 0;
+    const work = a.run('event', async () => { effects++; await new Promise<void>(resolve => { release = resolve; }); });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await expect(b.run('event', async () => { effects++; })).rejects.toThrow('IN_PROGRESS');
+    release(); await work; expect(effects).toBe(1);
+  });
+  it('never steals an expired writer; recovery requires its exact token', async () => {
+    let now = 0; const store = createMemoryAtomicKVStore(); const a = new ExecutionCoordinator(store, { now: () => now, leaseMs: 10 });
+    await expect(a.run('event', async () => { throw new Error('provider timeout'); })).rejects.toThrow('timeout');
+    now = 20;
+    await expect(new ExecutionCoordinator(store).run('event', async () => 'duplicate')).rejects.toThrow('UNCERTAIN');
+    await expect(a.reconcile('event', 'wrong')).rejects.toThrow('CONFLICT');
+    await a.reconcile('event', (await a.inspect('event'))!.token);
+    expect(await a.run('event', async () => 'reconciled')).toBe('reconciled');
+  });
+  it('releases known failures for retry but fences uncertain failures', async () => {
+    const store = createMemoryAtomicKVStore();
+    const coordinator = new ExecutionCoordinator(store);
+    const known = new Error('durably recorded failure');
+    await expect(coordinator.run('known', async () => { throw known; }, {
+      classifyFailure: error => error === known ? 'known' : 'uncertain',
+    })).rejects.toBe(known);
+    await expect(coordinator.run('known', async () => 'retry')).resolves.toBe('retry');
+
+    await expect(coordinator.run('uncertain', async () => { throw new Error('network split'); }))
+      .rejects.toThrow('network split');
+    await expect(coordinator.run('uncertain', async () => 'duplicate')).rejects.toThrow('UNCERTAIN');
+  });
+  it('creates ownership claims without relying on global Web Crypto', async () => {
+    vi.stubGlobal('crypto', undefined);
+    try {
+      const coordinator = new ExecutionCoordinator(createMemoryAtomicKVStore());
+      await expect(coordinator.run('event', async () => 'done')).resolves.toBe('done');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

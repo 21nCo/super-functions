@@ -63,22 +63,6 @@ export async function showStatus(configPath: string): Promise<void> {
       }
     }
 
-    // Get current schema versions from database
-    console.log('📋 Current schema versions:');
-    const currentVersions: Record<string, number> = {};
-
-    for (const lib of libraries) {
-      try {
-        const version = await connection.adapter.getSchemaVersion(lib.name);
-        currentVersions[lib.name] = version;
-        console.log(`   ${lib.name}: ${version === 0 ? 'not installed' : `v${version}`}`);
-      } catch (e: any) {
-        console.log(`   ${lib.name}: error (${e.message})`);
-        currentVersions[lib.name] = 0;
-      }
-    }
-    console.log('');
-
     // Discover library config files
     console.log('🔍 Discovering library configurations...');
     // Pass undefined to let discoverLibraryConfigs use auto-discovery
@@ -120,7 +104,7 @@ export async function showStatus(configPath: string): Promise<void> {
 
         const schemaResult = libraryPackage.getSchema(libraryConfig);
         librarySchemas.push({
-          namespace: discovered.libraryName,
+          namespace: libraryConfig.namespace || discovered.libraryName,
           version: schemaResult.version,
           tables: schemaResult.schemas,
         });
@@ -136,6 +120,21 @@ export async function showStatus(configPath: string): Promise<void> {
       console.log('   Make sure your library config files are valid and libraries export getSchema');
       return;
     }
+
+    // Read versions by configured namespace, matching migration generation.
+    console.log('📋 Current schema versions:');
+    const currentVersions: Record<string, number> = {};
+    for (const namespace of new Set(librarySchemas.map((library) => library.namespace))) {
+      try {
+        const version = await connection.adapter.getSchemaVersion(namespace);
+        currentVersions[namespace] = version;
+        console.log(`   ${namespace}: ${version === 0 ? 'not installed' : `v${version}`}`);
+      } catch (e: any) {
+        console.log(`   ${namespace}: error (${e.message})`);
+        currentVersions[namespace] = 0;
+      }
+    }
+    console.log('');
 
     // Compare required vs current
     console.log('🔍 Schema analysis:');

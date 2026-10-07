@@ -20,7 +20,7 @@ import {
   AuthFnRateLimitedError,
   AuthFnValidationError
 } from './errors.js';
-import { createUser, findUserByPrimaryEmail } from './users.js';
+import { createUser, findUserById, findUserByPrimaryEmail } from './users.js';
 import {
   allowsPasswordForAuthenticatedUser,
   emitAccountLinkingConflictEvent
@@ -30,6 +30,11 @@ import {
   getMultiRegionPluginConfig,
   unregisterRegionLookupForIdentifier
 } from './regions.js';
+import {
+  AUTHFN_DATABASE_KEY_MAX_LENGTH,
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  assertAuthFnDatabaseKeyLength
+} from './limits.js';
 
 const PASSWORD_HASH_ALGO = 'scrypt';
 const PASSWORD_HASH_N = 16384;
@@ -273,10 +278,26 @@ export async function createPasswordCredential(
   config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: { userId: string; passwordHash: string }
 ): Promise<AuthFnPasswordCredentialRecord> {
+  const userIdLength = Array.from(input.userId).length;
+  assertAuthFnDatabaseKeyLength(
+    input.userId,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const legacyUser = userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, input.userId)
+    : null;
+  const userId = legacyUser
+    ? assertAuthFnDatabaseKeyLength(
+        input.userId,
+        'userId',
+        AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+      )
+    : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   const now = new Date();
   const record: AuthFnPasswordCredentialRecord = {
     id: createIdentifier('pwd'),
-    userId: input.userId,
+    userId,
     passwordHash: input.passwordHash,
     createdAt: now,
     updatedAt: now
@@ -305,16 +326,34 @@ export async function updatePasswordCredential(
   input: { userId: string; password: string },
   options: PasswordPolicyOptions = {}
 ): Promise<AuthFnPasswordCredentialRecord> {
+  const userIdLength = Array.from(input.userId).length;
+  assertAuthFnDatabaseKeyLength(
+    input.userId,
+    'userId',
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+  );
+  const existing = await getPasswordCredentialByUserId(config, input.userId);
+  const legacyUser = !existing && userIdLength > AUTHFN_DATABASE_KEY_MAX_LENGTH
+    ? await findUserById(config, input.userId)
+    : null;
+  const userId = existing?.userId === input.userId
+    ? input.userId
+    : legacyUser
+      ? assertAuthFnDatabaseKeyLength(
+          input.userId,
+          'userId',
+          AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
+      : assertAuthFnDatabaseKeyLength(input.userId, 'userId');
   await assertValidPassword(input.password, {
     ...options,
     purpose: options.purpose ?? 'update-password'
   });
-  const existing = await getPasswordCredentialByUserId(config, input.userId);
   const passwordHash = await hashPassword(input.password);
 
   if (!existing) {
     return createPasswordCredential(config, {
-      userId: input.userId,
+      userId,
       passwordHash
     });
   }
@@ -322,7 +361,7 @@ export async function updatePasswordCredential(
   const updatedAt = new Date();
   return config.database.update<AuthFnPasswordCredentialRecord>({
     model: 'password_credentials',
-    where: [{ field: 'userId', operator: 'eq', value: input.userId }],
+    where: [{ field: 'userId', operator: 'eq', value: userId }],
     data: {
       passwordHash,
       updatedAt

@@ -16,7 +16,6 @@ export default defineConfig({
     testTimeout: 15_000,
     // Keep cold TypeScript config loading bounded during monorepo CI.
     maxWorkers: 2,
-    minWorkers: 1,
     environment: "node",
     coverage: {
       provider: "v8",

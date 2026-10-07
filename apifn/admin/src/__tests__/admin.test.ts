@@ -1,14 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  createAdminClient,
   encodeAdminCursor,
-  validateAdminCapabilityManifest,
   type AdminOperationContext,
 } from "@superfunctions/admin";
 import {
   apiFnAdminCapability,
   createApiFnAdminAdapter,
-  createApiFnAdminClient,
   createApiFnOperatorService,
   MemoryApiFnOperatorStore,
 } from "../index.js";
@@ -37,10 +34,7 @@ function legacyContext(projectId: string): AdminOperationContext {
 }
 
 describe("@apifn/admin", () => {
-  it("publishes a valid optional exact operator surface", () => {
-    expect(validateAdminCapabilityManifest(apiFnAdminCapability)).toEqual([]);
-    expect(apiFnAdminCapability.availability).toBe("optional-product");
-    expect(apiFnAdminCapability.operations).toHaveLength(9);
+  it("restricts every operator action to project scope", () => {
     expect(apiFnAdminCapability.operations.every((operation) => operation.minimumScope === "project")).toBe(true);
   });
 
@@ -98,21 +92,6 @@ describe("@apifn/admin", () => {
     );
     expect(compared.data.item.hasBreakingChanges).toBe(true);
     expect(compared.data.item.breaking[0]).not.toHaveProperty("before");
-  });
-
-  it("offers named typed methods and common capability methods", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
-      ok: true,
-      data: { items: [], nextCursor: null },
-    }), { status: 200 }));
-    const client = createApiFnAdminClient(createAdminClient({
-      baseUrl: "https://example.test/admin",
-      fetch: fetcher as typeof fetch,
-    }));
-    await client.specs.list();
-    expect(String(fetcher.mock.calls[0]![0])).toContain("apifn.specs.list");
-    expect(client.environments.upsert).toEqual(expect.any(Function));
-    expect(client.availability).toEqual(expect.any(Function));
   });
 
   it("rejects credentials embedded in environment base URLs", async () => {

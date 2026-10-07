@@ -1,5 +1,5 @@
 {
-  "name": "@botfn/bot-slack",
+  "name": "@superfunctions/botfn-bot-slack",
   "version": "0.0.1",
   "description": "Slack bot integration",
   "private": true,
@@ -12,16 +12,14 @@
   },
   "dependencies": {
     "hono": "^4.0.0",
-    "@botfn/slack-core": "^0.0.1",
-    "@botfn/shared-types": "^0.0.1",
-    "@superfunctions/db": "^0.2.0",
-    "@superfunctions/http": "^0.2.0"
+    "@superfunctions/botfn-slack-core": "^0.0.1"
   },
   "devDependencies": {
     "wrangler": "^3.0.0",
     "@cloudflare/workers-types": "^4.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
+    "@vitest/coverage-v8": "4.1.11",
+    "vitest": "4.1.11"
   },
   "author": "21n",
   "license": "MIT",

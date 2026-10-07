@@ -2,7 +2,8 @@
  * Complete example using the memory adapter
  */
 
-import { memoryAdapter, createSchemaTracker } from '../src/index.js';
+import { createSchemaTracker } from '../src/index.js';
+import { memoryAdapter } from '../src/adapters/index.js';
 
 async function main() {
   console.log('═══════════════════════════════════════════════════════');

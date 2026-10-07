@@ -1,0 +1,49 @@
+import { describe, expect, it } from "vitest";
+import { CONFORMANCE_FIXTURES, comparisonConfounds, evaluate } from "../src/index.js";
+
+describe("evaluation", () => {
+  it("reports every metric with denominators and includes failed runs", () => {
+    const report = evaluate([
+      { id: "a", sourceSnapshotDigest: "s", changeSnapshotDigest: "c", adjudicatedRequirementIds: ["R1", "R2"], knownGapRequirementIds: ["R2"], validFindingFingerprints: ["F1"], acceptable: false, retrospective: false, limitations: [] },
+      { id: "b", sourceSnapshotDigest: "s2", changeSnapshotDigest: "c2", adjudicatedRequirementIds: ["R3"], knownGapRequirementIds: [], validFindingFingerprints: [], acceptable: true, retrospective: true, limitations: [] },
+    ], [{ caseId: "a", completed: true, extractedRequirementIds: ["R1"], identifiedGapRequirementIds: ["R2"], findingFingerprints: ["F1", "bad"], blocked: true, evidenceReferences: 2, validEvidenceReferences: 1 }]);
+    expect(report.requirementExtractionRecall).toEqual({ numerator: 1, denominator: 3, value: 1 / 3 });
+    expect(report.findingPrecision.value).toBe(0.5);
+    expect(report.completionRate.denominator).toBe(2);
+    expect(report.limitations.some((item) => item.includes("retrospective"))).toBe(true);
+  });
+  it("names comparison confounds", () => {
+    const common = { harness: "codex", harnessVersion: "1", provider: "openai", model: "a", promptDigest: "p", contextDigest: "c", budgetDigest: "b" };
+    expect(comparisonConfounds(common, { ...common, model: "b", contextDigest: "d" })).toEqual(["model", "contextDigest"]);
+  });
+});
+
+describe("fixture matrix", () => {
+  it("covers every required failure and portability category with unique ids", () => {
+    expect(new Set(CONFORMANCE_FIXTURES.map((fixture) => fixture.id)).size).toBe(CONFORMANCE_FIXTURES.length);
+    expect(new Set(CONFORMANCE_FIXTURES.map((fixture) => fixture.category))).toEqual(new Set(["context", "requirements", "code", "tests", "harness", "security", "publishing", "operations", "portability"]));
+    expect(CONFORMANCE_FIXTURES.length).toBeGreaterThanOrEqual(50);
+  });
+});
+
+it("rejects duplicate identities and impossible evaluation metrics", () => {
+  const item = { id: "a", sourceSnapshotDigest: "s", changeSnapshotDigest: "c", adjudicatedRequirementIds: ["r"], knownGapRequirementIds: [], validFindingFingerprints: [], acceptable: true, retrospective: false, limitations: [] };
+  const outcome = { caseId: "a", completed: true, extractedRequirementIds: [], identifiedGapRequirementIds: [], findingFingerprints: [], blocked: false, evidenceReferences: 1, validEvidenceReferences: 1 };
+  expect(() => evaluate([item, item], [])).toThrow(/Duplicate/);
+  expect(() => evaluate([item], [outcome, outcome])).toThrow(/Duplicate/);
+  expect(() => evaluate([{ ...item, adjudicatedRequirementIds: ["r", "r"] }], [])).toThrow(/Duplicate/);
+  expect(() => evaluate([item], [{ ...outcome, validEvidenceReferences: 2 }])).toThrow(/metric/);
+  expect(() => evaluate([item], [{ ...outcome, runtimeMs: -1 }])).toThrow(/metric/);
+  expect(evaluate([item], [outcome]).evidenceValidity.value).toBe(1);
+});
+
+
+it("does not treat missing outcomes as observed non-blocking decisions", () => {
+  const item = { id: "observed", sourceSnapshotDigest: "s", changeSnapshotDigest: "c", adjudicatedRequirementIds: [], knownGapRequirementIds: [], validFindingFingerprints: [], acceptable: true, retrospective: false, limitations: [] };
+  const cases = [item, { ...item, id: "missing-1" }, { ...item, id: "missing-2" }];
+  const outcome = { caseId: "observed", completed: true, extractedRequirementIds: [], identifiedGapRequirementIds: [], findingFingerprints: [], blocked: true, evidenceReferences: 0, validEvidenceReferences: 0 };
+  const result = evaluate(cases, [outcome]);
+  expect(result.falseBlockRate).toEqual({ numerator: 1, denominator: 1, value: 1 });
+  expect(result.completionRate).toEqual({ numerator: 1, denominator: 3, value: 1 / 3 });
+  expect(evaluate(cases, []).falseBlockRate.value).toBeNull();
+});

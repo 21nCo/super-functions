@@ -1,26 +1,38 @@
 {
-  "name": "@botfn/discord-bot",
+  "name": "@superfunctions/botfn-discord-bot",
   "version": "0.0.1",
   "description": "Discord bot with GitHub and Linear integration",
-  "main": "src/index.cloudflare.ts",
+  "main": "./dist/index.cloudflare.js",
+  "types": "./dist/index.cloudflare.d.ts",
+  "files": ["dist", "register-commands.js"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.cloudflare.d.ts",
+      "import": "./dist/index.cloudflare.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js"
+    }
+  },
   "type": "module",
   "scripts": {
     "register-commands": "node register-commands.js",
     "dev": "wrangler dev src/index.cloudflare.ts",
     "deploy": "wrangler deploy src/index.cloudflare.ts",
     "build": "tsc",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage --passWithNoTests"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "hono": "^4.0.0",
     "zod": "^3.22.0",
-    "@botfn/discord-core": "*",
-    "@botfn/github-integration": "*",
-    "@botfn/linear-integration": "*",
-    "@botfn/shared-types": "*",
-    "@botfn/persistence-service": "*",
+    "@superfunctions/botfn-discord-core": "0.0.1",
+    "@superfunctions/botfn-github-integration": "0.0.1",
+    "@superfunctions/botfn-linear-integration": "0.0.1",
+    "@superfunctions/botfn-shared-types": "0.0.1",
+    "@superfunctions/botfn-persistence-service": "0.0.1",
     "@trpc/client": "^10.45.0",
     "discord.js": "^14.24.0"
   },
@@ -28,8 +40,9 @@
     "dotenv": "^16.3.1",
     "typescript": "^5.0.0",
     "wrangler": "^3.0.0",
+    "vitest": "4.1.11",
     "@cloudflare/workers-types": "^4.0.0",
-    "@vitest/coverage-v8": "^3.2.4"
+    "@vitest/coverage-v8": "4.1.11"
   },
   "author": "21n",
   "license": "MIT",

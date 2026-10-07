@@ -15,5 +15,5 @@
   "publishConfig": { "access": "public" },
   "sideEffects": false,
   "dependencies": { "@mailfn/core": "0.1.0" },
-  "devDependencies": { "typescript": "^5.6.0", "vitest": "3.2.4" }
+  "devDependencies": { "typescript": "^5.6.0", "vitest": "4.1.11" }
 }

@@ -14,8 +14,8 @@ Every authfn event becomes a span event on the active OpenTelemetry trace.
 ```ts
 import { trace } from '@opentelemetry/api';
 
-createAuthFn({
-  // ...
+authApp.createServer({
+  database,
   observability: {
     emit(event) {
       const span = trace.getActiveSpan();

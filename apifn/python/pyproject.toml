@@ -1,7 +1,12 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "apifn"
 version = "0.0.1"
 description = "Self-hosted API development platform — Python SDK"
+readme = { text = "ApiFn Python SDK for self-hosted API development. Provides typed API clients, OpenAPI generation, collection handling, and FastAPI and Flask integrations.", content-type = "text/markdown" }
 license = "MIT"
 authors = [
     { name = "21n" }
@@ -20,6 +25,5 @@ fastapi = ["fastapi", "uvicorn"]
 flask = ["flask"]
 dev = ["pytest>=8.0"]
 
-[build-system]
-requires = ["setuptools>=64", "wheel"]
-build-backend = "setuptools.build_meta"
+[tool.hatch.build.targets.wheel]
+packages = ["apifn"]

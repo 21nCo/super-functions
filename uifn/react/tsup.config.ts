@@ -70,7 +70,7 @@ function markPublishedClientEntries(): void {
 }
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/generated/*.tsx', 'src/hooks/*.ts'],
+  entry: ['src/fixture.ts', 'src/index.ts', 'src/generated/*.tsx', 'src/hooks/*.ts'],
   format: ['cjs', 'esm'],
   dts: false,
   splitting: true,

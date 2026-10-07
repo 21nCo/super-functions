@@ -57,6 +57,11 @@ export interface Trigger<TPayload = any> {
  */
 export interface WebhookEvent {
   id: string;
+  /** Durable provider delivery identity. Undefined when the provider supplies none. */
+  deliveryId?: string;
+  /** Stable workflow admission key derived from provider and delivery identity. */
+  idempotencyKey?: string;
+  webhookDelivery: true;
   provider: string;
   event: string;
   payload: any;

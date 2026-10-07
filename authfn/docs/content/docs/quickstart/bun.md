@@ -10,35 +10,40 @@ authfn's router is built on the WHATWG `Request`/`Response` standard, so Bun is 
 ## 1. Install
 
 ```bash
-bun add @authfn/core @authfn/client
+bun add authfn @authfn/password @authfn/email-otp @authfn/client @superfunctions/db
 ```
 
-## 2. Create the runtime
+## 2. Declare the app and create the server
 
 ```ts
 // auth.ts
-import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import {
-  authFnEmailOtpPlugin,
-  authFnPasswordPlugin,
-  createAuthFn,
-} from "@authfn/core";
+import { memoryAdapter } from "@superfunctions/db/testing";
+import { authfn, authFnPlugins, type AuthFnDeliveryProvider } from "authfn";
+import { authFnPasswordPlugin } from "@authfn/password";
+import { authFnEmailOtpPlugin } from "@authfn/email-otp";
 
-export const auth = createAuthFn({
-  database: memoryAdapter({ debug: false }),
+export const authApp = authfn({
   namespace: "authfn",
   openApi: { title: "AuthFn API", version: "1.0.0" },
-  plugins: [
+  plugins: authFnPlugins(
     authFnPasswordPlugin(),
-    authFnEmailOtpPlugin({
-      delivery: {
-        async send({ email, code, purpose }) {
-          console.log(`[OTP] ${purpose} → ${email}: ${code}`);
-          return { sent: true };
-        },
-      },
-    }),
-  ],
+    authFnEmailOtpPlugin(),
+  ),
+});
+
+const delivery: AuthFnDeliveryProvider = {
+  async send(input) {
+    console.log(`[OTP] ${input.purpose} → ${input.email}: ${input.code}`);
+    return { sent: true };
+  },
+};
+
+export const auth = authApp.createServer({
+  database: memoryAdapter({ debug: false }),
+  pluginRuntime: {
+    password: { otp: { delivery } },
+    emailOtp: { delivery },
+  },
 });
 ```
 
@@ -58,12 +63,8 @@ Bun.serve({
     }
 
     if (url.pathname.startsWith("/auth")) {
-      // Strip the /auth prefix; authfn's router does not include the basePath.
-      const stripped = new Request(
-        new URL(url.pathname.slice("/auth".length) + url.search, url),
-        request,
-      );
-      return auth.router.fetch(stripped);
+      // The authfn router already includes its /auth basePath.
+      return auth.router.fetch(request);
     }
 
     return new Response("not found", { status: 404 });
@@ -83,7 +84,7 @@ bun run --hot server.ts
 
 The same pattern works on Cloudflare Workers (or any Workers-compatible runtime), with two caveats:
 
-- Use a Workers-compatible database adapter (Cloudflare D1, Hyperdrive + Postgres, or a Cloudflare KV store as the cache layer for plugins that take `cacheStore`).
+- Use a Workers-compatible database adapter (Cloudflare D1, Hyperdrive + Postgres, or a Cloudflare KV store as the cache layer for plugins that take shared stores).
 - The `crypto` and `subtle` primitives authfn uses are part of the Workers runtime; no polyfill is needed.
 
 ## Next steps

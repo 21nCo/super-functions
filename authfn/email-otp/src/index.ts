@@ -39,9 +39,9 @@ function createOtpSchema(): AuthFnSchemaDefinition['schemas'] {
     {
       modelName: 'otp_challenges',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        purpose: { type: 'string', required: true, fieldName: 'purpose' },
-        email: { type: 'string', required: true, fieldName: 'email' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        purpose: { type: 'string', required: true, fieldName: 'purpose', maxLength: 255 },
+        email: { type: 'string', required: true, fieldName: 'email', maxLength: 255 },
         codeHash: { type: 'string', required: true, fieldName: 'code_hash' },
         attemptCount: { type: 'number', required: true, fieldName: 'attempt_count' },
         deliveryMetadata: { type: 'json', required: false, fieldName: 'delivery_metadata' },

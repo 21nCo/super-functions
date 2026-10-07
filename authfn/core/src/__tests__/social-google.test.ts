@@ -4,6 +4,7 @@ import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
 import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
 import type { AuthFnEvent, AuthFnRuntimeConfig } from '../index.js';
 import { createUser, markUserEmailVerified } from '../core/users.js';
+import { upsertOAuthAccount } from '../core/oauth-accounts.js';
 
 function createIdToken(claims: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -11,7 +12,7 @@ function createIdToken(claims: Record<string, unknown>): string {
   return `${header}.${payload}.signature`;
 }
 
-function createFetcher() {
+function createFetcher(providerAccountId = 'google-user-01') {
   return async (url: string) => {
     if (url === 'https://oauth2.googleapis.com/token') {
       return createResponse({
@@ -22,7 +23,7 @@ function createFetcher() {
           token_type: 'Bearer',
           scope: 'openid email profile',
           id_token: createIdToken({
-            sub: 'google-user-01',
+            sub: providerAccountId,
             email: 'ada@example.com',
             email_verified: true,
             name: 'Ada Lovelace'
@@ -61,6 +62,167 @@ function createConfig(overrides: Partial<AuthFnRuntimeConfig> = {}): AuthFnRunti
     ...overrides
   };
 }
+
+describe('social OAuth persistence bounds', () => {
+  it('rejects oversized provider account IDs in the direct upsert helper', async () => {
+    const config = createConfig();
+
+    await expect(upsertOAuthAccount(config, {
+      userId: 'user_1',
+      provider: 'google',
+      providerAccountId: 'p'.repeat(256),
+      connectionId: 'soc_google_fixed'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'providerAccountId', maxLength: 255 }
+    });
+    await expect(upsertOAuthAccount(config, {
+      userId: 'user_1',
+      provider: 'google',
+      providerAccountId: 'provider-account',
+      connectionId: 'c'.repeat(769)
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'connectionId', maxLength: 768 }
+    });
+    await expect(upsertOAuthAccount(config, {
+      userId: 'u'.repeat(256),
+      provider: 'google',
+      providerAccountId: 'provider-account',
+      connectionId: 'soc_google_fixed'
+    })).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
+    await expect(config.database.count({
+      model: 'oauth_accounts',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+  });
+
+  it('preserves an unchanged legacy user ID on an existing OAuth account', async () => {
+    const config = createConfig();
+    const legacyUserId = 'legacy-user-'.padEnd(300, 'x');
+    const now = new Date();
+    await config.database.create({
+      model: 'oauth_accounts',
+      namespace: 'authfn',
+      data: {
+        id: 'oauth_legacy',
+        userId: legacyUserId,
+        provider: 'google',
+        providerAccountId: 'legacy-provider-account',
+        connectionId: 'legacy-connection',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const account = await upsertOAuthAccount(config, {
+      userId: legacyUserId,
+      provider: 'google',
+      providerAccountId: 'legacy-provider-account',
+      connectionId: 'legacy-connection'
+    });
+
+    expect(account.userId).toBe(legacyUserId);
+  });
+
+  it('creates a new OAuth account for a persisted legacy user ID', async () => {
+    const config = createConfig();
+    const legacyUserId = 'legacy-user-'.padEnd(300, 'x');
+    const now = new Date();
+    await config.database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: legacyUserId,
+        primaryEmail: 'legacy-oauth@example.com',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const account = await upsertOAuthAccount(config, {
+      userId: legacyUserId,
+      provider: 'google',
+      providerAccountId: 'new-provider-account',
+      connectionId: 'soc_google_legacy_new'
+    });
+
+    expect(account.userId).toBe(legacyUserId);
+    await expect(config.database.findOne({
+      model: 'oauth_accounts',
+      namespace: 'authfn',
+      where: [{ field: 'id', operator: 'eq', value: account.id }]
+    })).resolves.toMatchObject({ userId: legacyUserId });
+  });
+
+  it('preserves an existing legacy provider account ID through callback lookup', async () => {
+    const providerAccountId = 'legacy-provider-'.padEnd(300, 'x');
+    const config = createConfig({
+      pluginRuntime: {
+        socialOAuth: {
+          fetcher: createFetcher(providerAccountId),
+          providers: {
+            google: {
+              clientId: 'google-client-id',
+              clientSecret: 'google-client-secret'
+            }
+          }
+        }
+      }
+    });
+    const user = await createUser(config, { primaryEmail: 'legacy-provider@example.com' });
+    const now = new Date();
+    await config.database.create({
+      model: 'oauth_accounts',
+      namespace: 'authfn',
+      data: {
+        id: 'oauth_legacy_provider',
+        userId: user.id,
+        provider: 'google',
+        providerAccountId,
+        connectionId: 'legacy-provider-connection',
+        email: user.primaryEmail,
+        profile: null,
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+    const auth = createTestServer(config);
+    const start = await auth.router.handle(new Request(
+      'https://account.example.com/auth/social/start',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'google', callbackMode: 'json' })
+      }
+    ));
+    const startBody = await start.json();
+
+    const callback = await auth.router.handle(new Request(
+      `https://account.example.com/auth/social/callback/google?code=abc123&state=${encodeURIComponent(startBody.data.stateId)}`,
+      { method: 'GET' }
+    ));
+
+    expect(callback.status).toBe(200);
+    const preserved = await config.database.findOne({
+      model: 'oauth_accounts',
+      namespace: 'authfn',
+      where: [
+        { field: 'provider', operator: 'eq', value: 'google' },
+        { field: 'providerAccountId', operator: 'eq', value: providerAccountId }
+      ]
+    });
+    expect(preserved).toMatchObject({
+      id: 'oauth_legacy_provider',
+      userId: user.id,
+      providerAccountId,
+      connectionId: 'legacy-provider-connection'
+    });
+  });
+});
 
 describe('authfn google social oauth', () => {
   it('completes start/callback redirect flow and rejects replayed state and disallowed returns', async () => {
@@ -109,6 +271,7 @@ describe('authfn google social oauth', () => {
       namespace: 'authfn'
     });
     expect(linkedAccount?.email).toBe('ada@example.com');
+    expect(linkedAccount?.connectionId).toMatch(/^soc_google_[a-f0-9]{64}$/);
 
     const replay = await auth.router.handle(
       new Request(
@@ -136,6 +299,44 @@ describe('authfn google social oauth', () => {
     );
     expect(invalidReturnTo.status).toBe(400);
     expect((await invalidReturnTo.json()).error.code).toBe('AUTHFN_REDIRECT_URI_DISALLOWED');
+  });
+
+  it('rejects provider account identifiers that exceed the database key limit', async () => {
+    const auth = createTestServer(createConfig({
+      pluginRuntime: {
+        socialOAuth: {
+          fetcher: createFetcher('g'.repeat(256)),
+          providers: {
+            google: {
+              clientId: 'google-client-id',
+              clientSecret: 'google-client-secret',
+              allowlistedReturnTo: ['https://app.example.com/post-auth']
+            }
+          }
+        }
+      }
+    }));
+
+    const start = await auth.router.handle(new Request(
+      'https://account.example.com/auth/social/start',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'google',
+          returnTo: 'https://app.example.com/post-auth'
+        })
+      }
+    ));
+    const startBody = await start.json();
+    const callback = await auth.router.handle(new Request(
+      `https://account.example.com/auth/social/callback/google?code=abc123&state=${encodeURIComponent(startBody.data.stateId)}`,
+      { method: 'GET' }
+    ));
+
+    expect(callback.status).toBe(303);
+    const redirect = new URL(callback.headers.get('location')!);
+    expect(redirect.searchParams.get('auth_error_code')).toBe('AUTHFN_VALIDATION_ERROR');
   });
 
   it('allows afterOAuthCallback hooks to transform an allowlisted redirect target', async () => {

@@ -7,7 +7,7 @@
 import { describe, beforeAll } from "vitest";
 import { Pool } from "pg";
 import { PostgresAdapter } from "../../src/index";
-import { runConformanceSuite } from "./shared";
+import { runConformanceSuite } from "@searchfn/adapter-contracts/testing";
 
 const PG_URL =
   process.env.SEARCHFN_PG_URL ?? "postgres://searchfn:searchfn_test@localhost:5433/searchfn_test";

@@ -3,3 +3,7 @@ export * from './provider-registry.js';
 export * from './action-executor.js';
 export * from './workflow-engine.js';
 
+
+export * from "./action-manifest.js";
+
+export * from "./execution-coordinator.js";

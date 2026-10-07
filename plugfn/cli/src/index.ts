@@ -2,7 +2,6 @@
 
 import { Command } from 'commander';
 import { initCommand } from './commands/init.js';
-import { generateTypesCommand } from './commands/generate-types.js';
 import { addProviderCommand } from './commands/add-provider.js';
 import { testCommand } from './commands/test.js';
 import {
@@ -27,15 +26,6 @@ program
   .description('Initialize a new PlugFn project')
   .option('-d, --directory <path>', 'Target directory', '.')
   .action(initCommand);
-
-// Generate types command
-program
-  .command('generate-types')
-  .description('Generate TypeScript types for providers')
-  .option('-p, --provider <name>', 'Provider name')
-  .option('-o, --output <path>', 'Output directory', './types')
-  .option('-a, --all', 'Generate types for all providers')
-  .action(generateTypesCommand);
 
 // Add provider command
 program

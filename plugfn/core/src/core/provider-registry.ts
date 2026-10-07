@@ -1,3 +1,4 @@
+import { resolveActionContract } from './action-manifest.js';
 import type { Provider, ProviderInfo } from '../types/provider.js';
 import { ProviderStatus, AuthType } from '../types/provider.js';
 import type { Logger } from '../types/action.js';
@@ -15,6 +16,9 @@ export class ProviderRegistry {
    * Register a provider
    */
   register(provider: Provider): void {
+    for (const action of Object.values(provider.actions)) {
+      if ((action as import("../types/action.js").Action).contract) resolveActionContract(action as import("../types/action.js").Action);
+    }
     if (this.providers.has(provider.name)) {
       this.logger.warn(`Provider ${provider.name} already registered, overwriting`);
     }

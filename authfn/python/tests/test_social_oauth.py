@@ -28,8 +28,10 @@ from authfn import (
     OAuthCallbackInvalidError,
     OAuthProviderUnsupportedError,
     OAuthStateReplayedError,
+    PluginAbortedError,
     RateLimitedError,
     RedirectUriDisallowedError,
+    ValidationError,
 )
 from authfn.plugins.multi_region import (
     MultiRegionPluginConfig,
@@ -365,6 +367,150 @@ async def test_google_start_callback_replay_and_redirect_hook() -> None:
 
 
 @pytest.mark.asyncio
+async def test_custom_profile_resolver_normalizes_numeric_provider_account_id() -> None:
+    db = MockDatabaseAdapter()
+    service = SocialOAuthService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        SocialOAuthPluginConfig(
+            fetcher=build_google_fetcher(),
+            providers={
+                "google": SocialProviderConfig(
+                    client_id="google-client-id",
+                    client_secret="google-client-secret",
+                    profile_resolver=lambda _input: {
+                        "providerAccountId": 4242,
+                        "email": None,
+                        "emailVerified": False,
+                        "name": "Numeric Account",
+                        "profile": {"id": 4242},
+                    },
+                )
+            },
+        ),
+    )
+
+    for _ in range(2):
+        started = await service.start("google", callback_mode="json")
+        await service.handle_callback("google", code="abc123", state=started["stateId"])
+
+    assert len(db.storage["users"]) == 1
+    assert len(db.storage["oauth_accounts"]) == 1
+    assert db.storage["oauth_accounts"][0]["providerAccountId"] == "4242"
+
+
+@pytest.mark.asyncio
+async def test_callback_preserves_existing_legacy_provider_account_id() -> None:
+    db = MockDatabaseAdapter()
+    provider_account_id = "legacy-provider-".ljust(300, "x")
+    db.storage["users"] = [
+        {
+            "id": "user_legacy_provider",
+            "primaryEmail": "legacy-provider@example.com",
+        }
+    ]
+    db.storage["oauth_accounts"] = [
+        {
+            "id": "oauth_legacy_provider",
+            "userId": "user_legacy_provider",
+            "provider": "google",
+            "providerAccountId": provider_account_id,
+            "connectionId": "legacy-provider-connection",
+        }
+    ]
+    service = SocialOAuthService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        SocialOAuthPluginConfig(
+            fetcher=build_google_fetcher(),
+            providers={
+                "google": SocialProviderConfig(
+                    client_id="google-client-id",
+                    client_secret="google-client-secret",
+                    profile_resolver=lambda _input: {
+                        "providerAccountId": provider_account_id,
+                        "email": "legacy-provider@example.com",
+                        "emailVerified": True,
+                        "name": "Legacy Provider",
+                        "profile": {},
+                    },
+                )
+            },
+        ),
+    )
+
+    started = await service.start("google", callback_mode="json")
+    completed = await service.handle_callback(
+        "google", code="abc123", state=started["stateId"]
+    )
+
+    assert completed["userId"] == "user_legacy_provider"
+    assert len(db.storage["oauth_accounts"]) == 1
+    assert db.storage["oauth_accounts"][0]["providerAccountId"] == provider_account_id
+    assert db.storage["oauth_accounts"][0]["connectionId"] == "legacy-provider-connection"
+    assert db.storage["oauth_accounts"][0]["userId"] == "user_legacy_provider"
+
+
+@pytest.mark.asyncio
+async def test_custom_profile_resolver_rejects_null_provider_account_id() -> None:
+    db = MockDatabaseAdapter()
+    service = SocialOAuthService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        SocialOAuthPluginConfig(
+            fetcher=build_google_fetcher(),
+            providers={
+                "google": SocialProviderConfig(
+                    client_id="google-client-id",
+                    client_secret="google-client-secret",
+                    profile_resolver=lambda _input: {
+                        "providerAccountId": None,
+                        "email": None,
+                        "emailVerified": False,
+                        "name": "Missing Account",
+                        "profile": {},
+                    },
+                )
+            },
+        ),
+    )
+
+    started = await service.start("google", callback_mode="json")
+    with pytest.raises(ValidationError, match="providerAccountId is required"):
+        await service.handle_callback("google", code="abc123", state=started["stateId"])
+
+    assert db.storage["oauth_accounts"] == []
+
+
+@pytest.mark.asyncio
+async def test_before_user_create_rejects_non_string_id() -> None:
+    db = MockDatabaseAdapter()
+
+    async def replace_user_id(_context: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return {**payload, "id": None}
+
+    service = SocialOAuthService(
+        AuthFnConfig(
+            database=db,
+            namespace="authfn",
+            hooks=AuthFnHooks(beforeUserCreate=replace_user_id),
+        ),
+        SocialOAuthPluginConfig(
+            fetcher=build_google_fetcher(),
+            providers={
+                "google": SocialProviderConfig(
+                    client_id="google-client-id",
+                    client_secret="google-client-secret",
+                )
+            },
+        ),
+    )
+
+    started = await service.start("google", callback_mode="json")
+    with pytest.raises(PluginAbortedError, match="invalid id"):
+        await service.handle_callback("google", code="abc123", state=started["stateId"])
+
+    assert db.storage["users"] == []
+
+
+@pytest.mark.asyncio
 async def test_disallowed_redirect_and_unsupported_provider_raise_canonical_errors() -> None:
     service = SocialOAuthService(
         AuthFnConfig(database=MockDatabaseAdapter(), namespace="authfn"),
@@ -433,7 +579,7 @@ async def test_github_links_verified_user_json_mode_and_sanitizes_failures() -> 
     await db.create(
         model="users",
         data={
-            "id": "user_1",
+            "id": "legacy-user-".ljust(300, "x"),
             "primaryEmail": "ada@example.com",
             "emailVerifiedAt": clock.now(),
             "createdAt": clock.now(),
@@ -471,7 +617,7 @@ async def test_github_links_verified_user_json_mode_and_sanitizes_failures() -> 
         namespace="authfn",
     )
     assert linked is not None
-    assert linked["userId"] == "user_1"
+    assert linked["userId"] == "legacy-user-".ljust(300, "x")
 
     failing = SocialOAuthService(
         AuthFnConfig(database=MockDatabaseAdapter(), namespace="authfn"),

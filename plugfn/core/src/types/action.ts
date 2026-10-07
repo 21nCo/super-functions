@@ -7,6 +7,8 @@ import type { PlugFnActor } from './runtime.js';
 export interface ActionContext<TCredentials = any> {
   userId: string;
   connectionId?: string;
+  /** Persisted connection metadata supplied by the trusted executor, never action input. */
+  connectionMetadata?: Readonly<Record<string, unknown>>;
   provider: {
     name: string;
     baseUrl: string;
@@ -37,6 +39,11 @@ export interface RequestConfig {
   params?: Record<string, any>;
   timeout?: number;
   bodyEncoding?: 'json' | 'form' | 'raw';
+  /** For provider-issued capability URLs: never forward connection credentials. */
+  omitAuth?: boolean;
+  responseType?: 'arrayBuffer';
+  maxResponseBytes?: number;
+  redirect?: 'follow' | 'error' | 'manual';
 }
 
 export interface HttpResponse<T = any> {
@@ -60,6 +67,8 @@ export interface Logger {
  * Action definition
  */
 export interface Action<TParams = any, TReturn = any> {
+  /** Versioned consumer-visible semantics; absence means unknown, never read. */
+  contract?: ActionContract;
   name: string;
   displayName: string;
   description: string;
@@ -141,3 +150,15 @@ export interface BatchAction {
  * Batch action result
  */
 export type BatchResult = ActionResult;
+
+/** Metadata describes provider behavior, not a grant to execute it. */
+export interface ActionContract {
+  version: string;
+  effect: 'read' | 'write' | 'destructive' | 'unknown';
+  requiredScopes: string[];
+  resources: Array<{ kind: string; parameter?: string }>;
+  sensitiveKeys: string[];
+  pagination: { kind: 'none' | 'cursor' | 'offset' | 'page'; maxPageSize?: number; cursorParameter?: string };
+  retry: 'never' | 'safe' | 'provider-key';
+  idempotencyKeyParameter?: string;
+}

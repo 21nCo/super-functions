@@ -17,6 +17,19 @@ Your router is the source of truth: introspect it into OpenAPI 3.1, then drive v
 | [`@apifn/svelte`](./svelte) | The same UI surface for Svelte, shipped as `.svelte` source. |
 | [`@apifn/docsfn`](./docsfn) | docsfn plugin — render an OpenAPI spec as an interactive API reference. |
 
+### npm release dependency order
+
+The prepared release versions are `@apifn/core`, `@apifn/react`, and
+`@apifn/svelte` **0.0.3**, plus `@apifn/docsfn` **0.1.0**. Publish core first;
+React, Svelte, and `@apifn/admin` **0.1.0** require that exact core version.
+Publish DocsFn after both renderers: it pins core, React, and Svelte to 0.0.3.
+The admin wrapper also requires the published `@superfunctions/admin` **^0.1.4**
+peer so consumers share the same `AdminClient` type.
+
+All ApiFn workspace callers use the new exact core pin. CLI, collections, mock,
+and snippets retain their current package versions and are not included in this
+publication batch; do not republish their already-used versions.
+
 ## Python SDK
 
 [`apifn`](./python) provides Python helpers for OpenAPI generation, diffing, collections, FastAPI, and Flask. It requires Python 3.10 or newer and is versioned separately from the npm packages.
@@ -80,7 +93,47 @@ console.log(formatDiffAsText(result));
 
 ## CI/CD
 
-ApiFn provides a reusable GitHub Actions workflow at `apifn/.github/workflows/api-check.yml`.
+ApiFn provides a reusable GitHub Actions workflow at `.github/workflows/apifn-api-check.yml` (repo root, so GitHub Actions can register and call it).
+
+The workflow checks out the **caller**, installs the pinned published `@apifn/cli`
+version, then runs it against the caller's spec and collection. The caller does
+not need to be this monorepo or contain an `@apifn/cli` workspace. Grant
+`pull-requests: write` on the calling job even when `post_pr_comment` is false;
+the reusable workflow cannot elevate the caller token. Same-repo callers:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  api-check:
+    uses: ./.github/workflows/apifn-api-check.yml
+    with:
+      spec_path: .apifn/openapi.yml
+      collection_dir: .apifn/collection
+```
+
+External repositories can use the registered workflow directly:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  api-check:
+    uses: 21nCo/super-functions/.github/workflows/apifn-api-check.yml@dev
+    with:
+      spec_path: openapi.yml
+      collection_dir: .apifn/collection
+```
+
+Pin a commit or release tag instead of `@dev` when the caller requires an
+immutable workflow. Omit `cli_version` to use the workflow's static default
+(`0.0.2`), which must stay equal to that revision's lockfile pin. If you set it
+explicitly, read the version from the same ref in the
+[workflow's CLI lockfile](../.github/apifn-cli-install/package-lock.json); the
+input is an assertion, not a package selector. For GitLab/Jenkins/Buildkite,
+run the CLI commands in [Non-GitHub CI](#non-github-ci).
 
 ### What it does
 
@@ -96,6 +149,7 @@ ApiFn provides a reusable GitHub Actions workflow at `apifn/.github/workflows/ap
 - `spec_path` (required): Repo-relative OpenAPI path (e.g. `.apifn/openapi.yml`)
 - `collection_dir` (required): Repo-relative OpenCollection directory (e.g. `.apifn/collection`)
 - `environment` (optional, default `development`): Collection environment
+- `cli_version` (optional, default `0.0.2`): Assertion against the `@apifn/cli` version pinned by the selected workflow revision. The default is static in the workflow file and must stay equal to that revision's lockfile pin. Omit it to use the default, or set it from the same ref in the [workflow's CLI lockfile](../.github/apifn-cli-install/package-lock.json). External callers do not need the lockfile locally—the workflow sparse-checks it out from `job.workflow_repository` at `job.workflow_sha`.
 - `base_branch` (optional, default `main`): Branch used to fetch baseline spec
 - `fail_on_breaking` (optional, default `true`): Whether breaking diff exits non-zero
 - `post_pr_comment` (optional, default `true`): Whether to post/update PR summary comment

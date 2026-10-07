@@ -173,6 +173,7 @@ describe('PlugFn SDK', () => {
         .mockResolvedValue({ data: { ok: true }, status: 200, statusText: 'OK', headers: {} });
       const provider = mockProvider('test', { getData: mockResponse({ ok: true }) });
       provider.rateLimit = { requests: 10, window: 60_000 };
+      provider.actions.getData.idempotent = true;
       provider.actions.getData.execute = async (_params, context) => {
         await context.http.get('/quota-test');
         return { ok: true };
@@ -479,7 +480,18 @@ describe('PlugFn SDK', () => {
       ).rejects.toThrow('Action failed');
     });
 
-    it('applies per-call retry options', async () => {
+    it.each([['usable', 'stable-key', 2], ['empty', '', 1], ['whitespace', '   ', 1], ['missing', undefined, 1]])('provider-key retry admission: %s', async (_label, key, count) => {
+      let attempts = 0;
+      const provider = mockProvider('test', { mutate: mockResponse({ ok: true }) });
+      provider.actions.mutate.contract = { version: '1.0.0', effect: 'write', requiredScopes: [], resources: [], sensitiveKeys: [], pagination: { kind: 'none' }, retry: 'provider-key', idempotencyKeyParameter: 'requestId' };
+      provider.actions.mutate.execute = async () => { attempts++; throw Object.assign(new Error('temporary'), { status: 500 }); };
+      plug.providers.register(provider);
+      await adapter.createConnection(mockConnection('test-user', 'test'));
+      await expect(plug.test.mutate({ userId: 'test-user', params: { requestId: key }, retry: { maxAttempts: 2, delay: 0 } })).rejects.toThrow();
+      expect(attempts).toBe(count);
+    });
+
+    it('applies per-call retry options' , async () => {
       let attempts = 0;
       const provider = mockProvider('test', {
         'mutatingAction': mockResponse({ ok: true }),

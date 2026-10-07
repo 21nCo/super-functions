@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { ErrorCode, ListToolsRequestSchema, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -60,6 +60,46 @@ describe("McpFnServer", () => {
     ).resolves.toMatchObject({
       structuredContent: { result: 5 },
     });
+  });
+
+  it("returns handler McpErrors as tool errors while preserving routing errors", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "handler_error",
+      description: "Throw a handler error.",
+      inputSchema: { type: "object", additionalProperties: false },
+      handler: async () => { throw new McpError(ErrorCode.InternalError, "handler failed"); },
+    });
+    const server = createMcpFnServer({ info: { name: "error-server", version: "1" }, registry });
+    const client = new Client({ name: "error-client", version: "1" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+    await expect(client.callTool({ name: "handler_error", arguments: {} })).resolves.toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: "MCPFN_TOOL_ERROR" } },
+    });
+    await expect(client.callTool({ name: "missing", arguments: {} })).rejects.toBeInstanceOf(McpError);
+  });
+
+  it("preserves protocol errors from profile resolution", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "echo", description: "Echo.", inputSchema: { type: "object" },
+      handler: async () => structuredResult({ ok: true }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "profile-error-server", version: "1" }, registry,
+      clientProfiles: {
+        profiles: [],
+        resolveVerifiedIdentity: () => { throw new McpError(ErrorCode.InvalidRequest, "denied"); },
+      },
+    });
+    const client = new Client({ name: "profile-error-client", version: "1" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+    await expect(client.callTool({ name: "echo", arguments: {} })).rejects.toBeInstanceOf(McpError);
   });
 
   it("normalizes structured results without treating repeated references as cycles", () => {
@@ -363,6 +403,68 @@ describe("McpFnServer", () => {
     });
     expect(invoked).toEqual(["visible"]);
     expect(server.manifest().tools.map(({ name }) => name)).toEqual(["hidden", "visible"]);
+  });
+
+  it("checks only the requested tool on calls without client profiles", async () => {
+    const checked: string[] = [];
+    const registry = new McpFnRegistry()
+      .register({
+        name: "available",
+        description: "Available tool.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ ok: true }),
+      })
+      .register({
+        name: "unrelated",
+        description: "Unrelated tool.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ ok: true }),
+      });
+    const server = createMcpFnServer({
+      info: { name: "visibility-scope", version: "1.0.0" },
+      registry,
+      toolVisibility: ({ tool }) => {
+        checked.push(tool.name);
+        if (tool.name === "unrelated") throw new Error("unrelated policy unavailable");
+        return true;
+      },
+    });
+    const client = new Client(
+      { name: "visibility-scope-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    await expect(client.callTool({ name: "available" })).resolves.toMatchObject({
+      structuredContent: { ok: true },
+    });
+    expect(checked).toEqual(["available"]);
+  });
+
+  it("resolves verified identity before running list visibility hooks", async () => {
+    const order: string[] = [];
+    const registry = new McpFnRegistry().register({
+      name: "private", description: "Private tool.", inputSchema: { type: "object" },
+      handler: async () => structuredResult({ ok: true }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "profile-visibility-order", version: "1" }, registry,
+      toolVisibility: () => { order.push("visibility"); return true; },
+      clientProfiles: { profiles: [], resolveVerifiedIdentity: () => {
+        order.push("identity");
+        throw new Error("identity rejected");
+      } },
+    });
+    const client = new Client({ name: "profile-visibility-client", version: "1" });
+    const [left, right] = InMemoryTransport.createLinkedPair();
+    await server.connect(right); await client.connect(left);
+    closeables.push(client, server);
+
+    await expect(client.listTools()).rejects.toThrow(/identity rejected/);
+    expect(order).toEqual(["identity"]);
   });
 
   it("returns a tool error for invalid arguments without invoking the handler", async () => {

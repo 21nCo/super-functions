@@ -9,6 +9,8 @@ DataFn supports an opt-in canonical-gateway model for applications that keep eac
 
 This capability does not provide active-active writes or automatic failover to an empty region. Existing single-region configurations and permission-directory grant indexing are unchanged unless a placement runtime is configured.
 
+For high-frequency sync, [direct regional sync tickets](./direct-regional-sync) provide an opt-in canonical bootstrap followed by direct regional HTTP/WebSocket traffic, with short-lived grants and the same placement fences.
+
 ## Separate ownership from permission projections
 
 `DatafnPlacementDirectoryAdapter` is the authority for namespace ownership. Its records contain a namespace, owning `regionId`, monotonically increasing `epoch`, lifecycle state, update time, and optional cache/destination metadata. `get`, `putIfAbsent`, and `compareAndSet` must all be linearizable for a namespace; for DynamoDB-backed atomic KV stores, configure strong reads (`consistentRead: true`).
@@ -97,6 +99,8 @@ const gateway = createDatafnGatewayRouter({
 The gateway strips caller-supplied internal headers, preserves the method, complete path and query string, body, cookies, authorization, correlation/idempotency headers, and request ID, then signs namespace, region, epoch, method/request target, body presence and digest, audience, timestamps, and a nonce. It buffers and hashes at most 5 MiB before invoking even a body-reading namespace resolver, so resolver clones cannot accumulate an unbounded stream; set `maxBodyBytes` on the gateway and placement runtime when a deployment uses another limit. The placement cache also has an insertion-ordered bound (`maxCacheEntries`, default 10,000) in addition to its TTL. Each cell atomically consumes the signed nonce through a shared replay store before execution. Assertion-enabled placement configuration fails at startup unless it supplies both a verifier and replay store. The in-memory replay store is for tests and one-process deployments only; production cells sharing an audience need a bounded durable store with atomic first claim. The destination resolver may return an HTTP origin, service binding, RPC stub, or function reference, and the dispatcher must adapt the request for that target type; destination details are never serialized into a public response.
 
 On an authenticated, guaranteed pre-execution `DATAFN_REGION_MISMATCH`, the gateway invalidates its cache, re-resolves placement, and retries exactly once. It does not replay ambiguous timeouts or responses produced after execution began. Existing mutation IDs and idempotency keys remain authoritative for application-level retries.
+
+Resource names used for authorization or audit must come from `extractStructuralResourceSelectors` in `@datafn/core`. That API inspects only protocol selector positions and ignores application fields named `resource` or `resources`. It does not choose a region; pair it with the placement directory above. See [Structural resource selectors](/docs/documentation/security/resource-selectors).
 
 ## Errors and availability
 

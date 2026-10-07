@@ -13,6 +13,11 @@ from urllib.parse import quote
 
 from cryptography.fernet import Fernet
 
+from ..limits import (
+    AUTHFN_DATABASE_KEY_MAX_LENGTH,
+    AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+    assert_database_key_length,
+)
 from ..types import (
     AuthFnConfig,
     AuthFnPlugin,
@@ -147,6 +152,23 @@ class TwoFactorService:
         self.plugin_config = plugin_config or TwoFactorPluginConfig()
 
     async def enroll(self, *, user_id: str, primary_email: Optional[str] = None) -> Dict[str, Any]:
+        assert_database_key_length(
+            user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
+        legacy_user = None
+        if len(user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH:
+            legacy_user = await self.config.database.find_one(
+                model="users",
+                where=[{"field": "id", "operator": "eq", "value": user_id}],
+                namespace=self.config.namespace,
+            )
+        user_id = (
+            assert_database_key_length(
+                user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
+            if legacy_user is not None
+            else assert_database_key_length(user_id, "userId")
+        )
         existing = await self.config.database.find_one(
             model="two_factor_enrollments",
             where=[{"field": "userId", "operator": "eq", "value": user_id}],
@@ -230,6 +252,23 @@ class TwoFactorService:
         return {"enabled": True}
 
     async def begin_sign_in_challenge(self, *, user_id: str, primary_method: str) -> Optional[Dict[str, Any]]:
+        assert_database_key_length(
+            user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        )
+        legacy_user = None
+        if len(user_id) > AUTHFN_DATABASE_KEY_MAX_LENGTH:
+            legacy_user = await self.config.database.find_one(
+                model="users",
+                where=[{"field": "id", "operator": "eq", "value": user_id}],
+                namespace=self.config.namespace,
+            )
+        user_id = (
+            assert_database_key_length(
+                user_id, "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
+            if legacy_user is not None
+            else assert_database_key_length(user_id, "userId")
+        )
         enrollment = await self.config.database.find_one(
             model="two_factor_enrollments",
             where=[{"field": "userId", "operator": "eq", "value": user_id}],
@@ -396,8 +435,18 @@ def authfn_two_factor_plugin(config: Optional[TwoFactorPluginConfig] = None) -> 
             {
                 "modelName": "two_factor_enrollments",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "userId": {"type": "string", "required": True, "fieldName": "user_id"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "userId": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "user_id",
+                        "maxLength": AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+                    },
                     "secretEncrypted": {
                         "type": "string",
                         "required": True,
@@ -412,9 +461,24 @@ def authfn_two_factor_plugin(config: Optional[TwoFactorPluginConfig] = None) -> 
             {
                 "modelName": "two_factor_recovery_codes",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "enrollmentId": {"type": "string", "required": True, "fieldName": "enrollment_id"},
-                    "codeHash": {"type": "string", "required": True, "fieldName": "code_hash"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "enrollmentId": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "enrollment_id",
+                        "maxLength": 255,
+                    },
+                    "codeHash": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "code_hash",
+                        "maxLength": 255,
+                    },
                     "usedAt": {"type": "date", "required": False, "fieldName": "used_at"},
                     "createdAt": {"type": "date", "required": True, "fieldName": "created_at"},
                 },
@@ -426,8 +490,18 @@ def authfn_two_factor_plugin(config: Optional[TwoFactorPluginConfig] = None) -> 
             {
                 "modelName": "two_factor_challenges",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "userId": {"type": "string", "required": True, "fieldName": "user_id"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "userId": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "user_id",
+                        "maxLength": AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+                    },
                     "primaryMethod": {"type": "string", "required": True, "fieldName": "primary_method"},
                     "expiresAt": {"type": "date", "required": True, "fieldName": "expires_at"},
                     "consumedAt": {"type": "date", "required": False, "fieldName": "consumed_at"},

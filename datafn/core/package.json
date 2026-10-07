@@ -1,6 +1,6 @@
 {
   "name": "@datafn/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Core types and utilities for datafn - schema validation, DFQL normalization, and shared types",
   "license": "MIT",
   "type": "module",
@@ -88,6 +88,7 @@
     "@types/node": "^24.9.1",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "@vitest/coverage-v8": "4.1.11",
+    "vitest": "4.1.11"
   }
 }

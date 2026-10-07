@@ -84,7 +84,7 @@ npx -y @authfn/mcp
 User: How do I add 2FA to a SvelteKit app?
 Assistant (under the hood): authfn.docs.search("two factor sveltekit")
    → returns plugins/two-factor.md, recipes/adding-2fa.md, sdk/svelte.md
-Assistant: First, install @authfn/core, @authfn/svelte and add the plugin:
+Assistant: First, install authfn, @authfn/two-factor, @authfn/svelte and add the plugin:
   ...
 ```
 

@@ -137,6 +137,71 @@ def _generate_totp(secret: str, now: datetime, digits: int = 6, period_seconds: 
 
 
 @pytest.mark.asyncio
+async def test_two_factor_rejects_oversized_user_ids_before_persistence() -> None:
+    db = MockDatabaseAdapter()
+    service = TwoFactorService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        TwoFactorPluginConfig(encryption_key_resolver=lambda _ref: TEST_2FA_KEY),
+    )
+
+    with pytest.raises(ValidationError, match="userId must contain at most 255 characters"):
+        await service.enroll(user_id="u" * 256)
+    with pytest.raises(ValidationError, match="userId must contain at most 255 characters"):
+        await service.begin_sign_in_challenge(
+            user_id="u" * 256,
+            primary_method="password",
+        )
+
+    assert db.storage["two_factor_enrollments"] == []
+    assert db.storage["two_factor_challenges"] == []
+
+
+@pytest.mark.asyncio
+async def test_two_factor_challenge_allows_persisted_legacy_user_id() -> None:
+    db = MockDatabaseAdapter()
+    now = datetime(2026, 3, 22)
+    legacy_user_id = "legacy-user-".ljust(300, "x")
+    db.storage["users"] = [{"id": legacy_user_id}]
+    db.storage["two_factor_enrollments"] = [
+        {
+            "id": "tfa_legacy",
+            "userId": legacy_user_id,
+            "secretEncrypted": "legacy-secret",
+            "confirmedAt": now,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+    ]
+    service = TwoFactorService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        TwoFactorPluginConfig(now=lambda: now),
+    )
+
+    challenge = await service.begin_sign_in_challenge(
+        user_id=legacy_user_id,
+        primary_method="password",
+    )
+
+    assert challenge is not None
+    assert challenge["userId"] == legacy_user_id
+
+
+@pytest.mark.asyncio
+async def test_two_factor_enrollment_allows_persisted_legacy_user_id() -> None:
+    db = MockDatabaseAdapter()
+    legacy_user_id = "legacy-user-".ljust(300, "x")
+    db.storage["users"] = [{"id": legacy_user_id}]
+    service = TwoFactorService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        TwoFactorPluginConfig(encryption_key_resolver=lambda _ref: TEST_2FA_KEY),
+    )
+
+    await service.enroll(user_id=legacy_user_id)
+
+    assert db.storage["two_factor_enrollments"][0]["userId"] == legacy_user_id
+
+
+@pytest.mark.asyncio
 async def test_two_factor_plugin_schema_and_routes() -> None:
     plugin = authfn_two_factor_plugin()
     schema = plugin.schema(AuthFnConfig(database=object()))

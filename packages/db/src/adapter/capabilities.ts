@@ -30,6 +30,8 @@ export interface AdapterCapabilities {
     supported: boolean;
     nested: boolean; // Savepoints
     isolation?: TransactionIsolation[];
+    /** Honors explicit per-call transaction isolation options. */
+    configurableIsolation?: boolean;
   };
 
   // Performance characteristics

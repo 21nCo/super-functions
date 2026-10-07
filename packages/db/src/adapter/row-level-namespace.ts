@@ -344,10 +344,10 @@ export function wrapWithRowLevelNamespace(
     ...wrappedBase,
 
     // --- Transaction: wrap child adapter ---
-    async transaction(callback) {
+    async transaction(callback, options) {
       return adapter.transaction(async (trx) => {
         return callback(wrapTransactionAdapter(trx, config));
-      });
+      }, options);
     },
 
     close: () => adapter.close(),

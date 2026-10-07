@@ -28,7 +28,7 @@ dependencies = [
   "pydantic>=2.5.0",
   "cryptography>=41.0.0",
   "python-jose>=3.3.0",
-  "superfunctions>=0.1.0",
+  "superfunctions-core>=0.1.1,<0.2.0",
 ]
 
 [project.optional-dependencies]
@@ -74,7 +74,6 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 explicit_package_bases = true
-exclude = ["^setup\\.py$"]
 
 [[tool.mypy.overrides]]
 module = ["tests.*", "examples.*"]

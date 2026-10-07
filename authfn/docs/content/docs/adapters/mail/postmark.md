@@ -11,7 +11,7 @@ npm install postmark
 
 ```ts
 import * as postmark from 'postmark';
-import type { AuthFnDeliveryProvider } from '@authfn/core';
+import type { AuthFnDeliveryProvider } from 'authfn';
 
 const client = new postmark.ServerClient(process.env.POSTMARK_TOKEN!);
 

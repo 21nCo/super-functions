@@ -16,6 +16,9 @@ describe('notionProvider', () => {
       'blocks.children.append',
       'databases.retrieve',
       'databases.query',
+      'search',
+      'dataSources.list',
+      'dataSources.query',
     ]);
   });
 

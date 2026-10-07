@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/db",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Shared database adapter system for building useful backend libraries",
   "type": "module",
   "main": "./dist/index.js",
@@ -55,9 +55,9 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "vitest",
+    "test": "vitest run",
     "test:watch": "vitest --watch",
-    "lint": "echo 'lint not configured'",
+    "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -65,7 +65,7 @@
     "@prisma/client": ">=6.0.0",
     "drizzle-orm": ">=0.35.0",
     "kysely": ">=0.28.0",
-    "mongodb": ">=6.0.0"
+    "vitest": "4.1.11"
   },
   "peerDependenciesMeta": {
     "kysely": {
@@ -74,7 +74,7 @@
     "@prisma/client": {
       "optional": true
     },
-    "mongodb": {
+    "vitest": {
       "optional": true
     }
   },
@@ -90,7 +90,7 @@
     "drizzle-orm": "^0.35.0",
     "kysely": "^0.28.0",
     "typescript": "^5.6.0",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.11"
   },
   "keywords": [
     "database",
@@ -99,7 +99,6 @@
     "drizzle",
     "prisma",
     "kysely",
-    "mongodb",
     "superfunctions"
   ],
   "author": "21n",

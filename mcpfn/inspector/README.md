@@ -21,7 +21,8 @@ import { McpFnInspector } from "@mcpfn/inspector";
 const inspector = await McpFnInspector.create({
   target: streamableHttpTarget("https://example.com/mcp"),
 }).connect();
-console.log(await inspector.snapshot());
+const snapshot = await inspector.snapshot();
+console.log(inspector.serializeSnapshot(snapshot, { space: 2 }));
 
 const operation = {
   kind: "tools.call" as const,

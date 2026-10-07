@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/http",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Framework-agnostic HTTP abstraction layer for Superfunctions libraries",
   "type": "module",
   "main": "./dist/index.js",
@@ -58,6 +58,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
-    "vitest": "^3.2.4"
+    "@vitest/coverage-v8": "4.1.11",
+    "vitest": "4.1.11"
   }
 }

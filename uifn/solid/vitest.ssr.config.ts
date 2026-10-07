@@ -11,6 +11,5 @@ export default defineConfig({
     include: ['src/__tests__/phase-13-solid-ssr.test.tsx'],
     pool: 'forks',
     maxWorkers: 1,
-    minWorkers: 1,
   },
 });

@@ -11,7 +11,7 @@ npm install resend
 
 ```ts
 import { Resend } from 'resend';
-import type { AuthFnDeliveryProvider } from '@authfn/core';
+import type { AuthFnDeliveryProvider } from 'authfn';
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 

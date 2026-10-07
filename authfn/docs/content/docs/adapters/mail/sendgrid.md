@@ -11,7 +11,7 @@ npm install @sendgrid/mail
 
 ```ts
 import sgMail from '@sendgrid/mail';
-import type { AuthFnDeliveryProvider } from '@authfn/core';
+import type { AuthFnDeliveryProvider } from 'authfn';
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
 

@@ -1,56 +1,79 @@
 # Persistence Service
 
-tRPC-based persistence service for bot data using Hono and Cloudflare D1.
+tRPC-based persistence service for bot data using Hono, PostgreSQL, and Drizzle.
 
 ## Features
 
 - **Type-safe API** with tRPC
 - **Runtime validation** with Zod
-- **Cloudflare D1** database
+- **PostgreSQL + Drizzle** database access
 - **Issue tracking** with GitHub/Linear integration
 - **Discord thread management** with many-to-many relationships
 
 ## Setup
 
-### 1. Create D1 Database
+### 1. Install dependencies
 
-```bash
-wrangler d1 create botfn-db
-```
-
-Copy the `database_id` from the output and update it in `wrangler.toml`.
-
-### 2. Initialize Database Schema
-
-For production:
-```bash
-npm run db:init
-```
-
-For local development:
-```bash
-npm run db:init-local
-```
-
-### 3. Install Dependencies
-
-From the monorepo root:
 ```bash
 npm install
+```
+
+### 2. Provision PostgreSQL
+
+Create a PostgreSQL database and apply the DDL in [SETUP.md](./SETUP.md), which
+is kept in sync with `src/schema.ts`.
+
+For local development, create `botfn/persistence/.dev.vars`:
+
+```dotenv
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
+```
+
+### 3. Configure the production secret
+
+```bash
+npx wrangler secret put DATABASE_URL --config botfn/persistence/wrangler.toml
 ```
 
 ## Development
 
 ```bash
-npm run dev
+npm --workspace @superfunctions/botfn-persistence-service run dev
 ```
 
 The service will be available at `http://localhost:8787`.
 
+## Package API and tests
+
+The npm package ships compiled ESM and declarations. Import the client without
+loading the server runtime:
+
+```typescript
+import { createPersistenceClient } from '@superfunctions/botfn-persistence-service/client';
+
+const persistence = createPersistenceClient('https://persistence.example.com');
+```
+
+The server factory is exported from `@superfunctions/botfn-persistence-service/core`.
+`createPersistenceApp()` uses the request binding `DATABASE_URL`; an optional
+`PersistenceDatabase` argument accepts an existing Drizzle PostgreSQL database.
+The caller owns the supplied connection and its lifecycle.
+
+```bash
+npm run build
+npm test
+```
+
+Tests use an isolated embedded PostgreSQL database (PGlite), the production DDL
+from `SETUP.md`, and the real HTTP/tRPC handlers. No external database or API
+credentials are required. They cover persisted reads, updates, notification
+filtering, thread uniqueness, foreign keys, input errors and transaction rollback.
+
+
 ## Deployment
 
 ```bash
-npm run deploy
+npm --workspace @superfunctions/botfn-persistence-service run deploy
 ```
 
 ## API Endpoints
@@ -108,4 +131,5 @@ The service uses two main tables:
 - **issues** - Stores issue metadata (GitHub/Linear IDs, status, notification state)
 - **discord_threads** - Many-to-many relationship between issues and Discord threads
 
-See `schema.sql` for full schema definition.
+See `src/schema.ts` for the Drizzle schema and [SETUP.md](./SETUP.md) for the
+corresponding PostgreSQL DDL.

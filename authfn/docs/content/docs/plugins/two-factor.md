@@ -8,19 +8,31 @@ description: RFC 6238 TOTP with recovery codes, time-window tolerance, and plugg
 `authFnTwoFactorPlugin` adds TOTP-based two-factor authentication on top of any primary sign-in method (password, OTP, OAuth). Once a user enrolls and confirms, every subsequent sign-in returns `AUTHFN_2FA_REQUIRED` first; the user provides a code from their authenticator app, and only then does the kernel issue a session.
 
 ```ts
-import { authFnTwoFactorPlugin } from '@authfn/core';
+import { authfn, authFnPlugins } from 'authfn';
+import { authFnTwoFactorPlugin } from '@authfn/two-factor';
 
-authFnTwoFactorPlugin({
-  issuer: 'AcmeApp',
-  digits: 6,
-  periodSeconds: 30,
-  window: 1,
-  recoveryCodeCount: 10,
-  encryptionKeyResolver: async () => loadKeyFromVault(),
+const authApp = authfn({
+  plugins: authFnPlugins(authFnTwoFactorPlugin()),
+});
+
+authApp.createServer({
+  database,
+  pluginRuntime: {
+    twoFactor: {
+      issuer: 'AcmeApp',
+      digits: 6,
+      periodSeconds: 30,
+      window: 1,
+      recoveryCodeCount: 10,
+      encryptionKeyResolver: async () => loadKeyFromVault(),
+    },
+  },
 });
 ```
 
 ## Configuration
+
+All of these options are `pluginRuntime.twoFactor` fields. The factory takes only optional schema overrides.
 
 | Option | Default | Notes |
 | --- | --- | --- |
@@ -33,7 +45,7 @@ authFnTwoFactorPlugin({
 | `encryptionKeyRef` | `'default'` | Identifier passed to your `encryptionKeyResolver`. |
 | `encryptionKeyResolver` | required for production | Returns a `Buffer` used to encrypt the TOTP secret at rest. |
 
-The TOTP secret is encrypted at rest using AES-256-GCM with the key returned by `encryptionKeyResolver`. **Do not** hardcode keys; load them from a KMS, Vault, AWS Secrets Manager, or equivalent. Rotating the key requires re-encrypting existing enrollments — a recipe is in [Recipes → Rotating 2FA encryption](../recipes/rotate-2fa-encryption).
+The TOTP secret is encrypted at rest using AES-256-GCM with the key returned by `encryptionKeyResolver`. **Do not** hardcode keys; load them from a KMS, Vault, AWS Secrets Manager, or equivalent. Decrypt always uses the currently configured `encryptionKeyRef`; there is no public re-encrypt helper. See [Recipes → Rotating 2FA encryption](../recipes/rotate-2fa-encryption).
 
 ## Routes
 
@@ -120,13 +132,7 @@ The recipe in [Recipes → Adding 2FA](../recipes/adding-2fa) walks through both
 
 ## Encryption rotation
 
-To rotate `encryptionKeyRef`:
-
-1. Add the new key to your secrets store.
-2. Update `encryptionKeyResolver` to return the new key for the new ref.
-3. Run a one-off migration: decrypt with the old key (look up by `encryptionKeyRef`), re-encrypt with the new key, update the row.
-
-The recipe at [Recipes → Rotating 2FA encryption](../recipes/rotate-2fa-encryption) ships a script you can adapt.
+The enrollment row does not store `encryptionKeyRef`. Changing the configured key without replacing stored ciphertext will make existing enrollments fail to decrypt. The supported public path is to have users disable and re-enroll after you cut over. See [Recipes → Rotating 2FA encryption](../recipes/rotate-2fa-encryption).
 
 ## Related
 

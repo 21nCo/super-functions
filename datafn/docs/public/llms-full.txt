@@ -12641,8 +12641,6 @@ Legacy API calls that send `shareWith.userId` are accepted during compatibility 
 
 This supports no-downtime upgrades for older clients while migration dashboards track deprecated payload usage.
 
-For operational runbook details, see `datafn/.conduct/migrations/spv2-rollout-runbook.md`.
-
 
 
 --------------------------------------------------------------------------------

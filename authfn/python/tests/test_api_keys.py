@@ -6,6 +6,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -19,7 +20,7 @@ for path in (AUTHFN_PYTHON_ROOT, PYTHON_CORE_ROOT):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from authfn import ApiKeyRevokedError, AuthFnConfig
+from authfn import ApiKeyRevokedError, AuthFnConfig, ValidationError
 from authfn.plugins.api_keys import ApiKeyPluginConfig, ApiKeyService, authfn_api_key_plugin
 
 
@@ -145,3 +146,50 @@ async def test_create_list_authenticate_and_revoke_api_keys() -> None:
     await service.revoke_key(key_id=created["keyId"], user_id="user_1")
     with pytest.raises(ApiKeyRevokedError):
         await service.authenticate(MockRequest({"authorization": f"Bearer {created['secret']}"}))
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_rejects_oversized_user_id_before_persistence() -> None:
+    db = MockDatabaseAdapter()
+    service = ApiKeyService(AuthFnConfig(database=db, namespace="authfn"))
+
+    with pytest.raises(ValidationError, match="userId must contain at most 255 characters"):
+        await service.create_key(user_id="u" * 256, name="oversized-user")
+
+    assert db.storage["api_keys"] == []
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_allows_persisted_legacy_user_id() -> None:
+    db = MockDatabaseAdapter()
+    user_id = "legacy-user-".ljust(300, "x")
+    db.storage["users"] = [{"id": user_id}]
+    service = ApiKeyService(
+        AuthFnConfig(database=db, namespace="authfn"),
+        ApiKeyPluginConfig(now=lambda: datetime(2026, 3, 22, 0, 0, 0)),
+    )
+
+    created = await service.create_key(user_id=user_id, name="legacy-key")
+
+    assert created["record"]["userId"] == user_id
+    assert len(db.storage["api_keys"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_rejects_legacy_user_id_wider_than_reference_column() -> None:
+    db = MockDatabaseAdapter()
+    user_id = "legacy-user-".ljust(768, "x")
+    db.storage["users"] = [{"id": user_id}]
+    db.find_one = AsyncMock(side_effect=AssertionError("oversized ID reached the database"))
+    service = ApiKeyService(AuthFnConfig(database=db, namespace="authfn"))
+
+    with pytest.raises(ValidationError) as exc_info:
+        await service.create_key(user_id=user_id, name="too-wide-legacy-key")
+
+    assert exc_info.value.details == {
+        "fieldName": "userId",
+        "maxLength": 767,
+        "actualLength": 768,
+    }
+    assert db.storage["api_keys"] == []
+    db.find_one.assert_not_awaited()

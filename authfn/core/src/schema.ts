@@ -1,8 +1,9 @@
 import type { TableSchema } from '@superfunctions/db';
+import { AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH } from './core/limits.js';
 import { AuthFnConfigError, AuthFnConflictError } from './types.js';
 import type { AuthFnConfig, AuthFnSchemaDefinition } from './types.js';
 
-export const AUTHFN_SCHEMA_VERSION = 1;
+export const AUTHFN_SCHEMA_VERSION = 2;
 
 export function getSchema(config: AuthFnConfig): AuthFnSchemaDefinition {
   if (!Array.isArray(config.plugins)) {
@@ -26,8 +27,13 @@ export function createCoreTables(): TableSchema[] {
     {
       modelName: 'users',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        primaryEmail: { type: 'string', required: false, fieldName: 'primary_email' },
+        id: {
+          type: 'string',
+          required: true,
+          fieldName: 'id',
+          maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        },
+        primaryEmail: { type: 'string', required: false, fieldName: 'primary_email', maxLength: 255 },
         emailVerifiedAt: { type: 'date', required: false, fieldName: 'email_verified_at' },
         metadata: { type: 'json', required: false, fieldName: 'metadata' },
         createdAt: { type: 'date', required: true, fieldName: 'created_at' },
@@ -44,14 +50,15 @@ export function createCoreTables(): TableSchema[] {
     {
       modelName: 'sessions',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
         userId: {
           type: 'string',
           required: true,
           fieldName: 'user_id',
+          maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
           references: { model: 'users', field: 'id', onDelete: 'cascade' }
         },
-        tokenHash: { type: 'string', required: true, fieldName: 'token_hash' },
+        tokenHash: { type: 'string', required: true, fieldName: 'token_hash', maxLength: 255 },
         csrfHash: { type: 'string', required: false, fieldName: 'csrf_hash' },
         methods: { type: 'json', required: true, fieldName: 'methods' },
         metadata: { type: 'json', required: false, fieldName: 'metadata' },

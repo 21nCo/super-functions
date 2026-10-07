@@ -8,6 +8,7 @@ description: Use Postgres with authfn through the supported Drizzle adapter path
 For Postgres, use the supported Drizzle adapter path:
 
 ```ts
+import { authfn, authFnPlugins } from 'authfn';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
@@ -16,7 +17,8 @@ import * as schema from './db/generated/authfn-schema.js';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool, { schema });
 
-createAuthFn({
+const authApp = authfn({ plugins: authFnPlugins(/* your plugins */) });
+const auth = authApp.createServer({
   database: drizzleAdapter({ db, dialect: 'postgres' }),
   // ...
 });
@@ -26,13 +28,18 @@ If you need a raw `pg` adapter, implement the [custom adapter](./custom) contrac
 
 ## Migrations
 
-Generate raw SQL migrations with the CLI:
+After adding the complete CLI and Drizzle Kit configuration from the
+[Drizzle adapter guide](./drizzle), generate the schema, then create and apply
+migrations:
 
 ```bash
-npx @superfunctions/cli generate --dialect postgres --output ./migrations
+npx @superfunctions/cli generate-schema --config ./superfunctions.config.mjs --adapter drizzle --dialect postgres --output ./db/generated --force
+npx drizzle-kit generate
+npx drizzle-kit migrate
 ```
 
-Apply them with your favorite migration tool: `node-pg-migrate`, `dbmate`, `flyway`, or in-house. The output is plain SQL — bring it into whatever tooling you already use.
+Review the generated SQL before applying it. If you use another migration
+runner, point it at that reviewed SQL instead.
 
 ## Schema sketch
 

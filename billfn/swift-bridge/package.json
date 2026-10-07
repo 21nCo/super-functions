@@ -3,18 +3,25 @@
   "version": "0.0.1",
   "type": "module",
   "description": "WKWebView bridge primitives for native-backed BillFn clients",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
+  "files": ["dist"],
+  "publishConfig": { "access": "public" },
   "scripts": {
-    "test": "npm exec --yes --package=vitest@3.2.4 vitest run",
-    "typecheck": "npm exec --yes --package=typescript@5.9.3 tsc --noEmit"
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "@vitest/coverage-v8": "4.1.11",
+    "vitest": "4.1.11"
   }
 }

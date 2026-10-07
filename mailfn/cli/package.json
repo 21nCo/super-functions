@@ -15,5 +15,5 @@
   "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "mailfn/cli" },
   "publishConfig": { "access": "public" },
   "dependencies": { "@clifn/core": "0.1.0", "@mailfn/client": "0.1.0" },
-  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.6.0", "vitest": "3.2.4" }
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.6.0", "vitest": "4.1.11" }
 }

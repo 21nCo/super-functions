@@ -12,7 +12,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
@@ -34,10 +35,10 @@
   },
   "dependencies": {
     "@superfunctions/admin": "0.1.0",
-    "plugfn": "0.1.0"
+    "plugfn": "0.2.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.11"
   }
 }

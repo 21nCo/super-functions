@@ -187,7 +187,7 @@ describe("@datafn/swift-bridge native storage adapter", () => {
       { ifMissing: { id: "task:new", title: "patch", status: "draft" } },
     );
 
-    expect(calls.at(-1)).toMatchObject({
+    expect(calls[calls.length - 1]).toMatchObject({
       method: "storage.mergeRecord",
       payload: {
         resource: "tasks",

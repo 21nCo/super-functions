@@ -56,6 +56,19 @@ It does not own HTTP transport, token persistence, or route exposure. Use:
 - `@superfunctions/oauth-flow` when you want start/callback/refresh/disconnect orchestration
 - `@superfunctions/oauth-router` when you want reusable HTTP routes on top of `oauth-flow`
 
+### Provider transport descriptors
+
+`OAuthProviderDescriptor` includes optional transport fields consumed by
+`@superfunctions/oauth-http`: `tokenBodyEncoding` defaults to form encoding;
+`tokenHeaders` adds provider-required request headers; `authorizationCodeTokenPath`
+selects a nested authorization-code token object without changing refresh response
+parsing; and `revocationResponse: "json-ok"` requires an explicit JSON `ok: true`
+even when the provider returns HTTP 200. Omitting these fields preserves the
+default root-token and HTTP-status behavior.
+
+Package-local `npm test` resolves installed dependency exports, not sibling
+sources. Install the declared registry prerequisites before running release gates.
+
 ## Production Notes
 
 - Keep provider descriptors static and resolve client/runtime secrets outside source control.

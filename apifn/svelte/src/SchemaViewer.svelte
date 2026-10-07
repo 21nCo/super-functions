@@ -69,14 +69,14 @@
     >{primaryType}</span>
     {#if isArray && itemSchema}
       <span class="type-badge" style="opacity:0.6;color:var(--apifn-text-muted);background:#2d3748">
-        of {(itemSchema.type as string) ?? "object"}
+        of {itemSchema.type ?? "object"}
       </span>
     {/if}
     {#if typeof schema.description === "string"}
       <span class="description">{schema.description}</span>
     {/if}
     {#if Array.isArray(schema.enum)}
-      <span class="description">enum: {(schema.enum as unknown[]).map(String).join(" | ")}</span>
+      <span class="description">enum: {schema.enum.map(String).join(" | ")}</span>
     {/if}
   </div>
 

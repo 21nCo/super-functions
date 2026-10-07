@@ -1,3 +1,6 @@
+import { applySelectedResources } from '../shared/selected-resources.js';
+import { declareContracts } from '../shared/selected-contracts.js';
+import { restAction, jsonObject, remoteId, segment } from '../shared/rest-action.js';
 import { z } from 'zod';
 import type { ActionContext } from 'plugfn';
 import { AuthType } from 'plugfn';
@@ -19,8 +22,11 @@ export const clickupProvider: Provider = {
     config: {
       authorizationUrl: 'https://app.clickup.com/api',
       tokenUrl: 'https://api.clickup.com/api/v2/oauth/token',
-      scopes: ['tasks:write', 'tasks:read', 'comments:write', 'spaces:read'],
+      scopes: [],
       scopeSeparator: ',',
+      tokenBodyEncoding: 'json',
+      supportsPkce: false,
+      supportsRefreshToken: false,
     },
   },
 
@@ -233,3 +239,37 @@ function verifyClickUpSignature(
 ): boolean {
   return verifyRawBodyHmac({ signature, secret, context, algorithm: 'sha256' });
 }
+
+clickupProvider.actions['lists.list'] = restAction({ name: 'lists.list', method: 'GET',
+  parameters: z.object({ spaceId: remoteId.optional(), folderId: remoteId.optional(), archived: z.boolean().optional() }).strict().refine(p => Boolean(p.spaceId) !== Boolean(p.folderId), 'Select exactly one space or folder'),
+  path: p => `https://api.clickup.com/api/v2/${p.folderId ? 'folder/' + segment(p.folderId) : 'space/' + segment(p.spaceId)}/list`,
+  query: p => ({ archived: p.archived }), returns: z.object({ lists: z.array(jsonObject) }).passthrough(), scopes: [],
+});
+clickupProvider.actions['comments.list'] = restAction({ name: 'comments.list', method: 'GET',
+  parameters: z.object({ taskId: remoteId, start: z.number().int().nonnegative().optional(), start_id: remoteId.optional() }).strict(),
+  path: p => `https://api.clickup.com/api/v2/task/${segment(p.taskId)}/comment`, query: p => ({ start: p.start, start_id: p.start_id }),
+  returns: z.object({ comments: z.array(jsonObject) }).passthrough(), scopes: [], pagination: { kind: 'cursor', cursorParameter: 'start_id' },
+});
+
+declareContracts(clickupProvider, {
+  "reads": [
+    "spaces.list",
+    "tasks.list",
+    "tasks.get"
+  ],
+  "writes": [
+    "tasks.create",
+    "tasks.update",
+    "comments.create"
+  ],
+  "readScopes": [],
+  "writeScopes": [],
+  "pagination": {
+    "tasks.list": {
+      "kind": "page",
+      "maxPageSize": 100
+    }
+  }
+});
+
+applySelectedResources(clickupProvider);

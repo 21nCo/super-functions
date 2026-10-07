@@ -52,9 +52,8 @@ export class FetchHttpClient implements HttpClient {
         headers,
         body,
         signal: controller.signal,
+        redirect: config?.redirect,
       });
-
-      clearTimeout(timeoutId);
 
       const responseHeaders: Record<string, string> = {};
       response.headers.forEach((value, key) => {
@@ -64,7 +63,27 @@ export class FetchHttpClient implements HttpClient {
       let responseData: T;
       const contentType = response.headers.get('content-type');
 
-      if (contentType?.includes('application/json')) {
+      if (response.ok && config?.responseType === 'arrayBuffer') {
+        const limit = config.maxResponseBytes ?? 20 * 1024 * 1024;
+        if (!Number.isFinite(limit) || limit < 0) throw new Error('Invalid response byte limit');
+        const reader = response.body?.getReader();
+        const chunks: Uint8Array[] = [];
+        let total = 0;
+        if (reader) {
+          try {
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              total += value.byteLength;
+              if (total > limit) throw new Error('Response byte limit exceeded');
+              chunks.push(value);
+            }
+          } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+        }
+        const bytes = new Uint8Array(total); let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+        responseData = bytes.buffer as T;
+      } else if (contentType?.includes('application/json')) {
         responseData = (await response.json()) as T;
       } else {
         responseData = (await response.text()) as any;
@@ -74,10 +93,12 @@ export class FetchHttpClient implements HttpClient {
         throw new HttpError(
           `HTTP ${response.status}: ${response.statusText}`,
           response.status,
-          responseData
+          responseData,
+          responseHeaders
         );
       }
 
+      clearTimeout(timeoutId);
       return {
         data: responseData,
         status: response.status,
@@ -150,7 +171,8 @@ export class HttpError extends Error {
   constructor(
     message: string,
     public status: number,
-    public data?: any
+    public data?: any,
+    public headers?: Record<string, string>
   ) {
     super(message);
     this.name = 'HttpError';

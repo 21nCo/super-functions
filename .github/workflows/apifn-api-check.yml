@@ -1,0 +1,353 @@
+name: ApiFn API Check
+
+on:
+  workflow_call:
+    inputs:
+      spec_path:
+        description: Path to generated OpenAPI spec (repo-relative)
+        required: true
+        type: string
+      collection_dir:
+        description: Path to OpenCollection directory (repo-relative)
+        required: true
+        type: string
+      environment:
+        description: Collection environment name
+        required: false
+        default: development
+        type: string
+      cli_version:
+        description: Must match the @apifn/cli version pinned by this workflow revision; the default matches
+        required: false
+        default: "0.0.2"
+        type: string
+      start_mock_server:
+        description: Start apifn mock for workflow self-tests before running the collection
+        required: false
+        default: false
+        type: boolean
+      mock_port:
+        description: Port used when start_mock_server is enabled
+        required: false
+        default: 19999
+        type: number
+      base_branch:
+        description: Base branch for spec diff
+        required: false
+        default: main
+        type: string
+      fail_on_breaking:
+        description: Fail the workflow when breaking changes are found
+        required: false
+        default: true
+        type: boolean
+      post_pr_comment:
+        description: Post/update PR summary comment
+        required: false
+        default: true
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      spec_path:
+        description: Path to generated OpenAPI spec (repo-relative)
+        required: true
+        type: string
+      collection_dir:
+        description: Path to OpenCollection directory (repo-relative)
+        required: true
+        type: string
+      environment:
+        description: Collection environment name
+        required: false
+        default: development
+        type: string
+      cli_version:
+        description: Must match the @apifn/cli version pinned by this workflow revision; the default matches
+        required: false
+        default: "0.0.2"
+        type: string
+      start_mock_server:
+        description: Start apifn mock for workflow self-tests before running the collection
+        required: false
+        default: false
+        type: boolean
+      mock_port:
+        description: Port used when start_mock_server is enabled
+        required: false
+        default: 19999
+        type: number
+      base_branch:
+        description: Base branch for spec diff
+        required: false
+        default: main
+        type: string
+      fail_on_breaking:
+        description: Fail the workflow when breaking changes are found
+        required: false
+        default: true
+        type: boolean
+      post_pr_comment:
+        description: Post/update PR summary comment
+        required: false
+        default: true
+        type: boolean
+
+# Callers must grant at least these scopes. A reusable workflow cannot
+# elevate GITHUB_TOKEN; a caller with pull-requests: read causes
+# startup_failure before any job runs.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  api-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Fetch CLI lockfile for external callers
+        if: hashFiles('.github/apifn-cli-install/package-lock.json') == ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout: .github/apifn-cli-install
+          path: .apifn-cli-lock
+          persist-credentials: false
+
+      - name: Install ApiFn CLI
+        shell: bash
+        env:
+          APIFN_CLI_VERSION: ${{ inputs.cli_version }}
+        run: |
+          set -euo pipefail
+          if [ -f .github/apifn-cli-install/package-lock.json ]; then
+            LOCK_DIR=".github/apifn-cli-install"
+          else
+            LOCK_DIR=".apifn-cli-lock/.github/apifn-cli-install"
+          fi
+          npm ci --ignore-scripts --prefix "$LOCK_DIR"
+          BIN_DIR="$PWD/$LOCK_DIR/node_modules/.bin"
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
+          INSTALLED="$(node -p "require('$PWD/$LOCK_DIR/node_modules/@apifn/cli/package.json').version")"
+          echo "Installed @apifn/cli@$INSTALLED from lockfile"
+          if [ "$INSTALLED" != "$APIFN_CLI_VERSION" ]; then
+            echo "::error::cli_version input is $APIFN_CLI_VERSION; lockfile installed $INSTALLED"
+            exit 1
+          fi
+          "$BIN_DIR/apifn" --version
+
+      - name: Resolve base spec from base branch
+        id: base_spec
+        shell: bash
+        env:
+          BASE_BRANCH: ${{ inputs.base_branch }}
+          SPEC_PATH: ${{ inputs.spec_path }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$BASE_BRANCH" --depth=1
+          if git show "origin/${BASE_BRANCH}:${SPEC_PATH}" > .apifn-base-openapi.yml; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            printf '{"hasBreakingChanges":false,"summary":{"breaking":0,"nonBreaking":0,"added":0,"removed":0,"modified":0},"breaking":[],"nonBreaking":[],"timestamp":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > diff-report.json
+          fi
+
+      - name: Validate OpenAPI
+        id: validate
+        continue-on-error: true
+        shell: bash
+        env:
+          SPEC_PATH: ${{ inputs.spec_path }}
+        run: |
+          set +e
+          apifn validate "$SPEC_PATH" --format json > validate-report.json
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Diff OpenAPI against base branch
+        id: diff
+        if: steps.base_spec.outputs.found == 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          SPEC_PATH: ${{ inputs.spec_path }}
+          FAIL_ON_BREAKING: ${{ inputs.fail_on_breaking }}
+        run: |
+          set +e
+          DIFF_ARGS=""
+          if [ "$FAIL_ON_BREAKING" != "true" ]; then
+            DIFF_ARGS="--no-fail-on-breaking"
+          fi
+          apifn diff .apifn-base-openapi.yml "$SPEC_PATH" --format json $DIFF_ARGS > diff-report.json
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Start smoke mock server
+        if: inputs.start_mock_server == true || inputs.start_mock_server == 'true'
+        shell: bash
+        env:
+          SPEC_PATH: ${{ inputs.spec_path }}
+          MOCK_PORT: ${{ inputs.mock_port }}
+        run: |
+          set -euo pipefail
+          apifn mock "$SPEC_PATH" --port "$MOCK_PORT" > apifn-mock.log 2>&1 &
+          echo "$!" > apifn-mock.pid
+          for attempt in {1..30}; do
+            # Any HTTP response means the mock accepted a connection. Do not
+            # require GET /users — caller specs may not define that route.
+            if curl --silent --output /dev/null --max-time 1 "http://127.0.0.1:${MOCK_PORT}/"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat apifn-mock.log
+          exit 1
+
+      - name: Run collection tests
+        id: test
+        continue-on-error: true
+        shell: bash
+        env:
+          COLLECTION_DIR: ${{ inputs.collection_dir }}
+          COLLECTION_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set +e
+          apifn test "$COLLECTION_DIR" --env "$COLLECTION_ENVIRONMENT" --reporter json > test-report.json
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Stop smoke mock server
+        if: always() && (inputs.start_mock_server == true || inputs.start_mock_server == 'true')
+        shell: bash
+        run: |
+          if [ -f apifn-mock.pid ]; then
+            kill "$(cat apifn-mock.pid)" || true
+          fi
+
+      - name: Build markdown summary
+        id: summary
+        shell: bash
+        run: |
+          node <<'JS'
+          const fs = require('node:fs');
+
+          function readJson(path, fallback) {
+            try { return JSON.parse(fs.readFileSync(path, 'utf8')); } catch { return fallback; }
+          }
+
+          const validate = readJson('validate-report.json', { ok: false, errors: [{ path: '', message: 'missing validate report' }] });
+          const diff = readJson('diff-report.json', { hasBreakingChanges: false, summary: { breaking: 0, nonBreaking: 0, added: 0, removed: 0, modified: 0 } });
+          const test = readJson('test-report.json', { summary: { total: 0, passed: 0, failed: 0, skipped: 0, errors: 0 } });
+
+          const validateStatus = validate.ok ? 'PASS' : 'FAIL';
+          const diffStatus = diff.hasBreakingChanges ? 'BREAKING' : 'OK';
+          const testStatus = (test.summary.failed || test.summary.errors) ? 'FAIL' : 'PASS';
+
+          const lines = [
+            '<!-- apifn-ci-report -->',
+            '## ApiFn CI Summary',
+            '',
+            `- Validate: **${validateStatus}**`,
+            `- Diff: **${diffStatus}** (breaking=${diff.summary.breaking ?? 0}, non-breaking=${diff.summary.nonBreaking ?? 0})`,
+            `- Tests: **${testStatus}** (passed=${test.summary.passed ?? 0}, failed=${test.summary.failed ?? 0}, errors=${test.summary.errors ?? 0})`,
+            '',
+            '### Diff Summary',
+            '',
+            '| Metric | Value |',
+            '|---|---:|',
+            `| Breaking | ${diff.summary.breaking ?? 0} |`,
+            `| Non-breaking | ${diff.summary.nonBreaking ?? 0} |`,
+            `| Added | ${diff.summary.added ?? 0} |`,
+            `| Removed | ${diff.summary.removed ?? 0} |`,
+            `| Modified | ${diff.summary.modified ?? 0} |`,
+            '',
+            '### Test Summary',
+            '',
+            '| Metric | Value |',
+            '|---|---:|',
+            `| Total | ${test.summary.total ?? 0} |`,
+            `| Passed | ${test.summary.passed ?? 0} |`,
+            `| Failed | ${test.summary.failed ?? 0} |`,
+            `| Skipped | ${test.summary.skipped ?? 0} |`,
+            `| Errors | ${test.summary.errors ?? 0} |`,
+          ];
+
+          const body = `${lines.join('\n')}\n`;
+          fs.writeFileSync('ci-summary.md', body);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, body);
+          JS
+
+      - name: Post/Update PR comment
+        # workflow_call sets github.event_name to "workflow_call", not "pull_request".
+        # The caller payload is reused, so gate on PR number instead of event name.
+        # workflow_dispatch inputs are strings, so accept boolean true or "true".
+        # Fork PRs get a read-only token; skip mutation so gates still run.
+        # Job summary is already written in the previous step.
+        if: (inputs.post_pr_comment == true || inputs.post_pr_comment == 'true') && github.event.pull_request.number && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const body = fs.readFileSync('ci-summary.md', 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request?.number;
+            if (!issue_number) {
+              core.info('No pull request number in event payload; skipping comment.');
+              return;
+            }
+            const marker = '<!-- apifn-ci-report -->';
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((c) => c.user?.type === 'Bot' && c.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Enforce CI gates
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          validate_code="${{ steps.validate.outputs.exit_code }}"
+          diff_code="${{ steps.diff.outputs.exit_code }}"
+          test_code="${{ steps.test.outputs.exit_code }}"
+
+          if [ -z "$diff_code" ]; then
+            diff_code=0
+          fi
+
+          if [ "$validate_code" != "0" ]; then
+            echo "Validation failed (exit=$validate_code)"
+            exit "$validate_code"
+          fi
+
+          if [ "$diff_code" != "0" ]; then
+            echo "Diff failed (exit=$diff_code)"
+            exit "$diff_code"
+          fi
+
+          if [ "$test_code" != "0" ]; then
+            echo "Collection tests failed (exit=$test_code)"
+            exit "$test_code"
+          fi

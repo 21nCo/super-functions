@@ -68,7 +68,7 @@ export function transformWhereForStorage(
   model: string,
   where: WhereClause[] | undefined,
 ): WhereClause[] | undefined {
-  const table = schema[model];
+  const table = Object.prototype.hasOwnProperty.call(schema, model) ? schema[model] : undefined;
   if (!table || !where?.length) {
     return where;
   }
@@ -212,9 +212,11 @@ export function wrapWithSchema(
       }),
     transaction: <R>(
       callback: (trx: TransactionAdapter) => Promise<R>,
+      options?: Parameters<Adapter["transaction"]>[1],
     ): Promise<R> =>
       adapter.transaction((trx) =>
         callback(wrapTransactionWithSchema(trx, schema)),
+        options,
       ),
     initialize: (): Promise<void> => adapter.initialize(),
     isHealthy: () => adapter.isHealthy(),
@@ -369,7 +371,7 @@ function transformRecord<T>(
     return record;
   }
 
-  const table = schema[model];
+  const table = Object.prototype.hasOwnProperty.call(schema, model) ? schema[model] : undefined;
   if (!table) {
     return record;
   }

@@ -47,15 +47,15 @@ export function assertContainedPath(rootDir: string, relativePath: string): stri
     throw error('UIFN_REGISTRY_PATH_ESCAPE', `Unsafe registry path: ${relativePath}`);
   }
   const root = path.resolve(rootDir);
-  if (existsSync(root) && lstatSync(root).isSymbolicLink()) throw error('UIFN_REGISTRY_SYMLINK_ESCAPE', 'Consumer project root must not be a symlink.');
+  if (lstatSync(root, { throwIfNoEntry: false })?.isSymbolicLink()) throw error('UIFN_REGISTRY_SYMLINK_ESCAPE', 'Consumer project root must not be a symlink.');
   const target = path.resolve(root, relativePath);
   if (target !== root && !target.startsWith(`${root}${path.sep}`)) throw error('UIFN_REGISTRY_PATH_ESCAPE', `Registry path escapes project root: ${relativePath}`);
   let cursor = root;
   for (const segment of path.relative(root, target).split(path.sep).filter(Boolean).slice(0, -1)) {
     cursor = path.join(cursor, segment);
-    if (existsSync(cursor) && lstatSync(cursor).isSymbolicLink()) throw error('UIFN_REGISTRY_SYMLINK_ESCAPE', `Registry path crosses a symlink: ${relativePath}`);
+    if (lstatSync(cursor, { throwIfNoEntry: false })?.isSymbolicLink()) throw error('UIFN_REGISTRY_SYMLINK_ESCAPE', `Registry path crosses a symlink: ${relativePath}`);
   }
-  if (existsSync(target) && lstatSync(target).isSymbolicLink()) throw error('UIFN_REGISTRY_SYMLINK_ESCAPE', `Registry target is a symlink: ${relativePath}`);
+  if (lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink()) throw error('UIFN_REGISTRY_SYMLINK_ESCAPE', `Registry target is a symlink: ${relativePath}`);
   return target;
 }
 

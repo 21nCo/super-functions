@@ -1,22 +1,25 @@
 ---
 title: API keys plugin
-description: User-owned API keys — issued, hashed, scoped, revocable.
+description: User-owned and server-issued unowned API keys — hashed, scoped, revocable.
 ---
 
 # API keys plugin
 
-`authFnApiKeyPlugin` lets users issue API keys and use them as bearer tokens against your service. Keys are:
+`authFnApiKeyPlugin` lets signed-in users issue user-owned API keys and use them as bearer tokens against your service. Trusted TypeScript server code can also issue unowned service keys with the exported `createApiKey` helper. Keys are:
 
-- **User-owned** — every key is bound to a `userId`.
+- **User-owned or unowned** — cookie-session routes bind keys to the signed-in user's `userId`; trusted server code can explicitly pass `userId: null` to issue an unowned service key.
 - **Hashed at rest** — the plaintext is shown once at creation; only `secretHash` is persisted.
 - **Scoped** — keys carry an array of scope strings; your app decides what they mean.
-- **Named** — for the user's UI ("CI", "personal laptop").
-- **Revocable** — `DELETE /auth/api-keys/:id` flips `revokedAt`.
+- **Named** — for a user's UI or a service ("CI", "personal laptop", "retrieval-worker").
+- **Revocable** — cookie-session routes revoke the caller's user-owned keys; trusted server code can revoke unowned keys with `revokeApiKeyById`. Both set `revokedAt`.
 
 ```ts
-import { authFnApiKeyPlugin } from '@authfn/core';
+import { authfn, authFnPlugins } from 'authfn';
+import { authFnApiKeyPlugin } from '@authfn/api-keys';
 
-authFnApiKeyPlugin({ secretPrefix: 'sk_live_' });
+const authApp = authfn({
+  plugins: authFnPlugins(authFnApiKeyPlugin({ secretPrefix: 'sk_live_' })),
+});
 ```
 
 ## Configuration
@@ -44,9 +47,9 @@ authFnApiKeyPlugin({ secretPrefix: 'sk_live_' });
 
 When a request carries `Authorization: Bearer <secret>`, the kernel:
 
-1. Looks up the key by `secretHash`.
-2. Rejects if `revokedAt` is set (`AUTHFN_API_KEY_REVOKED`).
-3. Rejects if `expiresAt` is past.
+1. Looks up the key by `secretHash`; returns `null` if no key matches.
+2. Throws `AUTHFN_API_KEY_REVOKED` if `revokedAt` is set.
+3. Returns `null` if `expiresAt` is at or before the current time.
 4. Updates `lastUsedAt`.
 5. Synthesizes an `AuthFnSession` with `type: 'api-key'`, `actorType: 'api-key'`, `methods: ['api-key']`.
 
@@ -54,8 +57,9 @@ The synthesized session is what `auth.provider.authenticate(request)` returns. Y
 
 ```ts
 if (session.actorType === 'api-key') {
-  if (!session.subject.attributes?.scopes?.includes('repo:read')) {
-    return forbidden();
+  const scopes = session.metadata?.scopes;
+  if (!Array.isArray(scopes) || !scopes.includes('repo:read')) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 }
 ```
@@ -77,16 +81,76 @@ The plaintext follows `<secretPrefix><base64url(random)>`. Display it once, then
 repo:read repo:write account:read
 ```
 
-Authorize like this in your handlers:
+Return an explicit HTTP 403 when an authenticated API-key request lacks the required scope. In this example, `auth` is your AuthFn server and `handleAuthorizedRequest` is your application's protected handler; it only runs after the scope check passes.
 
 ```ts
-function require(session: AuthFnSession, scope: string) {
-  const scopes = (session.subject.attributes as any)?.scopes ?? [];
-  if (!scopes.includes(scope)) {
-    throw new AuthFnForbiddenError(`scope ${scope} required`);
+import type { AuthFnSession } from 'authfn';
+
+function hasScope(session: AuthFnSession, scope: string): boolean {
+  const scopes = session.metadata?.scopes;
+  return Array.isArray(scopes) && scopes.includes(scope);
+}
+
+async function handleRepositoryRequest(request: Request): Promise<Response> {
+  let session: AuthFnSession | null;
+  try {
+    session = await auth.provider.authenticate(request);
+  } catch (error) {
+    if (error !== null && typeof error === 'object' &&
+        'code' in error && error.code === 'AUTHFN_API_KEY_REVOKED') {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+    throw error;
   }
+  if (!session || session.actorType !== 'api-key') {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (!hasScope(session, 'repo:read')) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+  return handleAuthorizedRequest(request, session);
 }
 ```
+
+Authentication and scope denial belong to your application's HTTP response layer: missing, invalid, expired, revoked, or non-API-key credentials receive HTTP 401; an active key without the required scope receives HTTP 403. The catch covers only authentication and only maps `AUTHFN_API_KEY_REVOKED`; unexpected failures propagate to your host's error handler, and protected work stays outside the catch. Do not throw a plain `Error` for scope denial: AuthFn's error handler normalizes it to `AUTHFN_INTERNAL_ERROR` (HTTP 500).
+
+## Unowned service keys
+
+Trusted server code can issue an unowned key with the exported `createApiKey` helper. Pass `userId: null` explicitly, along with your server's database adapter and namespace:
+
+```ts
+import { createApiKey, revokeApiKeyById } from 'authfn/core/api-keys';
+
+const config = { database, namespace: 'authfn' };
+const serviceKey = await createApiKey(config, {
+  userId: null,
+  name: 'retrieval-worker',
+  scopes: ['skills:read'],
+  metadata: { servicePrincipalId: 'service:retrieval-worker' },
+  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+});
+
+// Before distributing serviceKey.secret, persist serviceKey.keyId in your
+// application's authorized service-key inventory and audit the issuance.
+
+// After checking your application's service-principal management policy:
+await revokeApiKeyById(config, serviceKey.keyId);
+// Update your inventory and audit the successful revocation.
+```
+
+These keys persist a null owner, use the same hashed-secret, expiry, and revocation behavior, and authenticate as `actorType: 'api-key'` with the key ID as their actor ID. Authentication exposes the stored scopes in `session.metadata.scopes` and leaves `session.metadata.ownerUserId` undefined. Your application must authorize service-principal issuance and use and enforce scopes; the helper does not create a user identity.
+
+Unowned keys authenticate through the normal `auth.provider.authenticate` path only. The opt-in [placement-context issuer](../recipes/placement-bound-auth-context) (`createAuthFnPlacementContextIssuer`) binds each API-key grant to its owning user's placement, so it rejects an unowned key with `AUTHFN_UNAUTHENTICATED`. Use a user-owned key when a service must derive placement-bound context.
+
+The cookie-session routes above remain user-owned: creation always uses the signed-in user's ID, and user listing and revocation exclude unowned keys. Manage unowned keys through trusted server code after applying your application's authorization policy.
+
+### Service-key inventory and audit ownership
+
+Keep a durable, access-controlled inventory mapping each `keyId` to its service principal, name, scopes, expiry, and revocation state. Record the ID before distributing the secret: `revokeApiKeyById` requires that ID, and the user listing route cannot discover unowned keys. Use bounded expiries, as in the example, to limit the lifetime of keys whose management records are lost.
+
+Inventory persistence, secret delivery, and recovery are application-owned. The helpers do not make inventory or audit writes atomic with issuance. If inventory persistence fails, do not distribute the secret; use the still-known key ID to attempt revocation and reconcile any cleanup failure through your application's operational tooling.
+
+Direct `createApiKey` and `revokeApiKeyById` calls do **not** emit the HTTP route events listed below. Audit successful service-key issuance and revocation in your application, recording the authorized management actor, service principal, key ID, timestamp, and relevant scopes. Exclude the plaintext secret and secret hash from inventory and audit logs.
 
 ## Revocation
 
@@ -94,7 +158,7 @@ function require(session: AuthFnSession, scope: string) {
 await client.revokeApiKey({ keyId });
 ```
 
-After revocation, every subsequent request with that key returns `AUTHFN_API_KEY_REVOKED` (HTTP 401).
+After revocation, `auth.provider.authenticate(request)` rejects with `AUTHFN_API_KEY_REVOKED`. AuthFn's HTTP error handler maps that error to HTTP 401; application-owned endpoints should return HTTP 401 as shown above. Unknown or expired keys instead authenticate to `null`.
 
 ## Errors
 
@@ -102,13 +166,17 @@ After revocation, every subsequent request with that key returns `AUTHFN_API_KEY
 | --- | --- |
 | `AUTHFN_VALIDATION_ERROR` | Invalid name / scopes / expiresAt. |
 | `AUTHFN_UNAUTHENTICATED` | Caller is not signed in (key creation requires a session). |
-| `AUTHFN_API_KEY_REVOKED` | Key was used after revocation or expiry. |
+| `AUTHFN_API_KEY_REVOKED` | Key was used after revocation. |
 | `AUTHFN_NOT_FOUND` | `revokeApiKey` for a missing key id. |
 
 ## Events
 
+The cookie-session HTTP routes emit these events:
+
 - `authfn.api_key.created`
 - `authfn.api_key.revoked`
+
+Trusted persistence helpers do not emit them; direct service-key lifecycle auditing is the application's responsibility.
 
 ## Quick UI: list and revoke keys
 

@@ -697,3 +697,26 @@ describe('DrizzleAdapter - Postgres/MySQL Dialect Support', () => {
     expect(executeCalls[0].type).toBe('execute');
   });
 });
+
+it('rejects per-call isolation when the dialect does not implement it', async () => {
+  const callback = vi.fn();
+  const transaction = vi.fn();
+  const adapter = drizzleAdapter({ db: { transaction }, dialect: 'mysql' });
+  await expect(adapter.transaction(callback,{isolationLevel:'repeatable_read'})).rejects.toThrow('unsupported');
+  expect(callback).not.toHaveBeenCalled();
+  expect(transaction).not.toHaveBeenCalled();
+});
+
+it('advertises and maps every PostgreSQL isolation level exposed by the shared contract', async () => {
+  const transaction = vi.fn(async (callback: (trx: unknown) => Promise<unknown>, options: unknown) => callback({}));
+  const adapter = drizzleAdapter({ db: { transaction }, dialect: 'postgres' });
+
+  expect(adapter.capabilities.transactions.isolation).toEqual([
+    'read_uncommitted',
+    'read_committed',
+    'repeatable_read',
+    'serializable',
+  ]);
+  await adapter.transaction(async () => 'ok', { isolationLevel: 'read_uncommitted' });
+  expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'read uncommitted' });
+});

@@ -110,10 +110,10 @@ The envelope shape is the same for `2xx` (success) and `4xx`/`5xx` (error). The 
 ## Helpers
 
 ```ts
-import { jsonSuccess, jsonError } from '@authfn/core';
+import { jsonSuccess, jsonError } from 'authfn/http/envelopes';
 
-return jsonSuccess({ session });
-return jsonError(new AuthFnValidationError('bad email', { fields: { email: '...' } }));
+return jsonSuccess(request, { session });
+return jsonError(request, new AuthFnValidationError('bad email', { fields: { email: '...' } }));
 ```
 
 Plugin authors should always use these — they keep the envelope shape consistent and emit the canonical headers.

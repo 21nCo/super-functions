@@ -7,7 +7,11 @@ import type {
   AuthFnHookContext,
   AuthFnSchemaDefinition
 } from 'authfn';
-import { AuthFnConfigError, AuthFnValidationError } from 'authfn';
+import {
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  AuthFnConfigError,
+  AuthFnValidationError
+} from 'authfn';
 import { resolveCookiePolicy } from 'authfn/core/cookies';
 import {
   buildLookupResult,
@@ -56,6 +60,20 @@ export {
   restoreAuthFnIdentityDeletion,
   tombstoneAuthFnIdentityPlacement
 } from 'authfn/core/gateway-routing';
+export {
+  createAuthFnPlacementContextIssuer,
+  createAuthFnPlacementContextVerifier,
+  freezeAuthFnPlacementContext
+} from 'authfn/core/placement-context';
+export type {
+  AuthFnPlacementBoundAuthContext,
+  AuthFnPlacementContextDeriveInput,
+  AuthFnPlacementContextIssuer,
+  AuthFnPlacementContextIssuerOptions,
+  AuthFnPlacementContextVerifier,
+  AuthFnPlacementContextVerifierOptions,
+  AuthFnSignedPlacementContext
+} from 'authfn/core/placement-context';
 
 const DELETION_FENCE_OPERATION = Symbol('authfn.multiRegion.deletionFence');
 
@@ -250,9 +268,14 @@ function createMultiRegionSchema(): AuthFnSchemaDefinition['schemas'] {
     {
       modelName: 'region_profiles',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        userId: { type: 'string', required: true, fieldName: 'user_id' },
-        regionId: { type: 'string', required: true, fieldName: 'region_id' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        userId: {
+          type: 'string',
+          required: true,
+          fieldName: 'user_id',
+          maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        },
+        regionId: { type: 'string', required: true, fieldName: 'region_id', maxLength: 255 },
         authority: { type: 'string', required: true, fieldName: 'authority' },
         domain: { type: 'string', required: false, fieldName: 'domain' },
         createdAt: { type: 'date', required: true, fieldName: 'created_at' },

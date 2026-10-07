@@ -32,7 +32,7 @@ export interface Adapter {
   count(params: CountParams): Promise<number>;
 
   // Transaction support
-  transaction<R>(callback: (trx: TransactionAdapter) => Promise<R>): Promise<R>;
+  transaction<R>(callback: (trx: TransactionAdapter) => Promise<R>, options?: { isolationLevel: TransactionIsolation }): Promise<R>;
 
   // Lifecycle management
   initialize(): Promise<void>;
@@ -399,7 +399,7 @@ export interface AdapterImplementation {
   deleteMany(params: DeleteManyParams): Promise<number>;
   upsert<T = any>(params: UpsertParams): Promise<T>;
   count(params: CountParams): Promise<number>;
-  transaction<R>(callback: (trx: TransactionAdapter) => Promise<R>): Promise<R>;
+  transaction<R>(callback: (trx: TransactionAdapter) => Promise<R>, options?: { isolationLevel: TransactionIsolation }): Promise<R>;
   initialize(): Promise<void>;
   isHealthy(): Promise<HealthStatus>;
   close(): Promise<void>;

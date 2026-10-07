@@ -1,6 +1,6 @@
 {
   "name": "hostfn",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "license": "MIT",
   "description": "Universal application deployment CLI",
   "type": "module",
@@ -13,14 +13,18 @@
       "default": "./dist/operator.js"
     }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "npm run clean && tsc",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "vitest",
+    "test": "vitest run",
     "test:watch": "vitest --watch",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest run --coverage",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "commander": "^11.1.0",
@@ -31,18 +35,18 @@
     "zod": "^3.22.4",
     "ssh2": "^1.15.0",
     "dotenv": "^16.3.1",
-    "execa": "^8.0.1"
+    "execa": "^8.0.1",
+    "fast-glob": "^3.3.2"
   },
   "devDependencies": {
     "@types/semver": "^7.7.1",
     "@types/node": "^20.10.0",
     "@types/ssh2": "^1.15.0",
     "@types/inquirer": "^9.0.7",
-    "@vitest/coverage-v8": "^1.6.1",
+    "@vitest/coverage-v8": "4.1.11",
     "typescript": "^5.3.0",
     "tsx": "^4.7.0",
-    "vitest": "^1.6.0",
-    "fast-glob": "^3.3.2"
+    "vitest": "4.1.11"
   },
   "author": "21n",
   "repository": {

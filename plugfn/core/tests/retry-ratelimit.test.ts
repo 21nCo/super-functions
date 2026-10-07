@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { RetryMiddleware } from '../src/middleware/retry.js';
+import { FetchHttpClient } from '../src/utils/request.js';
 import { RateLimiter } from '../src/middleware/rate-limiter.js';
 
 describe('retry and rate limit hardening', () => {
@@ -183,4 +184,19 @@ describe('retry and rate limit hardening', () => {
     await pending;
     limiter.destroy();
   });
+});
+
+it('carries real transport Retry-After headers into retry admission', async () => {
+  const delays: number[] = [];
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response('{"error":"throttled"}', {status:429,headers:{'content-type':'application/json','Retry-After':'120'}}))
+    .mockResolvedValueOnce(new Response('{"ok":true}', {headers:{'content-type':'application/json'}}));
+  vi.stubGlobal('fetch', fetchMock);
+  try {
+    const middleware = new RetryMiddleware({maxAttempts:2},undefined,{sleep:async ms=>{delays.push(ms)}});
+    const result = await middleware.execute(()=>new FetchHttpClient().get('https://example.test/read'));
+    expect(result.data.data).toEqual({ok:true});
+    expect(delays).toEqual([120000]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  } finally { vi.unstubAllGlobals(); }
 });

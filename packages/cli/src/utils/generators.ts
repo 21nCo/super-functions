@@ -70,8 +70,9 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
         case 'string':
           return 'TEXT';
         case 'number':
-        case 'bigint':
           return 'INTEGER';
+        case 'bigint':
+          return 'BLOB';
         case 'boolean':
           return 'INTEGER'; // SQLite uses INTEGER for boolean
         case 'json':
@@ -91,9 +92,9 @@ function dateFieldToSQL(field: FieldSchema, dialect: Dialect): string {
     case 'iso-text':
       return 'TEXT';
     case 'epoch-ms-integer':
-      return 'BIGINT';
+      return dialect === 'sqlite' ? 'INTEGER' : 'BIGINT';
     case 'epoch-ms-bigint':
-      return 'BIGINT';
+      return dialect === 'sqlite' ? 'INTEGER' : 'BIGINT';
   }
 }
 
@@ -927,18 +928,23 @@ export function generateKyselyMigration(
   // Add schema version updates
   upStatements.push(``);
   upStatements.push(`  // Update schema version`);
-  upStatements.push(
-    `  await db.insertInto('_superfunctions_schema_versions')`
-  );
+  upStatements.push(`  await db.insertInto('_superfunctions_schema_versions')`);
   upStatements.push(`    .values({`);
   upStatements.push(`      namespace: '${plan.namespace}',`);
   upStatements.push(`      version: ${plan.toVersion},`);
   upStatements.push(`      updated_at: new Date(),`);
   upStatements.push(`    })`);
-  upStatements.push(`    .onConflict((oc) => oc.column('namespace').doUpdateSet({`);
-  upStatements.push(`      version: ${plan.toVersion},`);
-  upStatements.push(`      updated_at: new Date(),`);
-  upStatements.push(`    }))`);
+  if (dialect === 'mysql') {
+    upStatements.push(`    .onDuplicateKeyUpdate({`);
+    upStatements.push(`      version: ${plan.toVersion},`);
+    upStatements.push(`      updated_at: new Date(),`);
+    upStatements.push(`    })`);
+  } else {
+    upStatements.push(`    .onConflict((oc) => oc.column('namespace').doUpdateSet({`);
+    upStatements.push(`      version: ${plan.toVersion},`);
+    upStatements.push(`      updated_at: new Date(),`);
+    upStatements.push(`    }))`);
+  }
   upStatements.push(`    .execute();`);
 
   downStatements.push(``);

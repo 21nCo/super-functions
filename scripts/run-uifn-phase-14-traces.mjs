@@ -165,9 +165,12 @@ writeFileSync(
   `${frozenPackages.map((entry) => `${entry.sha256}  ${entry.filename}`).join('\n')}\n`,
 );
 
+// Keep optional peer resolution on the fixture's selected tool versions.
+const fixtureToolOverrides = { vitest: "$vitest", vite: "$vite" };
 const packageDependencies = Object.fromEntries(packages.map((entry) => [entry.package, `file:${entry.file}`]));
 Object.assign(packageDependencies, {
-  '@sveltejs/vite-plugin-svelte': '4.0.4',
+  '@sveltejs/vite-plugin-svelte': '5.1.1',
+  'babel-preset-solid': '1.9.12',
   '@testing-library/react': '15.0.7',
   '@testing-library/svelte': '5.3.1',
   'jsdom': '27.0.1',
@@ -175,16 +178,17 @@ Object.assign(packageDependencies, {
   'react': '18.3.1',
   'react-dom': '18.3.1',
   'solid-js': '1.9.13',
-  'svelte': '5.46.4',
-  'vite': '5.4.21',
+  'svelte': '5.57.2',
+  'vite': '6.4.4',
   'vite-plugin-solid': '2.11.12',
-  'vitest': '3.2.4',
+  'vitest': '4.1.11',
 });
 writeFileSync(path.join(consumerRoot, 'package.json'), `${JSON.stringify({
   name: 'uifn-phase-14-packed-public-trees',
   private: true,
   type: 'module',
   dependencies: packageDependencies,
+  overrides: { ...fixtureToolOverrides, "babel-preset-solid": "$babel-preset-solid" },
 }, null, 2)}\n`);
 
 const install = run(npmPath, ['install', '--ignore-scripts', '--no-audit', '--no-fund'], {
@@ -402,7 +406,7 @@ writeFileSync(path.join(svelteSsrRoot, 'package.json'), `${JSON.stringify({
     ...Object.fromEntries(packages.filter((entry) => ['@uifn/core', '@uifn/dom', '@uifn/adapter-kit', '@uifn/svelte'].includes(entry.package)).map((entry) => [entry.package, `file:${entry.file}`])),
     '@sveltejs/vite-plugin-svelte': '7.2.0',
     'playwright': '1.57.0',
-    'svelte': '5.46.4',
+    'svelte': '5.57.2',
     'vite': '8.1.5',
   },
 }, null, 2)}\n`);
@@ -547,14 +551,15 @@ writeFileSync(path.join(react19Root, 'package.json'), `${JSON.stringify({
   name: 'uifn-phase-14-react-19-packed-public-trees',
   private: true,
   type: 'module',
+  overrides: fixtureToolOverrides,
   dependencies: {
     ...Object.fromEntries(packages.filter((entry) => !['@uifn/svelte', '@uifn/solid'].includes(entry.package)).map((entry) => [entry.package, `file:${entry.file}`])),
     '@testing-library/react': '16.3.0',
     'jsdom': '27.0.1',
     'react': '19.2.3',
     'react-dom': '19.2.3',
-    'vite': '5.4.21',
-    'vitest': '3.2.4',
+    'vite': '6.4.4',
+    'vitest': '4.1.11',
   },
 }, null, 2)}\n`);
 for (const file of ['react.test.tsx', 'react.vitest.mjs', 'react-ssr.test.tsx', 'react-ssr.vitest.mjs', 'Phase14ReactPublicTree.ts', 'trace.mjs', 'vectors.json']) {
@@ -700,7 +705,8 @@ const consumerKitFiles = [
 for (const file of consumerKitFiles) copyFileSync(path.join(consumerRoot, file), path.join(outputConsumerKitRoot, file));
 const frozenDependencies = Object.fromEntries(frozenPackages.map((entry) => [entry.package, `file:../tarballs/${entry.filename}`]));
 Object.assign(frozenDependencies, {
-  '@sveltejs/vite-plugin-svelte': '4.0.4',
+  '@sveltejs/vite-plugin-svelte': '5.1.1',
+  'babel-preset-solid': '1.9.12',
   '@testing-library/react': '15.0.7',
   '@testing-library/svelte': '5.3.1',
   'jsdom': '27.0.1',
@@ -708,16 +714,17 @@ Object.assign(frozenDependencies, {
   'react': '18.3.1',
   'react-dom': '18.3.1',
   'solid-js': '1.9.13',
-  'svelte': '5.46.4',
-  'vite': '5.4.21',
+  'svelte': '5.57.2',
+  'vite': '6.4.4',
   'vite-plugin-solid': '2.11.12',
-  'vitest': '3.2.4',
+  'vitest': '4.1.11',
 });
 writeFileSync(path.join(outputConsumerKitRoot, 'package.json'), `${JSON.stringify({
   name: 'uifn-phase-14-frozen-consumer-kit',
   private: true,
   type: 'module',
   dependencies: frozenDependencies,
+  overrides: { ...fixtureToolOverrides, "babel-preset-solid": "$babel-preset-solid" },
 }, null, 2)}\n`);
 const frozenConsumerKitFiles = ['package.json', ...consumerKitFiles]
   .sort()
@@ -751,7 +758,7 @@ const result = {
   },
   compatibility: {
     react: ['18.3.1', '19.2.3'],
-    svelte: ['5.46.4'],
+    svelte: ['5.57.2'],
     solid: ['1.9.13'],
     node: nodeMatrix,
     frameworkRuns: frameworkCompatibilityRuns,

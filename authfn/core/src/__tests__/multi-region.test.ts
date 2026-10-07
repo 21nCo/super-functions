@@ -49,6 +49,75 @@ function identifierFromLookupKey(key: string): string {
 }
 
 describe('authfn multi-region plugin', () => {
+  it('rejects oversized user IDs before registering a region profile', async () => {
+    const database = memoryAdapter({ debug: false });
+    await expect(registerUserRegion(
+      { database, namespace: 'authfn' },
+      { regions: [] },
+      {
+        user: { id: 'u'.repeat(256), primaryEmail: 'ada@example.com' },
+        environment: {
+          issuer: 'https://account.example.com',
+          baseUrl: 'https://account.example.com',
+          regionId: 'us-east-1'
+        }
+      }
+    )).rejects.toMatchObject({
+      code: 'AUTHFN_VALIDATION_ERROR',
+      details: { fieldName: 'userId', maxLength: 255 }
+    });
+    await expect(database.count({
+      model: 'region_profiles',
+      namespace: 'authfn'
+    })).resolves.toBe(0);
+  });
+
+  it('registers a region profile for a persisted legacy user ID', async () => {
+    const database = memoryAdapter({ debug: false });
+    const legacyUserId = 'u'.repeat(300);
+    const now = new Date();
+    await database.create({
+      model: 'users',
+      namespace: 'authfn',
+      data: {
+        id: legacyUserId,
+        primaryEmail: 'legacy@example.com',
+        emailVerifiedAt: null,
+        metadata: null,
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    await expect(registerUserRegion(
+      { database, namespace: 'authfn' },
+      { regions: [] },
+      {
+        user: { id: legacyUserId, primaryEmail: 'legacy@example.com' },
+        environment: {
+          issuer: 'https://account.example.com',
+          baseUrl: 'https://account.example.com',
+          regionId: 'us-east-1'
+        }
+      }
+    )).resolves.toMatchObject({ userId: legacyUserId });
+  });
+
+  it('rejects oversized region identifiers returned by custom environment resolvers', async () => {
+    await expect(registerUserRegion(
+      { database: memoryAdapter({ debug: false }), namespace: 'authfn' },
+      { regions: [] },
+      {
+        user: { id: 'user_1', primaryEmail: 'ada@example.com' },
+        environment: {
+          issuer: 'https://account.example.com',
+          baseUrl: 'https://account.example.com',
+          regionId: 'r'.repeat(256)
+        }
+      }
+    )).rejects.toMatchObject({ code: 'AUTHFN_VALIDATION_ERROR' });
+  });
+
   it('projects new gateway users to the configured cell despite a canonical host match', async () => {
     let createdProfile: Record<string, unknown> | undefined;
     const database = {

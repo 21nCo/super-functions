@@ -3,10 +3,11 @@
 import { spawnSync } from 'node:child_process';
 
 const provider = process.argv[2];
-const supportedProviders = new Set(['github', 'linear', 'gmail', 'notion']);
+const supportedProviders = new Set(['github', 'linear', 'clickup', 'gmail', 'notion']);
 const providerTestPatterns = {
   github: ['tests/github'],
   linear: ['tests/linear'],
+  clickup: ['tests/clickup'],
   gmail: ['tests/gmail.sync.test.ts', 'tests/gmail.watch.test.ts'],
   notion: ['tests/notion.test.ts'],
 };
@@ -15,7 +16,7 @@ if (!provider || !supportedProviders.has(provider)) {
   console.error(
     JSON.stringify({
       ok: false,
-      error: 'usage: node plugfn/scripts/gate-plugfn-provider.mjs <github|linear|gmail|notion>',
+      error: 'usage: node plugfn/scripts/gate-plugfn-provider.mjs <github|linear|clickup|gmail|notion>',
     })
   );
   process.exit(1);

@@ -340,6 +340,8 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       cacheKeyPrefix: config.cache?.keyPrefix,
       respectProviderLimits: config.rateLimit?.respectProviderLimits,
       globalRateLimit: config.rateLimit?.global,
+      rateLimitStore: config.rateLimit?.atomicStore,
+      rateLimitKeyPrefix: config.rateLimit?.keyPrefix,
     }
   );
 
@@ -351,7 +353,8 @@ export function plugFn(config: PlugFnConfig): PlugFn {
     workflowStorage,
     webhookHandler,
     logger,
-    config.workflows?.runtime
+    config.workflows?.runtime,
+    config.workflows?.coordinator
   );
   let readyAttempt: Promise<void> | undefined;
   const ensureReady = (): Promise<void> => {

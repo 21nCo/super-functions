@@ -23,7 +23,7 @@ import {
 } from '@superfunctions/oauth-core';
 import { DbAdapterOAuthStateStore } from '@superfunctions/oauth-storage';
 import { DefaultOAuthTokenHttpClient } from '@superfunctions/oauth-http';
-import type { AuthFnPlugin } from '@authfn/core';
+import type { AuthFnPlugin } from 'authfn';
 
 export function microsoftPlugin(config: {
   clientId: string;

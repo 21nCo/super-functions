@@ -126,6 +126,19 @@ describe("oauth-core service", () => {
     expect(stored?.codeVerifier).toBeTruthy();
   });
 
+  it("uses the declared user scope field without requesting bot scopes", async () => {
+    const service = new DefaultOAuthService({
+      providers: { slack: { id: 'slack', authorizationUrl: 'https://slack.com/oauth/v2/authorize', tokenUrl: 'https://slack.com/api/oauth.v2.access', defaultScopes: ['search:read','chat:write'], supportsPkce: false, supportsRefreshToken: true, scopeSeparator: ',', scopeParameter: 'user_scope' } },
+      providerRuntimeConfig: { slack: { clientId: 'client', allowlistedRedirectUris: ['https://app/callback'] } },
+      stateStore: new TestStateStore(), exchangeCodeForToken: async () => ({ accessToken: 'user' }),
+    });
+    const result = await service.createAuthorizationRequest({ providerId: 'slack', tenantId: 't', userId: 'u', connectionId: 'c', redirectUri: 'https://app/callback' });
+    const url = new URL(result.authorizationUrl);
+    expect(url.searchParams.get('user_scope')).toBe('search:read,chat:write');
+    expect(url.searchParams.has('scope')).toBe(false);
+    expect(url.searchParams.has('code_challenge')).toBe(false);
+  });
+
   it("honors provider-specific response_type values", async () => {
     const { service } = createService();
     const result = await service.createAuthorizationRequest({

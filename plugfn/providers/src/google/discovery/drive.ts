@@ -1,0 +1,1737 @@
+// Generated discovery data; plain modules support the declared Node range.
+export default {
+  "source": "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
+  "sourceSha256": "d97c14140a699f902ff04fc72edbec7cda28fe49ca571a3883639ee53eb7c962",
+  "revision": "20260904",
+  "rootUrl": "https://www.googleapis.com/",
+  "servicePath": "drive/v3/",
+  "methods": {
+    "files.list": {
+      "flatPath": "files",
+      "id": "drive.files.list",
+      "scopes": [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.appdata",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive.meet.readonly",
+        "https://www.googleapis.com/auth/drive.metadata",
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
+        "https://www.googleapis.com/auth/drive.photos.readonly",
+        "https://www.googleapis.com/auth/drive.readonly"
+      ],
+      "parameters": {
+        "includePermissionsForView": {
+          "description": "Specifies which additional view's permissions to include in the response. Only `published` is supported.",
+          "location": "query",
+          "type": "string"
+        },
+        "includeTeamDriveItems": {
+          "location": "query",
+          "default": "false",
+          "deprecated": true,
+          "description": "Deprecated: Use `includeItemsFromAllDrives` instead.",
+          "type": "boolean"
+        },
+        "driveId": {
+          "type": "string",
+          "description": "ID of the shared drive to search.",
+          "location": "query"
+        },
+        "supportsAllDrives": {
+          "type": "boolean",
+          "description": "Whether the requesting application supports both My Drives and shared drives.",
+          "location": "query",
+          "default": "false"
+        },
+        "pageSize": {
+          "location": "query",
+          "format": "int32",
+          "description": "The maximum number of files to return. The service may return fewer than this value. If unspecified, at most 100 files will be returned for shared drives, and the entire list of files for non-shared drives. The maximum value is 1000; values above 1000 will be coerced to 1000.",
+          "default": "100",
+          "maximum": "1000",
+          "type": "integer",
+          "minimum": "1"
+        },
+        "corpora": {
+          "description": "Specifies a collection of items (files or documents) to which the query applies. Supported items include: * `user` * `domain` * `drive` * `allDrives` Prefer `user` or `drive` to `allDrives` for efficiency. By default, corpora is set to `user`. However, this can change depending on the filter set through the `q` parameter. For more information, see [File organization](https://developers.google.com/workspace/drive/api/guides/about-files#file-organization).",
+          "type": "string",
+          "location": "query"
+        },
+        "includeItemsFromAllDrives": {
+          "location": "query",
+          "type": "boolean",
+          "default": "false",
+          "description": "Whether both My Drive and shared drive items should be included in results."
+        },
+        "q": {
+          "description": "A query for filtering the file results. For supported syntax, see [Search for files and folders](/workspace/drive/api/guides/search-files).",
+          "location": "query",
+          "type": "string"
+        },
+        "includeLabels": {
+          "type": "string",
+          "description": "A comma-separated list of IDs of labels to include in the `labelInfo` part of the response.",
+          "location": "query"
+        },
+        "orderBy": {
+          "location": "query",
+          "type": "string",
+          "description": "A comma-separated list of sort keys. Valid keys are: * `createdTime`: When the file was created. Avoid using this key for queries on large item collections as it might result in timeouts or other issues. For time-related sorting on large item collections, use `modifiedTime desc` instead. * `folder`: The folder ID. This field is sorted using alphabetical ordering. * `modifiedByMeTime`: The last time the file was modified by the user. * `modifiedTime`: The last time the file was modified by anyone. * `name`: The name of the file. This field is sorted using alphabetical ordering, so 1, 12, 2, 22. * `name_natural`: The name of the file. This field is sorted using natural sort ordering, so 1, 2, 12, 22. * `quotaBytesUsed`: The number of storage quota bytes used by the file. * `recency`: The most recent timestamp from the file's date-time fields. * `sharedWithMeTime`: When the file was shared with the user, if applicable. * `starred`: Whether the user has starred the file. * `viewedByMeTime`: The last time the file was viewed by the user. Each key sorts ascending by default, but can be reversed with the `desc` modifier. Example usage: `?orderBy=folder,modifiedTime desc,name`."
+        },
+        "teamDriveId": {
+          "description": "Deprecated: Use `driveId` instead.",
+          "location": "query",
+          "type": "string",
+          "deprecated": true
+        },
+        "spaces": {
+          "description": "A comma-separated list of spaces to query within the corpora. Supported values are `drive` and `appDataFolder`. For more information, see [File organization](https://developers.google.com/workspace/drive/api/guides/about-files#file-organization).",
+          "default": "drive",
+          "location": "query",
+          "type": "string"
+        },
+        "corpus": {
+          "type": "string",
+          "enumDescriptions": [
+            "Files shared to the user's domain.",
+            "Files owned by or shared to the user."
+          ],
+          "description": "Deprecated: The source of files to list. Use `corpora` instead.",
+          "enum": [
+            "domain",
+            "user"
+          ],
+          "deprecated": true,
+          "location": "query"
+        },
+        "pageToken": {
+          "description": "The token for continuing a previous list request on the next page. This should be set to the value of `nextPageToken` from the previous response.",
+          "location": "query",
+          "type": "string"
+        },
+        "supportsTeamDrives": {
+          "type": "boolean",
+          "default": "false",
+          "description": "Deprecated: Use `supportsAllDrives` instead.",
+          "location": "query",
+          "deprecated": true
+        }
+      },
+      "parameterOrder": [],
+      "description": " Lists the user's files. For more information, see [Search for files and folders](https://developers.google.com/workspace/drive/api/guides/search-files). This method accepts the `q` parameter, which is a search query combining one or more search terms. This method returns *all* files by default, including trashed files. If you don't want trashed files to appear in the list, use the `trashed=false` query parameter to remove trashed files from the results.",
+      "path": "files",
+      "httpMethod": "GET",
+      "response": {
+        "$ref": "FileList"
+      }
+    },
+    "files.get": {
+      "scopes": [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.appdata",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive.meet.readonly",
+        "https://www.googleapis.com/auth/drive.metadata",
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
+        "https://www.googleapis.com/auth/drive.photos.readonly",
+        "https://www.googleapis.com/auth/drive.readonly"
+      ],
+      "path": "files/{fileId}",
+      "description": " Gets a file's metadata or content by ID. For more information, see [Search for files and folders](https://developers.google.com/workspace/drive/api/guides/search-files). If you provide the URL parameter `alt=media`, then the response includes the file contents in the response body. Downloading content with `alt=media` only works if the file is stored in Drive. To download Google Docs, Sheets, and Slides use [`files.export`](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/export) instead. For more information, see [Download and export files](https://developers.google.com/workspace/drive/api/guides/manage-downloads).",
+      "response": {
+        "$ref": "File"
+      },
+      "id": "drive.files.get",
+      "parameters": {
+        "includeLabels": {
+          "description": "A comma-separated list of IDs of labels to include in the `labelInfo` part of the response.",
+          "location": "query",
+          "type": "string"
+        },
+        "acknowledgeAbuse": {
+          "default": "false",
+          "description": "Whether the user is acknowledging the risk of downloading known malware or other abusive files. This is only applicable when the `alt` parameter is set to `media` and the user is the owner of the file or an organizer of the shared drive in which the file resides.",
+          "type": "boolean",
+          "location": "query"
+        },
+        "supportsTeamDrives": {
+          "default": "false",
+          "description": "Deprecated: Use `supportsAllDrives` instead.",
+          "deprecated": true,
+          "location": "query",
+          "type": "boolean"
+        },
+        "fileId": {
+          "location": "path",
+          "type": "string",
+          "required": true,
+          "description": "The ID of the file."
+        },
+        "supportsAllDrives": {
+          "default": "false",
+          "type": "boolean",
+          "description": "Whether the requesting application supports both My Drives and shared drives.",
+          "location": "query"
+        },
+        "includePermissionsForView": {
+          "location": "query",
+          "description": "Specifies which additional view's permissions to include in the response. Only `published` is supported.",
+          "type": "string"
+        }
+      },
+      "supportsMediaDownload": true,
+      "useMediaDownloadService": true,
+      "supportsSubscription": true,
+      "parameterOrder": [
+        "fileId"
+      ],
+      "httpMethod": "GET",
+      "flatPath": "files/{fileId}"
+    },
+    "files.export": {
+      "supportsMediaDownload": true,
+      "httpMethod": "GET",
+      "useMediaDownloadService": true,
+      "path": "files/{fileId}/export",
+      "parameterOrder": [
+        "fileId",
+        "mimeType"
+      ],
+      "parameters": {
+        "fileId": {
+          "location": "path",
+          "required": true,
+          "type": "string",
+          "description": "The ID of the file."
+        },
+        "mimeType": {
+          "required": true,
+          "description": "Required. The MIME type of the format requested for this export. For a list of supported MIME types, see [Export MIME types for Google Workspace documents](/workspace/drive/api/guides/ref-export-formats).",
+          "type": "string",
+          "location": "query"
+        }
+      },
+      "flatPath": "files/{fileId}/export",
+      "scopes": [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive.meet.readonly",
+        "https://www.googleapis.com/auth/drive.readonly"
+      ],
+      "description": "Exports a Google Workspace document to the requested MIME type and returns exported byte content. For more information, see [Download and export files](https://developers.google.com/workspace/drive/api/guides/manage-downloads). Note that the exported content is limited to 10 MB.",
+      "id": "drive.files.export"
+    },
+    "files.create": {
+      "mediaUpload": {
+        "maxSize": "5497558138880",
+        "protocols": {
+          "resumable": {
+            "multipart": true,
+            "path": "/resumable/upload/drive/v3/files"
+          },
+          "simple": {
+            "path": "/upload/drive/v3/files",
+            "multipart": true
+          }
+        },
+        "accept": [
+          "*/*"
+        ]
+      },
+      "parameterOrder": [],
+      "flatPath": "files",
+      "httpMethod": "POST",
+      "id": "drive.files.create",
+      "scopes": [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.appdata",
+        "https://www.googleapis.com/auth/drive.file"
+      ],
+      "parameters": {
+        "keepRevisionForever": {
+          "location": "query",
+          "type": "boolean",
+          "default": "false",
+          "description": "Whether to set the `keepForever` field in the new head revision. This is only applicable to files with binary content in Google Drive. Only 200 revisions for the file can be kept forever. If the limit is reached, try deleting pinned revisions."
+        },
+        "enforceSingleParent": {
+          "type": "boolean",
+          "description": "Deprecated: Creating files in multiple folders is no longer supported.",
+          "location": "query",
+          "deprecated": true,
+          "default": "false"
+        },
+        "supportsAllDrives": {
+          "location": "query",
+          "description": "Whether the requesting application supports both My Drives and shared drives.",
+          "default": "false",
+          "type": "boolean"
+        },
+        "includePermissionsForView": {
+          "type": "string",
+          "location": "query",
+          "description": "Specifies which additional view's permissions to include in the response. Only `published` is supported."
+        },
+        "ocrLanguage": {
+          "type": "string",
+          "description": "A language hint for OCR processing during image import (ISO 639-1 code).",
+          "location": "query"
+        },
+        "includeLabels": {
+          "location": "query",
+          "type": "string",
+          "description": "A comma-separated list of IDs of labels to include in the `labelInfo` part of the response."
+        },
+        "useContentAsIndexableText": {
+          "description": "Whether to use the uploaded content as indexable text.",
+          "location": "query",
+          "default": "false",
+          "type": "boolean"
+        },
+        "supportsTeamDrives": {
+          "type": "boolean",
+          "deprecated": true,
+          "location": "query",
+          "default": "false",
+          "description": "Deprecated: Use `supportsAllDrives` instead."
+        },
+        "ignoreDefaultVisibility": {
+          "description": "Whether to ignore the domain's default visibility settings for the created file. Domain administrators can choose to make all uploaded files visible to the domain by default; this parameter bypasses that behavior for the request. Permissions are still inherited from parent folders.",
+          "default": "false",
+          "location": "query",
+          "type": "boolean"
+        }
+      },
+      "request": {
+        "$ref": "File"
+      },
+      "description": " Creates a file. For more information, see [Create and manage files](https://developers.google.com/workspace/drive/api/guides/create-file). This method supports an */upload* URI and accepts uploaded media with the following characteristics: - *Maximum file size:* 5,120 GB - *Accepted Media MIME types:* `*/*` (Specify a valid MIME type, rather than the literal `*/*` value. The literal `*/*` is only used to indicate that any valid MIME type can be uploaded. For more information, see [Google Workspace and Google Drive supported MIME types](https://developers.google.com/workspace/drive/api/guides/mime-types).) For more information on uploading files, see [Upload file data](https://developers.google.com/workspace/drive/api/guides/manage-uploads). Apps creating shortcuts with the `create` method must specify the MIME type `application/vnd.google-apps.shortcut`. Apps should specify a file extension in the `name` property when inserting files with the API. For example, an operation to insert a JPEG file should specify something like `\"name\": \"cat.jpg\"` in the metadata. Subsequent `GET` requests include the read-only `fileExtension` property populated with the extension originally specified in the `name` property. When a Google Drive user requests to download a file, or when the file is downloaded through the sync client, Drive builds a full filename (with extension) based on the name. In cases where the extension is missing, Drive attempts to determine the extension based on the file's MIME type.",
+      "path": "files",
+      "supportsMediaUpload": true,
+      "response": {
+        "$ref": "File"
+      }
+    },
+    "files.update": {
+      "request": {
+        "$ref": "File"
+      },
+      "parameters": {
+        "keepRevisionForever": {
+          "description": "Whether to set the `keepForever` field in the new head revision. This is only applicable to files with binary content in Google Drive. Only 200 revisions for the file can be kept forever. If the limit is reached, try deleting pinned revisions.",
+          "type": "boolean",
+          "default": "false",
+          "location": "query"
+        },
+        "fileId": {
+          "description": "The ID of the file.",
+          "location": "path",
+          "required": true,
+          "type": "string"
+        },
+        "enforceSingleParent": {
+          "default": "false",
+          "location": "query",
+          "deprecated": true,
+          "type": "boolean",
+          "description": "Deprecated: Adding files to multiple folders is no longer supported. Use shortcuts instead."
+        },
+        "includeLabels": {
+          "description": "A comma-separated list of IDs of labels to include in the `labelInfo` part of the response.",
+          "type": "string",
+          "location": "query"
+        },
+        "removeParents": {
+          "description": "A comma-separated list of parent IDs to remove.",
+          "location": "query",
+          "type": "string"
+        },
+        "supportsTeamDrives": {
+          "type": "boolean",
+          "default": "false",
+          "deprecated": true,
+          "location": "query",
+          "description": "Deprecated: Use `supportsAllDrives` instead."
+        },
+        "ocrLanguage": {
+          "location": "query",
+          "type": "string",
+          "description": "A language hint for OCR processing during image import (ISO 639-1 code)."
+        },
+        "useContentAsIndexableText": {
+          "location": "query",
+          "default": "false",
+          "type": "boolean",
+          "description": "Whether to use the uploaded content as indexable text."
+        },
+        "supportsAllDrives": {
+          "description": "Whether the requesting application supports both My Drives and shared drives.",
+          "default": "false",
+          "type": "boolean",
+          "location": "query"
+        },
+        "includePermissionsForView": {
+          "description": "Specifies which additional view's permissions to include in the response. Only `published` is supported.",
+          "location": "query",
+          "type": "string"
+        },
+        "addParents": {
+          "location": "query",
+          "type": "string",
+          "description": "A comma-separated list of parent IDs to add."
+        }
+      },
+      "id": "drive.files.update",
+      "mediaUpload": {
+        "maxSize": "5497558138880",
+        "protocols": {
+          "simple": {
+            "multipart": true,
+            "path": "/upload/drive/v3/files/{fileId}"
+          },
+          "resumable": {
+            "path": "/resumable/upload/drive/v3/files/{fileId}",
+            "multipart": true
+          }
+        },
+        "accept": [
+          "*/*"
+        ]
+      },
+      "supportsMediaUpload": true,
+      "response": {
+        "$ref": "File"
+      },
+      "httpMethod": "PATCH",
+      "parameterOrder": [
+        "fileId"
+      ],
+      "flatPath": "files/{fileId}",
+      "path": "files/{fileId}",
+      "scopes": [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.appdata",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive.metadata",
+        "https://www.googleapis.com/auth/drive.scripts"
+      ],
+      "description": " Updates a file's metadata, content, or both. When calling this method, only populate fields in the request that you want to modify. When updating fields, some fields might be changed automatically, such as `modifiedDate`. This method supports patch semantics. This method supports an */upload* URI and accepts uploaded media with the following characteristics: - *Maximum file size:* 5,120 GB - *Accepted Media MIME types:* `*/*` (Specify a valid MIME type, rather than the literal `*/*` value. The literal `*/*` is only used to indicate that any valid MIME type can be uploaded. For more information, see [Google Workspace and Google Drive supported MIME types](https://developers.google.com/workspace/drive/api/guides/mime-types).) For more information on uploading files, see [Upload file data](https://developers.google.com/workspace/drive/api/guides/manage-uploads)."
+    },
+    "permissions.list": {
+      "path": "files/{fileId}/permissions",
+      "parameters": {
+        "useDomainAdminAccess": {
+          "default": "false",
+          "description": "Issue the request as a domain administrator. If set to `true`, and if the following additional conditions are met, the requester is granted access: 1. The file ID parameter refers to a shared drive. 2. The requester is an administrator of the domain to which the shared drive belongs. For more information, see [Manage shared drives as domain administrators](https://developers.google.com/workspace/drive/api/guides/manage-shareddrives#manage-administrators).",
+          "location": "query",
+          "type": "boolean"
+        },
+        "supportsAllDrives": {
+          "type": "boolean",
+          "default": "false",
+          "description": "Whether the requesting application supports both My Drives and shared drives.",
+          "location": "query"
+        },
+        "pageSize": {
+          "maximum": "100",
+          "format": "int32",
+          "minimum": "1",
+          "location": "query",
+          "description": "The maximum number of permissions to return. The service may return fewer than this value. If unspecified, at most 100 permissions will be returned for shared drives, and the entire list of permissions for non-shared drives. The maximum value is 100; values above 100 will be coerced to 100.",
+          "type": "integer"
+        },
+        "includePermissionsForView": {
+          "description": "Specifies which additional view's permissions to include in the response. Only `published` is supported.",
+          "location": "query",
+          "type": "string"
+        },
+        "fileId": {
+          "location": "path",
+          "description": "The ID of the file or shared drive.",
+          "type": "string",
+          "required": true
+        },
+        "supportsTeamDrives": {
+          "deprecated": true,
+          "type": "boolean",
+          "description": "Deprecated: Use `supportsAllDrives` instead.",
+          "default": "false",
+          "location": "query"
+        },
+        "pageToken": {
+          "description": "The token for continuing a previous list request on the next page. This should be set to the value of `nextPageToken` from the previous response.",
+          "type": "string",
+          "location": "query"
+        }
+      },
+      "flatPath": "files/{fileId}/permissions",
+      "parameterOrder": [
+        "fileId"
+      ],
+      "response": {
+        "$ref": "PermissionList"
+      },
+      "id": "drive.permissions.list",
+      "description": "Lists a file's or shared drive's permissions. For more information, see [Share files, folders, and drives](https://developers.google.com/workspace/drive/api/guides/manage-sharing).",
+      "httpMethod": "GET",
+      "scopes": [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive.meet.readonly",
+        "https://www.googleapis.com/auth/drive.metadata",
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
+        "https://www.googleapis.com/auth/drive.photos.readonly",
+        "https://www.googleapis.com/auth/drive.readonly"
+      ]
+    },
+    "permissions.create": {
+      "scopes": [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.file"
+      ],
+      "response": {
+        "$ref": "Permission"
+      },
+      "id": "drive.permissions.create",
+      "parameters": {
+        "emailMessage": {
+          "location": "query",
+          "description": "A plain text custom message to include in the notification email.",
+          "type": "string"
+        },
+        "sendNotificationEmail": {
+          "description": "Whether to send a notification email when sharing to users or groups. This defaults to `true` for users and groups, and is not allowed for other requests. It must not be disabled for ownership transfers.",
+          "location": "query",
+          "type": "boolean"
+        },
+        "fileId": {
+          "type": "string",
+          "required": true,
+          "location": "path",
+          "description": "The ID of the file or shared drive."
+        },
+        "useDomainAdminAccess": {
+          "default": "false",
+          "type": "boolean",
+          "description": "Issue the request as a domain administrator. If set to `true`, and if the following additional conditions are met, the requester is granted access: 1. The file ID parameter refers to a shared drive. 2. The requester is an administrator of the domain to which the shared drive belongs. For more information, see [Manage shared drives as domain administrators](https://developers.google.com/workspace/drive/api/guides/manage-shareddrives#manage-administrators).",
+          "location": "query"
+        },
+        "supportsTeamDrives": {
+          "deprecated": true,
+          "type": "boolean",
+          "default": "false",
+          "description": "Deprecated: Use `supportsAllDrives` instead.",
+          "location": "query"
+        },
+        "supportsAllDrives": {
+          "type": "boolean",
+          "description": "Whether the requesting application supports both My Drives and shared drives.",
+          "default": "false",
+          "location": "query"
+        },
+        "moveToNewOwnersRoot": {
+          "type": "boolean",
+          "location": "query",
+          "description": "This parameter only takes effect if the item isn't in a shared drive and the request is attempting to transfer the ownership of the item. If set to `true`, the item is moved to the new owner's My Drive root folder and all prior parents removed. If set to `false`, parents aren't changed.",
+          "default": "false"
+        },
+        "enforceSingleParent": {
+          "default": "false",
+          "location": "query",
+          "type": "boolean",
+          "description": "Deprecated: See `moveToNewOwnersRoot` for details.",
+          "deprecated": true
+        },
+        "transferOwnership": {
+          "default": "false",
+          "type": "boolean",
+          "description": "Whether to transfer ownership to the specified user and downgrade the current owner to a writer. This parameter is required as an acknowledgement of the side effect. For more information, see [Transfer file ownership](https://developers.google.com/workspace/drive/api/guides/transfer-file).",
+          "location": "query"
+        },
+        "enforceExpansiveAccess": {
+          "type": "boolean",
+          "location": "query",
+          "description": "Deprecated: All requests use the expansive access rules.",
+          "default": "false",
+          "deprecated": true
+        }
+      },
+      "description": "Creates a permission for a file or shared drive. For more information, see [Share files, folders, and drives](https://developers.google.com/workspace/drive/api/guides/manage-sharing). **Warning:** Concurrent permissions operations on the same file aren't supported; only the last update is applied.",
+      "parameterOrder": [
+        "fileId"
+      ],
+      "path": "files/{fileId}/permissions",
+      "flatPath": "files/{fileId}/permissions",
+      "request": {
+        "$ref": "Permission"
+      },
+      "httpMethod": "POST"
+    },
+    "permissions.delete": {
+      "description": "Deletes a permission. For more information, see [Share files, folders, and drives](https://developers.google.com/workspace/drive/api/guides/manage-sharing). **Warning:** Concurrent permissions operations on the same file aren't supported; only the last update is applied.",
+      "path": "files/{fileId}/permissions/{permissionId}",
+      "flatPath": "files/{fileId}/permissions/{permissionId}",
+      "id": "drive.permissions.delete",
+      "parameters": {
+        "supportsAllDrives": {
+          "location": "query",
+          "description": "Whether the requesting application supports both My Drives and shared drives.",
+          "type": "boolean",
+          "default": "false"
+        },
+        "supportsTeamDrives": {
+          "location": "query",
+          "deprecated": true,
+          "type": "boolean",
+          "description": "Deprecated: Use `supportsAllDrives` instead.",
+          "default": "false"
+        },
+        "permissionId": {
+          "required": true,
+          "location": "path",
+          "type": "string",
+          "description": "The ID of the permission."
+        },
+        "useDomainAdminAccess": {
+          "location": "query",
+          "type": "boolean",
+          "description": "Issue the request as a domain administrator. If set to `true`, and if the following additional conditions are met, the requester is granted access: 1. The file ID parameter refers to a shared drive. 2. The requester is an administrator of the domain to which the shared drive belongs. For more information, see [Manage shared drives as domain administrators](https://developers.google.com/workspace/drive/api/guides/manage-shareddrives#manage-administrators).",
+          "default": "false"
+        },
+        "enforceExpansiveAccess": {
+          "type": "boolean",
+          "description": "Deprecated: All requests use the expansive access rules.",
+          "location": "query",
+          "deprecated": true,
+          "default": "false"
+        },
+        "fileId": {
+          "type": "string",
+          "location": "path",
+          "description": "The ID of the file or shared drive.",
+          "required": true
+        }
+      },
+      "httpMethod": "DELETE",
+      "parameterOrder": [
+        "fileId",
+        "permissionId"
+      ],
+      "scopes": [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.file"
+      ]
+    }
+  },
+  "schemas": {
+    "PermissionList": {
+      "properties": {
+        "kind": {
+          "default": "drive#permissionList",
+          "description": "Identifies what kind of resource this is. Value: the fixed string `\"drive#permissionList\"`.",
+          "type": "string"
+        },
+        "permissions": {
+          "items": {
+            "$ref": "Permission"
+          },
+          "type": "array",
+          "description": "The list of permissions. If `nextPageToken` is populated, then this list may be incomplete and an additional page of results should be fetched."
+        },
+        "nextPageToken": {
+          "description": "The page token for the next page of permissions. This field will be absent if the end of the permissions list has been reached. If the token is rejected for any reason, it should be discarded, and pagination should be restarted from the first page of results. The page token is typically valid for several hours. However, if new items are added or removed, your expected results might differ.",
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "description": "A list of permissions for a file.",
+      "id": "PermissionList"
+    },
+    "File": {
+      "type": "object",
+      "description": "The metadata for a file. Some resource methods (such as `files.update`) require a `fileId`. Use the `files.list` method to retrieve the ID for a file.",
+      "properties": {
+        "sharingUser": {
+          "$ref": "User",
+          "description": "Output only. The user who shared the file with the requesting user, if applicable."
+        },
+        "teamDriveId": {
+          "deprecated": true,
+          "description": "Deprecated: Output only. Use `driveId` instead.",
+          "type": "string"
+        },
+        "headRevisionId": {
+          "description": "Output only. The ID of the file's head revision. This is currently only available for files with binary content in Google Drive.",
+          "type": "string"
+        },
+        "contentHints": {
+          "type": "object",
+          "description": "Additional information about the content of the file. These fields are never populated in responses.",
+          "properties": {
+            "thumbnail": {
+              "description": "A thumbnail for the file. This will only be used if Google Drive cannot generate a standard thumbnail.",
+              "type": "object",
+              "properties": {
+                "mimeType": {
+                  "description": "The MIME type of the thumbnail.",
+                  "type": "string"
+                },
+                "image": {
+                  "type": "string",
+                  "description": "The thumbnail data encoded with URL-safe Base64 ([RFC 4648 section 5](https://datatracker.ietf.org/doc/html/rfc4648#section-5)).",
+                  "format": "byte"
+                }
+              }
+            },
+            "indexableText": {
+              "type": "string",
+              "description": "Text to be indexed for the file to improve fullText queries. This is limited to 128 KB in length and may contain HTML elements."
+            }
+          }
+        },
+        "isAppAuthorized": {
+          "description": "Output only. Whether the file was created or opened by the requesting app.",
+          "type": "boolean"
+        },
+        "trashedTime": {
+          "format": "date-time",
+          "type": "string",
+          "description": "The time that the item was trashed (RFC 3339 date-time). Only populated for items in shared drives."
+        },
+        "videoMediaMetadata": {
+          "properties": {
+            "height": {
+              "format": "int32",
+              "type": "integer",
+              "description": "Output only. The height of the video in pixels."
+            },
+            "durationMillis": {
+              "type": "string",
+              "format": "int64",
+              "description": "Output only. The duration of the video in milliseconds."
+            },
+            "width": {
+              "format": "int32",
+              "description": "Output only. The width of the video in pixels.",
+              "type": "integer"
+            }
+          },
+          "description": "Output only. Additional metadata about video media. This may not be available immediately upon upload.",
+          "type": "object"
+        },
+        "sha256Checksum": {
+          "type": "string",
+          "description": "Output only. The SHA256 checksum associated with this file, if available. This field is only populated for files with content stored in Google Drive; it's not populated for Docs Editors or shortcut files."
+        },
+        "folderColorRgb": {
+          "type": "string",
+          "description": "The color for a folder or a shortcut to a folder as an RGB hex string. The supported colors are published in the `folderColorPalette` field of the [`about`](/workspace/drive/api/reference/rest/v3/about) resource. If an unsupported color is specified, the closest color in the palette is used instead."
+        },
+        "ownedByMe": {
+          "description": "Output only. Whether the user owns the file. Not populated for items in shared drives.",
+          "type": "boolean"
+        },
+        "shortcutDetails": {
+          "type": "object",
+          "description": "Information about a shortcut file.",
+          "properties": {
+            "targetId": {
+              "description": "The ID of the file that this shortcut points to. Can only be set on `files.create` requests.",
+              "type": "string"
+            },
+            "targetMimeType": {
+              "type": "string",
+              "description": "Output only. The MIME type of the file that this shortcut points to. The value of this field is a snapshot of the target's MIME type, captured when the shortcut is created."
+            },
+            "targetResourceKey": {
+              "description": "Output only. The `resourceKey` for the target file.",
+              "type": "string"
+            }
+          }
+        },
+        "id": {
+          "type": "string",
+          "description": "The ID of the file."
+        },
+        "viewersCanCopyContent": {
+          "type": "boolean",
+          "description": "Deprecated: Use `copyRequiresWriterPermission` instead.",
+          "deprecated": true
+        },
+        "viewedByMeTime": {
+          "description": "The last time the file was viewed by the user (RFC 3339 date-time).",
+          "type": "string",
+          "format": "date-time"
+        },
+        "fullFileExtension": {
+          "description": "Output only. The full file extension extracted from the `name` field. May contain multiple concatenated extensions, such as \"tar.gz\". This is only available for files with binary content in Google Drive. This is automatically updated when the `name` field changes, however it's not cleared if the new name doesn't contain a valid extension.",
+          "type": "string"
+        },
+        "fileExtension": {
+          "type": "string",
+          "description": "Output only. The final component of `fullFileExtension`. This is only available for files with binary content in Google Drive."
+        },
+        "driveId": {
+          "description": "Output only. ID of the shared drive the file resides in. Only populated for items in shared drives.",
+          "type": "string"
+        },
+        "resourceKey": {
+          "type": "string",
+          "description": "Output only. A key needed to access the item via a shared link."
+        },
+        "spaces": {
+          "description": "Output only. The list of spaces which contain the file. The currently supported values are `drive`, `appDataFolder`, and `photos`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "contentRestrictions": {
+          "items": {
+            "$ref": "ContentRestriction"
+          },
+          "type": "array",
+          "description": "Restrictions for accessing the content of the file. Only populated if such a restriction exists."
+        },
+        "webContentLink": {
+          "description": "Output only. A link for downloading the content of the file in a browser. This is only available for files with binary content in Google Drive.",
+          "type": "string"
+        },
+        "quotaBytesUsed": {
+          "type": "string",
+          "format": "int64",
+          "description": "Output only. The number of storage quota bytes used by the file. This includes the head revision as well as previous revisions with `keepForever` enabled."
+        },
+        "permissionIds": {
+          "description": "Output only. List of permission IDs for users with access to this file.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "properties": {
+          "description": "A collection of arbitrary key-value pairs which are visible to all apps.\nEntries with null values are cleared in update and copy requests.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "exportLinks": {
+          "description": "Output only. Links for exporting Docs Editors files to specific formats.",
+          "readOnly": true,
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the file. This isn't necessarily unique within a folder. Note that for immutable items such as the top-level folders of shared drives, the My Drive root folder, and the Application Data folder, the name is constant."
+        },
+        "trashed": {
+          "description": "Whether the file has been trashed, either explicitly or from a trashed parent folder. Only the owner may trash a file, but other users can still access the file in the owner's trash until it's permanently deleted.",
+          "type": "boolean"
+        },
+        "clientEncryptionDetails": {
+          "description": "Client Side Encryption related details. Contains details about the encryption state of the file and details regarding the encryption mechanism that clients need to use when decrypting the contents of this item. This will only be present on files and not on folders or shortcuts.",
+          "$ref": "ClientEncryptionDetails"
+        },
+        "trashingUser": {
+          "description": "Output only. If the file has been explicitly trashed, the user who trashed it. Only populated for items in shared drives.",
+          "$ref": "User"
+        },
+        "writersCanShare": {
+          "description": "Whether users with only `writer` permission can modify the file's permissions. Not populated for items in shared drives.",
+          "type": "boolean"
+        },
+        "copyRequiresWriterPermission": {
+          "type": "boolean",
+          "description": "Whether the options to copy, print, or download this file should be disabled for readers and commenters."
+        },
+        "modifiedByMe": {
+          "type": "boolean",
+          "description": "Output only. Whether the file has been modified by this user."
+        },
+        "starred": {
+          "description": "Whether the user has starred the file.",
+          "type": "boolean"
+        },
+        "permissions": {
+          "items": {
+            "$ref": "Permission"
+          },
+          "type": "array",
+          "description": "Output only. The full list of permissions for the file. This is only available if the requesting user can share the file. Not populated for items in shared drives."
+        },
+        "imageMediaMetadata": {
+          "properties": {
+            "subjectDistance": {
+              "description": "Output only. The distance to the subject of the photo, in meters.",
+              "type": "integer",
+              "format": "int32"
+            },
+            "exposureMode": {
+              "type": "string",
+              "description": "Output only. The exposure mode used to create the photo."
+            },
+            "height": {
+              "description": "Output only. The height of the image in pixels.",
+              "type": "integer",
+              "format": "int32"
+            },
+            "rotation": {
+              "type": "integer",
+              "description": "Output only. The number of clockwise 90 degree rotations applied from the image's original orientation.",
+              "format": "int32"
+            },
+            "width": {
+              "format": "int32",
+              "description": "Output only. The width of the image in pixels.",
+              "type": "integer"
+            },
+            "location": {
+              "description": "Output only. Geographic location information stored in the image.",
+              "type": "object",
+              "properties": {
+                "altitude": {
+                  "type": "number",
+                  "description": "Output only. The altitude stored in the image.",
+                  "format": "double"
+                },
+                "longitude": {
+                  "type": "number",
+                  "description": "Output only. The longitude stored in the image.",
+                  "format": "double"
+                },
+                "latitude": {
+                  "description": "Output only. The latitude stored in the image.",
+                  "type": "number",
+                  "format": "double"
+                }
+              }
+            },
+            "isoSpeed": {
+              "description": "Output only. The ISO speed used to create the photo.",
+              "format": "int32",
+              "type": "integer"
+            },
+            "colorSpace": {
+              "description": "Output only. The color space of the photo.",
+              "type": "string"
+            },
+            "cameraMake": {
+              "description": "Output only. The make of the camera used to create the photo.",
+              "type": "string"
+            },
+            "aperture": {
+              "description": "Output only. The aperture used to create the photo (f-number).",
+              "type": "number",
+              "format": "float"
+            },
+            "whiteBalance": {
+              "type": "string",
+              "description": "Output only. The white balance mode used to create the photo."
+            },
+            "focalLength": {
+              "description": "Output only. The focal length used to create the photo, in millimeters.",
+              "format": "float",
+              "type": "number"
+            },
+            "cameraModel": {
+              "description": "Output only. The model of the camera used to create the photo.",
+              "type": "string"
+            },
+            "exposureTime": {
+              "type": "number",
+              "format": "float",
+              "description": "Output only. The length of the exposure, in seconds."
+            },
+            "flashUsed": {
+              "type": "boolean",
+              "description": "Output only. Whether a flash was used to create the photo."
+            },
+            "lens": {
+              "description": "Output only. The lens used to create the photo.",
+              "type": "string"
+            },
+            "time": {
+              "description": "Output only. The date and time the photo was taken (EXIF DateTime).",
+              "type": "string"
+            },
+            "maxApertureValue": {
+              "description": "Output only. The smallest f-number of the lens at the focal length used to create the photo (APEX value).",
+              "format": "float",
+              "type": "number"
+            },
+            "meteringMode": {
+              "description": "Output only. The metering mode used to create the photo.",
+              "type": "string"
+            },
+            "exposureBias": {
+              "format": "float",
+              "description": "Output only. The exposure bias of the photo (APEX value).",
+              "type": "number"
+            },
+            "sensor": {
+              "type": "string",
+              "description": "Output only. The type of sensor used to create the photo."
+            }
+          },
+          "type": "object",
+          "description": "Output only. Additional metadata about image media, if available."
+        },
+        "description": {
+          "type": "string",
+          "description": "A short description of the file."
+        },
+        "modifiedTime": {
+          "description": "he last time the file was modified by anyone (RFC 3339 date-time). Note that setting modifiedTime will also update modifiedByMeTime for the user.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "explicitlyTrashed": {
+          "type": "boolean",
+          "description": "Output only. Whether the file has been explicitly trashed, as opposed to recursively trashed from a parent folder."
+        },
+        "kind": {
+          "description": "Output only. Identifies what kind of resource this is. Value: the fixed string `\"drive#file\"`.",
+          "type": "string",
+          "default": "drive#file"
+        },
+        "appProperties": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "A collection of arbitrary key-value pairs which are private to the requesting app.\nEntries with null values are cleared in update and copy requests. These properties can only be retrieved using an authenticated request. An authenticated request uses an access token obtained with a OAuth 2 client ID. You cannot use an API key to retrieve private properties.",
+          "type": "object"
+        },
+        "originalFilename": {
+          "description": "The original filename of the uploaded content if available, or else the original value of the `name` field. This is only available for files with binary content in Google Drive.",
+          "type": "string"
+        },
+        "capabilities": {
+          "description": "Output only. Capabilities the current user has on this file. Each capability corresponds to a fine-grained action that a user may take. For more information, see [Understand file capabilities](https://developers.google.com/workspace/drive/api/guides/manage-sharing#capabilities).",
+          "properties": {
+            "canMoveChildrenOutOfDrive": {
+              "description": "Output only. Whether the current user can move children of this folder outside of the shared drive. This is `false` when the item isn't a folder. Only populated for items in shared drives.",
+              "type": "boolean"
+            },
+            "canMoveItemWithinDrive": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can move this item within this drive. Note that a request to change the parent of the item may still fail depending on the new parent that's being added and the parent that is being removed."
+            },
+            "canAddMyDriveParent": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can add a parent for the item without removing an existing parent in the same request. Not populated for shared drive files."
+            },
+            "canDelete": {
+              "description": "Output only. Whether the current user can delete this file.",
+              "type": "boolean"
+            },
+            "canCopy": {
+              "description": "Output only. Whether the current user can copy this file. For an item in a shared drive, whether the current user can copy non-folder descendants of this item, or this item if it's not a folder.",
+              "type": "boolean"
+            },
+            "canTrash": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can move this file to trash."
+            },
+            "canAcceptOwnership": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user is the pending owner of the file. Not populated for shared drive files."
+            },
+            "canRemoveChildren": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can remove children from this folder. This is always `false` when the item isn't a folder. For a folder in a shared drive, use `canDeleteChildren` or `canTrashChildren` instead."
+            },
+            "canReadLabels": {
+              "description": "Output only. Whether the current user can read the labels on the file.",
+              "type": "boolean"
+            },
+            "canReadTeamDrive": {
+              "type": "boolean",
+              "description": "Deprecated: Output only. Use `canReadDrive` instead.",
+              "deprecated": true
+            },
+            "canMoveItemIntoTeamDrive": {
+              "type": "boolean",
+              "deprecated": true,
+              "description": "Deprecated: Output only. Use `canMoveItemOutOfDrive` instead."
+            },
+            "canUntrash": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can restore this file from trash."
+            },
+            "canStartApproval": {
+              "description": "Whether the current user can start an approval on the file.",
+              "type": "boolean"
+            },
+            "canChangeItemDownloadRestriction": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can change the owner or organizer-applied download restrictions of the file."
+            },
+            "canReadDrive": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can read the shared drive to which this file belongs. Only populated for items in shared drives."
+            },
+            "canRemoveContentRestriction": {
+              "description": "Output only. Whether there's a content restriction on the file that can be removed by the current user.",
+              "type": "boolean"
+            },
+            "canMoveChildrenWithinDrive": {
+              "description": "Output only. Whether the current user can move children of this folder within this drive. This is `false` when the item isn't a folder. Note that a request to move the child may still fail depending on the current user's access to the child and to the destination folder.",
+              "type": "boolean"
+            },
+            "canDownload": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can download this file."
+            },
+            "canChangeCopyRequiresWriterPermission": {
+              "description": "Output only. Whether the current user can change the `copyRequiresWriterPermission` restriction of this file.",
+              "type": "boolean"
+            },
+            "canEdit": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can edit this file. Other factors may limit the type of changes a user can make to a file. For example, see `canChangeCopyRequiresWriterPermission` or `canModifyContent`."
+            },
+            "canEnableInheritedPermissions": {
+              "type": "boolean",
+              "description": "Whether a user can re-enable inherited permissions."
+            },
+            "canDisableInheritedPermissions": {
+              "type": "boolean",
+              "description": "Whether a user can disable inherited permissions."
+            },
+            "canDeleteChildren": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can delete children of this folder. This is `false` when the item isn't a folder. Only populated for items in shared drives."
+            },
+            "canMoveTeamDriveItem": {
+              "description": "Deprecated: Output only. Use `canMoveItemWithinDrive` or `canMoveItemOutOfDrive` instead.",
+              "deprecated": true,
+              "type": "boolean"
+            },
+            "canModifyLabels": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can modify the labels on the file."
+            },
+            "canShare": {
+              "description": "Output only. Whether the current user can modify the sharing settings for this file.",
+              "type": "boolean"
+            },
+            "canMoveItemOutOfTeamDrive": {
+              "type": "boolean",
+              "deprecated": true,
+              "description": "Deprecated: Output only. Use `canMoveItemOutOfDrive` instead."
+            },
+            "canReadRevisions": {
+              "description": "Output only. Whether the current user can read the revisions resource of this file. For a shared drive item, whether revisions of non-folder descendants of this item, or this item if it's not a folder, can be read.",
+              "type": "boolean"
+            },
+            "canModifyContentRestriction": {
+              "description": "Deprecated: Output only. Use one of `canModifyEditorContentRestriction`, `canModifyOwnerContentRestriction`, or `canRemoveContentRestriction`.",
+              "type": "boolean",
+              "deprecated": true
+            },
+            "canRemoveMyDriveParent": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can remove a parent from the item without adding another parent in the same request. Not populated for shared drive files."
+            },
+            "canModifyContent": {
+              "description": "Output only. Whether the current user can modify the content of this file.",
+              "type": "boolean"
+            },
+            "canMoveChildrenWithinTeamDrive": {
+              "type": "boolean",
+              "description": "Deprecated: Output only. Use `canMoveChildrenWithinDrive` instead.",
+              "deprecated": true
+            },
+            "canMoveItemOutOfDrive": {
+              "description": "Output only. Whether the current user can move this item outside of this drive by changing its parent. Note that a request to change the parent of the item may still fail depending on the new parent that's being added.",
+              "type": "boolean"
+            },
+            "canAddChildren": {
+              "description": "Output only. Whether the current user can add children to this folder. This is always `false` when the item isn't a folder.",
+              "type": "boolean"
+            },
+            "canChangeViewersCanCopyContent": {
+              "description": "Deprecated: Output only.",
+              "type": "boolean",
+              "deprecated": true
+            },
+            "canAccessViaGenAi": {
+              "type": "boolean",
+              "description": "Whether the current user can access this file via Gen AI features. For more information, see [Drive MCP file eligibility](https://developers.google.com/workspace/drive/api/guides/drive-mcp-server-file-eligibility)."
+            },
+            "canModifyEditorContentRestriction": {
+              "description": "Output only. Whether the current user can add or modify content restrictions on the file which are editor restricted.",
+              "type": "boolean"
+            },
+            "canMoveItemWithinTeamDrive": {
+              "description": "Deprecated: Output only. Use `canMoveItemWithinDrive` instead.",
+              "type": "boolean",
+              "deprecated": true
+            },
+            "canTrashChildren": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can trash children of this folder. This is `false` when the item isn't a folder. Only populated for items in shared drives."
+            },
+            "canModifyOwnerContentRestriction": {
+              "description": "Output only. Whether the current user can add or modify content restrictions which are owner restricted.",
+              "type": "boolean"
+            },
+            "canAddFolderFromAnotherDrive": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can add a folder from another drive (different shared drive or My Drive) to this folder. This is `false` when the item isn't a folder. Only populated for items in shared drives."
+            },
+            "canComment": {
+              "description": "Output only. Whether the current user can comment on this file.",
+              "type": "boolean"
+            },
+            "canRename": {
+              "type": "boolean",
+              "description": "Output only. Whether the current user can rename this file."
+            },
+            "canMoveChildrenOutOfTeamDrive": {
+              "description": "Deprecated: Output only. Use `canMoveChildrenOutOfDrive` instead.",
+              "type": "boolean",
+              "deprecated": true
+            },
+            "canChangeSecurityUpdateEnabled": {
+              "description": "Output only. Whether the current user can change the `securityUpdateEnabled` field on link share metadata.",
+              "type": "boolean"
+            },
+            "canListChildren": {
+              "description": "Output only. Whether the current user can list the children of this folder. This is always `false` when the item isn't a folder.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "thumbnailVersion": {
+          "description": "Output only. The thumbnail version for use in thumbnail cache invalidation.",
+          "type": "string",
+          "format": "int64"
+        },
+        "mimeType": {
+          "description": "The MIME type of the file. Google Drive attempts to automatically detect an appropriate value from uploaded content, if no value is provided. The value cannot be changed unless a new revision is uploaded. If a file is created with a Google Doc MIME type, the uploaded content is imported, if possible. The supported import formats are published in the [`about`](/workspace/drive/api/reference/rest/v3/about) resource.",
+          "type": "string"
+        },
+        "shared": {
+          "description": "Output only. Whether the file has been shared. Not populated for items in shared drives.",
+          "type": "boolean"
+        },
+        "iconLink": {
+          "type": "string",
+          "description": "Output only. A static, unauthenticated link to the file's icon."
+        },
+        "downloadRestrictions": {
+          "description": "Download restrictions applied on the file.",
+          "$ref": "DownloadRestrictionsMetadata"
+        },
+        "lastModifyingUser": {
+          "$ref": "User",
+          "description": "Output only. The last user to modify the file. This field is only populated when the last modification was performed by a signed-in user."
+        },
+        "inheritedPermissionsDisabled": {
+          "description": "Whether this file has inherited permissions disabled. Inherited permissions are enabled by default.",
+          "type": "boolean"
+        },
+        "hasThumbnail": {
+          "type": "boolean",
+          "description": "Output only. Whether this file has a thumbnail. This doesn't indicate whether the requesting app has access to the thumbnail. To check access, look for the presence of the thumbnailLink field."
+        },
+        "sharedWithMeTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The time at which the file was shared with the user, if applicable (RFC 3339 date-time)."
+        },
+        "size": {
+          "format": "int64",
+          "type": "string",
+          "description": "Output only. Size in bytes of blobs and Google Workspace editor files. Won't be populated for files that have no size, like shortcuts and folders."
+        },
+        "thumbnailLink": {
+          "description": "Output only. A short-lived link to the file's thumbnail, if available. Typically lasts on the order of hours. Not intended for direct usage on web applications due to [Cross-Origin Resource Sharing (CORS)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) policies. Consider using a proxy server. Only populated when the requesting app can access the file's content. If the file isn't shared publicly, the URL returned in `files.thumbnailLink` must be fetched using a credentialed request.",
+          "type": "string"
+        },
+        "version": {
+          "format": "int64",
+          "description": "Output only. A monotonically increasing version number for the file. This reflects every change made to the file on the server, even those not visible to the user.",
+          "type": "string"
+        },
+        "hasAugmentedPermissions": {
+          "type": "boolean",
+          "description": "Output only. Whether there are permissions directly on this file. This field is only populated for items in shared drives."
+        },
+        "modifiedByMeTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The last time the file was modified by the user (RFC 3339 date-time)."
+        },
+        "linkShareMetadata": {
+          "description": "Contains details about the link URLs that clients are using to refer to this item.",
+          "type": "object",
+          "properties": {
+            "securityUpdateEnabled": {
+              "description": "Output only. Whether the security update is enabled for this file.",
+              "type": "boolean"
+            },
+            "securityUpdateEligible": {
+              "description": "Output only. Whether the file is eligible for security update.",
+              "type": "boolean"
+            }
+          }
+        },
+        "webViewLink": {
+          "type": "string",
+          "description": "Output only. A link for opening the file in a relevant Google editor or viewer in a browser."
+        },
+        "sha1Checksum": {
+          "type": "string",
+          "description": "Output only. The SHA1 checksum associated with this file, if available. This field is only populated for files with content stored in Google Drive; it's not populated for Docs Editors or shortcut files."
+        },
+        "createdTime": {
+          "type": "string",
+          "description": "The time at which the file was created (RFC 3339 date-time).",
+          "format": "date-time"
+        },
+        "viewedByMe": {
+          "description": "Output only. Whether the file has been viewed by this user.",
+          "type": "boolean"
+        },
+        "parents": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "The ID of the parent folder containing the file. A file can only have one parent folder; specifying multiple parents isn't supported. If not specified as part of a create request, the file is placed directly in the user's My Drive folder. If not specified as part of a copy request, the file inherits any discoverable parent of the source file. Update requests must use the `addParents` and `removeParents` parameters to modify the parents list."
+        },
+        "owners": {
+          "items": {
+            "$ref": "User"
+          },
+          "type": "array",
+          "description": "Output only. The owner of this file. Only certain legacy files may have more than one owner. This field isn't populated for items in shared drives."
+        },
+        "md5Checksum": {
+          "description": "Output only. The MD5 checksum for the content of the file. This is only applicable to files with binary content in Google Drive.",
+          "type": "string"
+        },
+        "labelInfo": {
+          "type": "object",
+          "description": "Label information on the file.",
+          "properties": {
+            "labels": {
+              "description": "Output only. The set of labels on the file as requested by the label IDs in the `includeLabels` parameter. By default, no labels are returned.",
+              "type": "array",
+              "items": {
+                "$ref": "Label"
+              }
+            }
+          }
+        }
+      },
+      "id": "File"
+    },
+    "DownloadRestrictionsMetadata": {
+      "id": "DownloadRestrictionsMetadata",
+      "type": "object",
+      "properties": {
+        "itemDownloadRestriction": {
+          "description": "The download restriction of the file applied directly by the owner or organizer. This doesn't take into account shared drive settings or DLP rules.",
+          "$ref": "DownloadRestriction"
+        },
+        "effectiveDownloadRestrictionWithContext": {
+          "description": "Output only. The effective download restriction applied to this file. This considers all restriction settings and DLP rules.",
+          "$ref": "DownloadRestriction"
+        }
+      },
+      "description": "Download restrictions applied to the file."
+    },
+    "DownloadRestriction": {
+      "description": "A restriction for copy and download of the file.",
+      "properties": {
+        "restrictedForReaders": {
+          "type": "boolean",
+          "description": "Whether download and copy is restricted for readers."
+        },
+        "restrictedForWriters": {
+          "type": "boolean",
+          "description": "Whether download and copy is restricted for writers. If true, download is also restricted for readers."
+        }
+      },
+      "type": "object",
+      "id": "DownloadRestriction"
+    },
+    "Permission": {
+      "type": "object",
+      "description": "A permission for a file. A permission grants a user, group, domain, or the world access to a file or a folder hierarchy. For more information, see [Share files, folders, and drives](https://developers.google.com/workspace/drive/api/guides/manage-sharing). By default, permission requests only return a subset of fields. Permission `kind`, `ID`, `type`, and `role` are always returned. To retrieve specific fields, see [Return specific fields](https://developers.google.com/workspace/drive/api/guides/fields-parameter). Some resource methods (such as `permissions.update`) require a `permissionId`. Use the `permissions.list` method to retrieve the ID for a file, folder, or shared drive.",
+      "properties": {
+        "domain": {
+          "description": "Output only. The domain to which this permission refers.",
+          "type": "string",
+          "readOnly": true
+        },
+        "photoLink": {
+          "description": "Output only. A link to the user's profile photo, if available.",
+          "type": "string"
+        },
+        "view": {
+          "type": "string",
+          "description": "Indicates the view for this permission. Only populated for permissions that belong to a view. The only supported values are `published` and `metadata`: * `published`: The permission's role is `publishedReader`. * `metadata`: The item is only visible to the `metadata` view because the item has limited access and the scope has at least read access to the parent. The `metadata` view is only supported on folders. For more information, see [Views](https://developers.google.com/workspace/drive/api/guides/ref-roles#views)."
+        },
+        "inheritedPermissionsDisabled": {
+          "type": "boolean",
+          "description": "When `true`, only organizers, owners, and users with permissions added directly on the item can access it."
+        },
+        "permissionDetails": {
+          "readOnly": true,
+          "description": "Output only. Details of whether the permissions on this item are inherited or are directly on this item.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "inheritedFrom": {
+                "description": "Output only. The ID of the item from which this permission is inherited. This is only populated for items in shared drives.",
+                "type": "string",
+                "readOnly": true
+              },
+              "permissionType": {
+                "type": "string",
+                "description": "Output only. The permission type for this user. Supported values include: * `file` * `member`"
+              },
+              "role": {
+                "description": "Output only. The primary role for this user. Supported values include: * `owner` * `organizer` * `fileOrganizer` * `writer` * `commenter` * `reader` For more information, see [Roles and permissions](https://developers.google.com/workspace/drive/api/guides/ref-roles).",
+                "type": "string"
+              },
+              "inherited": {
+                "description": "Output only. Whether this permission is inherited. This field is always populated. This is an output-only field.",
+                "type": "boolean"
+              }
+            }
+          },
+          "type": "array"
+        },
+        "deleted": {
+          "description": "Output only. Whether the account associated with this permission has been deleted. This field only pertains to permissions of type `user` or `group`.",
+          "type": "boolean"
+        },
+        "teamDrivePermissionDetails": {
+          "readOnly": true,
+          "type": "array",
+          "description": "Output only. Deprecated: Output only. Use `permissionDetails` instead.",
+          "deprecated": true,
+          "items": {
+            "properties": {
+              "inherited": {
+                "deprecated": true,
+                "type": "boolean",
+                "description": "Deprecated: Output only. Use `permissionDetails/inherited` instead."
+              },
+              "teamDrivePermissionType": {
+                "type": "string",
+                "deprecated": true,
+                "description": "Deprecated: Output only. Use `permissionDetails/permissionType` instead."
+              },
+              "inheritedFrom": {
+                "description": "Deprecated: Output only. Use `permissionDetails/inheritedFrom` instead.",
+                "deprecated": true,
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "deprecated": true,
+                "description": "Deprecated: Output only. Use `permissionDetails/role` instead."
+              }
+            },
+            "type": "object"
+          }
+        },
+        "pendingOwner": {
+          "type": "boolean",
+          "description": "Whether the account associated with this permission is a pending owner. Only populated for permissions of type `user` for files that aren't in a shared drive."
+        },
+        "kind": {
+          "description": "Output only. Identifies what kind of resource this is. Value: the fixed string `\"drive#permission\"`.",
+          "default": "drive#permission",
+          "type": "string"
+        },
+        "type": {
+          "description": "The type of the grantee. Supported values include: * `user` * `group` * `domain` * `anyone` When creating a permission, if `type` is `user` or `group`, you must provide an `emailAddress` for the user or group. If `type` is `domain`, you must provide a `domain`. If `type` is `anyone`, no extra information is required.",
+          "type": "string",
+          "annotations": {
+            "required": [
+              "drive.permissions.create"
+            ]
+          }
+        },
+        "emailAddress": {
+          "description": "Output only. The email address of the user or group to which this permission refers.",
+          "type": "string",
+          "readOnly": true
+        },
+        "allowFileDiscovery": {
+          "description": "Whether the permission allows the file to be discovered through search. This is only applicable for permissions of type `domain` or `anyone`.",
+          "type": "boolean"
+        },
+        "displayName": {
+          "description": "Output only. The \"pretty\" name of the value of the permission. The following is a list of examples for each type of permission: * `user` - User's full name, as defined for their Google Account, such as \"Dana A.\" * `group` - Name of the Google Group, such as \"The Company Administrators.\" * `domain` - String domain name, such as \"cymbalgroup.com.\" * `anyone` - No `displayName` is present.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Output only. The ID of this permission. This is a unique identifier for the grantee, and is published in the [User resource](https://developers.google.com/workspace/drive/api/reference/rest/v3/User) as `permissionId`. IDs should be treated as opaque values.",
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "description": "The role granted by this permission. Supported values include: * `owner` * `organizer` * `fileOrganizer` * `writer` * `commenter` * `reader` For more information, see [Roles and permissions](https://developers.google.com/workspace/drive/api/guides/ref-roles).",
+          "annotations": {
+            "required": [
+              "drive.permissions.create"
+            ]
+          }
+        },
+        "expirationTime": {
+          "description": "The time at which this permission will expire (RFC 3339 date-time). Expiration times have the following restrictions: - They can only be set on user and group permissions - The time must be in the future - The time cannot be more than a year in the future",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "id": "Permission"
+    },
+    "ContentRestriction": {
+      "id": "ContentRestriction",
+      "description": "A restriction for accessing the content of the file.",
+      "properties": {
+        "readOnly": {
+          "type": "boolean",
+          "description": "Whether the content of the file is read-only. If a file is read-only, a new revision of the file may not be added, comments may not be added or modified, and the title of the file may not be modified."
+        },
+        "ownerRestricted": {
+          "type": "boolean",
+          "description": "Whether the content restriction can only be modified or removed by a user who owns the file. For files in shared drives, any user with `organizer` capabilities can modify or remove this content restriction."
+        },
+        "reason": {
+          "description": "Reason for why the content of the file is restricted. This is only mutable on requests that also set `readOnly=true`.",
+          "type": "string"
+        },
+        "restrictionTime": {
+          "format": "date-time",
+          "type": "string",
+          "description": "The time at which the content restriction was set (formatted RFC 3339 timestamp). Only populated if readOnly is true."
+        },
+        "systemRestricted": {
+          "description": "Output only. Whether the content restriction was applied by the system, for example due to an esignature. Users cannot modify or remove system restricted content restrictions.",
+          "type": "boolean"
+        },
+        "type": {
+          "description": "Output only. The type of the content restriction. Currently the only possible value is `globalContentRestriction`.",
+          "type": "string"
+        },
+        "restrictingUser": {
+          "description": "Output only. The user who set the content restriction. Only populated if `readOnly=true`.",
+          "$ref": "User"
+        }
+      },
+      "type": "object"
+    },
+    "Label": {
+      "type": "object",
+      "description": "Representation of label and label fields.",
+      "id": "Label",
+      "properties": {
+        "kind": {
+          "description": "This is always drive#label",
+          "type": "string"
+        },
+        "fields": {
+          "additionalProperties": {
+            "$ref": "LabelField"
+          },
+          "description": "A map of the fields on the label, keyed by the field's ID.",
+          "type": "object"
+        },
+        "id": {
+          "type": "string",
+          "description": "The ID of the label."
+        },
+        "revisionId": {
+          "type": "string",
+          "description": "The revision ID of the label."
+        }
+      }
+    },
+    "User": {
+      "description": "Information about a Drive user.",
+      "type": "object",
+      "properties": {
+        "permissionId": {
+          "readOnly": true,
+          "description": "Output only. The user's ID as visible in Permission resources.",
+          "type": "string"
+        },
+        "photoLink": {
+          "readOnly": true,
+          "type": "string",
+          "description": "Output only. A link to the user's profile photo, if available."
+        },
+        "emailAddress": {
+          "type": "string",
+          "readOnly": true,
+          "description": "Output only. The email address of the user. This may not be present in certain contexts if the user has not made their email address visible to the requester."
+        },
+        "kind": {
+          "description": "Output only. Identifies what kind of resource this is. Value: the fixed string `drive#user`.",
+          "readOnly": true,
+          "type": "string",
+          "default": "drive#user"
+        },
+        "me": {
+          "type": "boolean",
+          "description": "Output only. Whether this user is the requesting user.",
+          "readOnly": true
+        },
+        "displayName": {
+          "description": "Output only. A plain text displayable name for this user.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "id": "User"
+    },
+    "LabelField": {
+      "type": "object",
+      "description": "Representation of field, which is a typed key-value pair.",
+      "id": "LabelField",
+      "properties": {
+        "integer": {
+          "items": {
+            "type": "string",
+            "format": "int64"
+          },
+          "type": "array",
+          "description": "Only present if `valueType` is `integer`."
+        },
+        "kind": {
+          "description": "This is always drive#labelField.",
+          "type": "string"
+        },
+        "valueType": {
+          "description": "The field type. While new values may be supported in the future, the following are currently allowed: * `dateString` * `integer` * `selection` * `text` * `user`",
+          "type": "string"
+        },
+        "dateString": {
+          "type": "array",
+          "description": "Only present if valueType is dateString. RFC 3339 formatted date: YYYY-MM-DD.",
+          "items": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "user": {
+          "items": {
+            "$ref": "User"
+          },
+          "description": "Only present if `valueType` is `user`.",
+          "type": "array"
+        },
+        "selection": {
+          "type": "array",
+          "description": "Only present if `valueType` is `selection`",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text": {
+          "items": {
+            "type": "string"
+          },
+          "description": "Only present if `valueType` is `text`.",
+          "type": "array"
+        },
+        "id": {
+          "description": "The identifier of this label field.",
+          "type": "string"
+        }
+      }
+    },
+    "FileList": {
+      "id": "FileList",
+      "type": "object",
+      "properties": {
+        "incompleteSearch": {
+          "type": "boolean",
+          "description": "Whether the search process was incomplete. If true, then some search results might be missing, since all documents were not searched. This can occur when searching multiple drives with the `allDrives` corpora, but all corpora couldn't be searched. When this happens, it's suggested that clients narrow their query by choosing a different corpus such as `user` or `drive`."
+        },
+        "kind": {
+          "description": "Identifies what kind of resource this is. Value: the fixed string `\"drive#fileList\"`.",
+          "type": "string",
+          "default": "drive#fileList"
+        },
+        "files": {
+          "description": "The list of files. If `nextPageToken` is populated, then this list may be incomplete and an additional page of results should be fetched.",
+          "type": "array",
+          "items": {
+            "$ref": "File"
+          }
+        },
+        "nextPageToken": {
+          "description": "The page token for the next page of files. This will be absent if the end of the files list has been reached. If the token is rejected for any reason, it should be discarded, and pagination should be restarted from the first page of results. The page token is typically valid for several hours. However, if new items are added or removed, your expected results might differ.",
+          "type": "string"
+        }
+      },
+      "description": "A list of files."
+    },
+    "ClientEncryptionDetails": {
+      "description": "Details about the client-side encryption applied to the file.",
+      "id": "ClientEncryptionDetails",
+      "properties": {
+        "encryptionState": {
+          "description": "The encryption state of the file. The values expected here are: - encrypted - unencrypted ",
+          "type": "string"
+        },
+        "decryptionMetadata": {
+          "$ref": "DecryptionMetadata",
+          "description": "The metadata used for client-side operations."
+        }
+      },
+      "type": "object"
+    },
+    "DecryptionMetadata": {
+      "type": "object",
+      "properties": {
+        "encryptionResourceKeyHash": {
+          "type": "string",
+          "description": "The URL-safe Base64 encoded HMAC-SHA256 digest of the resource metadata with its DEK (Data Encryption Key); see https://developers.google.com/workspace/cse/reference"
+        },
+        "jwt": {
+          "description": "The signed JSON Web Token (JWT) which can be used to authorize the requesting user with the Key ACL Service (KACLS). The JWT asserts that the requesting user has at least read permissions on the file.",
+          "type": "string"
+        },
+        "keyFormat": {
+          "description": "Key format for the unwrapped key. Must be `tinkAesGcmKey`.",
+          "type": "string"
+        },
+        "aes256GcmChunkSize": {
+          "description": "Chunk size used if content was encrypted with the AES 256 GCM Cipher. Possible values are: - default - small ",
+          "type": "string"
+        },
+        "kaclsName": {
+          "type": "string",
+          "description": "The name of the KACLS (Key ACL Service) used to encrypt the file."
+        },
+        "kaclsId": {
+          "description": "The ID of the KACLS (Key ACL Service) used to encrypt the file.",
+          "type": "string",
+          "format": "int64"
+        },
+        "wrappedKey": {
+          "description": "The URL-safe Base64 encoded wrapped key used to encrypt the contents of the file.",
+          "type": "string"
+        }
+      },
+      "description": "Representation of the CSE DecryptionMetadata.",
+      "id": "DecryptionMetadata"
+    }
+  }
+};

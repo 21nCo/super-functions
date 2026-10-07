@@ -15,6 +15,13 @@ afterEach(() => {
 });
 
 describe('PlugFn connection OAuth runtime', () => {
+  it('requests explicit selected-action scopes without expanding defaults', async () => {
+    const plug = createPlug(new MemoryAdapter());
+    const scopes = ['openid', 'https://www.googleapis.com/auth/gmail.send'];
+    const url = new URL(await plug.connections.getAuthUrl({ userId: 'user-1', provider: 'google', redirectUri: REDIRECT_URI, scopes }));
+    expect(url.searchParams.get('scope')?.split(' ')).toEqual(scopes);
+  });
+
   it('persists callback state, token, and connection records through first-class stores', async () => {
     const adapter = new MemoryAdapter();
     globalThis.fetch = createFetchStub();

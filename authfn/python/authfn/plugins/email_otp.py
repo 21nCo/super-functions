@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Optional
 
 from ..config import resolve_runtime
+from ..limits import AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH, assert_database_key_length
 from ..observability import emit_auth_event, event_request_id
 from ..types import (
     AuthFnConfig,
@@ -122,6 +123,8 @@ class EmailOtpService:
         request: Any = None,
         runtime: Any = None,
     ) -> Dict[str, Any]:
+        if not isinstance(purpose, str):
+            raise ValidationError("OTP purpose must be a string")
         resolved_runtime = runtime or (resolve_runtime(self.config, request) if request is not None else None)
         payload = {
             "purpose": purpose,
@@ -129,6 +132,9 @@ class EmailOtpService:
             "metadata": metadata or {},
         }
         payload = await self._run_before_send(payload, request=request, runtime=resolved_runtime)
+        resolved_purpose = payload.get("purpose")
+        if not isinstance(resolved_purpose, str):
+            raise ValidationError("OTP purpose must be a string")
 
         code = self.plugin_config.code_generator()
         if not isinstance(code, str) or len(code) != 6 or not code.isdigit():
@@ -137,8 +143,10 @@ class EmailOtpService:
         now = self.plugin_config.now()
         challenge = {
             "id": _create_id("otp"),
-            "purpose": payload["purpose"],
-            "email": _normalize_email(payload["email"]),
+            "purpose": assert_database_key_length(resolved_purpose, "purpose"),
+            "email": assert_database_key_length(
+                _normalize_email(payload["email"]), "email"
+            ),
             "codeHash": _hash_code(code),
             "attemptCount": 0,
             "deliveryMetadata": dict(payload.get("metadata", {})),
@@ -310,11 +318,14 @@ class EmailOtpService:
         updated_at = self.plugin_config.now()
 
         if credential is None:
+            user_id = assert_database_key_length(
+                user["id"], "userId", AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+            )
             await self.config.database.create(
                 model="password_credentials",
                 data={
                     "id": _create_id("pwd"),
-                    "userId": user["id"],
+                    "userId": user_id,
                     "passwordHash": password_hash,
                     "createdAt": updated_at,
                     "updatedAt": updated_at,
@@ -474,9 +485,24 @@ def authfn_email_otp_plugin(config: Optional[EmailOtpPluginConfig] = None) -> Au
             {
                 "modelName": "otp_challenges",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "purpose": {"type": "string", "required": True, "fieldName": "purpose"},
-                    "email": {"type": "string", "required": True, "fieldName": "email"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "purpose": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "purpose",
+                        "maxLength": 255,
+                    },
+                    "email": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "email",
+                        "maxLength": 255,
+                    },
                     "codeHash": {"type": "string", "required": True, "fieldName": "code_hash"},
                     "attemptCount": {
                         "type": "number",

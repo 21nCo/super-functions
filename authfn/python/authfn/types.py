@@ -19,6 +19,7 @@ class AuthFnFieldSchema(TypedDict, total=False):
     required: bool
     unique: bool
     fieldName: str
+    maxLength: int
 
 
 class AuthFnIndexSchema(TypedDict, total=False):
@@ -597,6 +598,20 @@ class RoutingCellUnavailableError(AuthFnError):
         super().__init__(message, details)
 
 
+class PlacementContextInvalidError(AuthFnError):
+    """A signed placement-bound auth context failed verification."""
+
+    code = "AUTHFN_PLACEMENT_CONTEXT_INVALID"
+    status = 401
+
+    def __init__(
+        self,
+        message: str = "Placement-bound auth context is invalid",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(message, details)
+
+
 class AuthFnSchemaConflictError(AuthFnError):
     """Deterministic schema composition conflict."""
 
@@ -623,8 +638,18 @@ def authfn_password_plugin() -> AuthFnPlugin:
             {
                 "modelName": "password_credentials",
                 "fields": {
-                    "id": {"type": "string", "required": True, "fieldName": "id"},
-                    "userId": {"type": "string", "required": True, "fieldName": "user_id"},
+                    "id": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "id",
+                        "maxLength": 255,
+                    },
+                    "userId": {
+                        "type": "string",
+                        "required": True,
+                        "fieldName": "user_id",
+                        "maxLength": 767,
+                    },
                     "passwordHash": {
                         "type": "string",
                         "required": True,
@@ -728,6 +753,7 @@ __all__ = [
     "RegionNotFoundError",
     "PlacementDirectoryUnavailableError",
     "PlacementMovingError",
+    "PlacementContextInvalidError",
     "RoutingAssertionInvalidError",
     "RoutingCellUnavailableError",
     "Request",

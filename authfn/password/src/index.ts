@@ -3,7 +3,12 @@ import type {
   PasswordPluginConfig,
   PasswordPluginRuntimeConfig
 } from 'authfn/plugin-types';
-import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from 'authfn';
+import {
+  AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH,
+  type AuthFnPlugin,
+  type AuthFnPluginRuntimeContext,
+  type AuthFnSchemaDefinition
+} from 'authfn';
 import { createAuthFnRouteMeta, readOptionalJson } from 'authfn/http/router';
 import { authenticateRequest, issueSession } from 'authfn/core/sessions';
 import { resolveEnvironment } from 'authfn/core/environment';
@@ -40,8 +45,13 @@ function createPasswordSchema(): AuthFnSchemaDefinition['schemas'] {
     {
       modelName: 'password_credentials',
       fields: {
-        id: { type: 'string', required: true, fieldName: 'id' },
-        userId: { type: 'string', required: true, fieldName: 'user_id' },
+        id: { type: 'string', required: true, fieldName: 'id', maxLength: 255 },
+        userId: {
+          type: 'string',
+          required: true,
+          fieldName: 'user_id',
+          maxLength: AUTHFN_LEGACY_USER_REFERENCE_MAX_LENGTH
+        },
         passwordHash: { type: 'string', required: true, fieldName: 'password_hash' },
         createdAt: { type: 'date', required: true, fieldName: 'created_at' },
         updatedAt: { type: 'date', required: true, fieldName: 'updated_at' }
