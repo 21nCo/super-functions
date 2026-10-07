@@ -1,0 +1,49 @@
+devfn/compose/README.md
+  s_ad500513bc9987::t_cd1e86c6c2b171 3
+devfn/compose/src/index.ts
+  s_ad500513bc9987::t_bd516a59237e4d 3,96,105,109-121,123-127,287
+devfn/compose/test/override.test.ts
+  s_ad500513bc9987::t_b9791245bc11b5 2,50-73
+devfn/core/README.md
+  s_ad500513bc9987::t_dccf603ce6509f 7,11
+devfn/core/src/endpoints.ts
+  s_ad500513bc9987::t_67fba87485f270 63-64,69-82,84-87,89-91,93,97-104,462-469,496-498,501,505,686,724,783,808,823
+devfn/core/src/orchestrator.ts
+  s_ad500513bc9987::t_275eea88605cdd 83,92,101-112,171-177,293
+devfn/core/src/types.ts
+  s_d52385ad0fbd0d::t_3bf93110dac483 50-51
+devfn/core/test/endpoints.test.ts
+  s_ad500513bc9987::t_eacb6d6f953c50 58-68,88-92,428,960-961
+devfn/core/test/startup-fixture.test.ts
+  s_ad500513bc9987::t_dfc2e96f70d536 184-189,197,199,205,312
+devfn/docs/configuration.md
+  s_ad500513bc9987::t_8f4995777bd5e5 65,69
+devfn/processes/src/readiness.ts
+  s_ad500513bc9987::t_eab1e5f2671da5 68,79
+devfn/processes/test/readiness.test.ts
+  s_ad500513bc9987::t_155e9d6b7d9acb 21-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "874eee13158920425ec01ced8fc870e77bf3ae7d",
+  "prompts": {},
+  "sessions": {
+    "s_ad500513bc9987": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_d52385ad0fbd0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f1cc-46a9-73a2-bf93-2e81a58b21fc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
