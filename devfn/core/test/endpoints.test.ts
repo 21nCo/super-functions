@@ -885,6 +885,90 @@ describe("endpoint and template contract", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it("rejects normalized URL userinfo in every literal and argv consumer before startup", async () => {
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-normalized-url-"));
+    const stateDir = path.join(root, "state");
+    const values = [
+      `https:alice:${marker}@host.test/path`,
+      `https%3Aalice%3A${marker}%40host.test/path`,
+      `http:\\alice:${marker}@host.test/path`,
+      `http:%5Calice%3A${marker}%40host.test/path`,
+      `wss:alice:${marker}@host.test/socket`,
+      `ftp:alice:${marker}@host.test/file`,
+      `https://host.test/x;password=${marker}/y`,
+      `https://host.test/x%3Bpassword%3D${marker}/y`,
+    ];
+    const sources = ["profile", "process-env", "command", "script", "health", "compose-health"] as const;
+    const configure = (source: typeof sources[number], value: string): DevFnConfig => {
+      const config = fixture();
+      if (source === "profile") config.profiles.default.environment = { TARGET: value };
+      if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, TARGET: value };
+      if (source === "command") config.processes!.worker.command = ["tool", value];
+      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
+      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
+      if (source === "compose-health") {
+        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.processes = [];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    try {
+      for (const source of sources) {
+        for (const value of values) {
+          const config = configure(source, value);
+          expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }), `${source}: ${value}`).toThrow(/secret channel/);
+        }
+        const failure = await new DevFnOrchestrator().up({ config: configure(source, values[0]), root, stateDir }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/secret channel/);
+        expect(failure).not.toContain(marker);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        for (const ordinary of ["https:host.test/path", "http:\\host.test/path", "wss:host.test/socket", "https://host.test/x;theme=dark/y", "\\\\server\\share", "literal $HOME `id` ; & |"]) {
+          const config = configure(source, ordinary);
+          expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }), `${source}: ${ordinary}`).not.toThrow();
+        }
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
+  it("rejects credential-named effective HTTP health path parameters for process and Compose", async () => {
+    const marker = "SYNTHETIC_DO_NOT_USE";
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-health-url-secret-"));
+    const stateDir = path.join(root, "state");
+    const configure = (kind: "process" | "service", health: { type: "http"; port: string; url?: string; path?: string }): DevFnConfig => {
+      const config = fixture();
+      if (kind === "process") config.processes!.api.health = health;
+      else {
+        config.ports!.web = {};
+        config.services = { web: { adapter: "compose", service: "web", ports: { web: 8080 }, health } };
+        config.profiles.default.services = ["web"];
+        config.profiles.default.environment = {};
+      }
+      return config;
+    };
+    try {
+      for (const kind of ["process", "service"] as const) {
+        const port = kind === "process" ? "api" : "web";
+        for (const health of [
+          { type: "http" as const, port, url: `http://local.test/x;password=${marker}/y` },
+          { type: "http" as const, port, url: `http://local.test/base`, path: `x%3Bpassword%3D${marker}/y` },
+          { type: "http" as const, port, path: `/x;password=${marker}/y` },
+        ]) {
+          const config = configure(kind, health);
+          expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 } })).toThrow(/secret channel/);
+          const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
+          expect(failure).toMatch(/secret channel/);
+          expect(failure).not.toContain(marker);
+          await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+        }
+        const ordinary = configure(kind, { type: "http", port, url: "http://local.test/theme=dark", path: "x;mode=ready/y" });
+        expect(() => resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 } })).not.toThrow();
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("bounds preflight work for long plain and incomplete XML arguments", () => {
     const measure = (length: number, prefix: string) => {
       const config = fixture();
@@ -911,16 +995,21 @@ describe("endpoint and template contract", () => {
   });
 
   it("rejects malformed URL authority credentials in bounded preflight time", () => {
-    const measure = (length: number) => {
+    const measure = (value: string) => {
       const config = fixture();
-      config.processes!.worker.command = ["tool", `https://alice:synthetic@invalid%${")".repeat(length)}`];
+      config.processes!.worker.command = ["tool", value];
       const started = performance.now();
       expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
       return performance.now() - started;
     };
-    const short = measure(5_000);
-    const long = measure(40_000);
-    expect(long, `${short.toFixed(1)}ms vs ${long.toFixed(1)}ms`).toBeLessThan(short * 10 + 200);
+    for (const candidate of [
+      (length: number) => `https://alice:synthetic@invalid%${")".repeat(length)}`,
+      (length: number) => `${"https:".repeat(Math.floor(length / 6))}alice:synthetic@host.test`,
+    ]) {
+      const short = measure(candidate(5_000));
+      const long = measure(candidate(40_000));
+      expect(long, `${short.toFixed(1)}ms vs ${long.toFixed(1)}ms`).toBeLessThan(short * 10 + 200);
+    }
   });
 
   it("bounds decoded JSON URL inspection for long and incomplete values", () => {

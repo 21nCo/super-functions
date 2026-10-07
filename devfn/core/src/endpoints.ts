@@ -43,6 +43,7 @@ export interface EndpointResolution {
 }
 
 const REFERENCE = /\{\{env\.([A-Za-z_][A-Za-z0-9_]*)\}\}/g;
+const SPECIAL_URL_SCHEMES = ["https:", "http:", "wss:", "ws:", "ftp:"] as const;
 
 function invalid(field: string, message: string): never {
   throw new DevFnError("DEVFN_RUNTIME_INVALID", `${field}: ${message}`);
@@ -532,6 +533,9 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
 }
 
 function rejectUrlCredentials(value: string, field: string): void {
+  // Plain JSON and argv text without URL delimiters cannot acquire an
+  // authority through the supported decoding layers.
+  if (!/[/?#&%\\]/.test(value) && !/(?:https?|wss?|ftp):/i.test(value)) return;
   // Commands and environment literals can contain JSON rather than a URL
   // directly. JSON escapes (including \\/ and \\u002f) are decoded by the
   // eventual consumer, so inspect each decoded string as a value. Limit the
@@ -582,6 +586,50 @@ function rejectUrlCredentialsDecoded(value: string, field: string): void {
     }
     index = end - 1;
   }
+  // WHATWG normalizes special-scheme URLs with no `//`, and treats a
+  // backslash before the authority as a slash. Inspect that authority too:
+  // the `//` scan above intentionally does not reinterpret UNC paths.
+  const lower = value.toLowerCase();
+  const specialSchemeLength = (index: number): number => {
+    for (const scheme of SPECIAL_URL_SCHEMES) {
+      if (lower.startsWith(scheme, index)) return scheme.length;
+    }
+    return 0;
+  };
+  for (let index = 0; index < value.length; index += 1) {
+    const schemeLength = specialSchemeLength(index);
+    if (!schemeLength) continue;
+    index += schemeLength;
+    while (value[index] === "/" || value[index] === "\\") index += 1;
+    // A nested scheme starts a new candidate. Advancing the outer cursor
+    // rather than rescanning its suffix keeps repeated prefixes linear.
+    for (; index < value.length && !/[\s\\/?#<>"'`{}|]/.test(value[index]); index += 1) {
+      if (value[index] === "@") invalid(field, "credential-bearing URL must use the secret channel.");
+      if (specialSchemeLength(index)) { index -= 1; break; }
+    }
+  }
+  // A URL path can carry credential-named assignments as matrix parameters
+  // or segments. Recognize URL context first so ordinary shell assignments
+  // remain argv data. Each path segment is visited at most once.
+  let inUrl = false;
+  let inPath = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const schemeLength = specialSchemeLength(index);
+    if (schemeLength) { inUrl = true; inPath = false; index += schemeLength - 1; continue; }
+    if (value[index] === "/" && value[index + 1] === "/") { inUrl = true; inPath = false; index += 1; continue; }
+    const char = value[index];
+    if (/[\s<>"'`{}|]/.test(char)) { inUrl = false; inPath = false; continue; }
+    if (!inUrl) continue;
+    if (char === "?" || char === "#" || char === "&") { inPath = false; continue; }
+    if (char === "/" || char === "\\") inPath = true;
+    if (!inPath || (char !== "/" && char !== ";" && char !== "\\")) continue;
+    let end = index + 1;
+    if (!/[A-Za-z_]/.test(value[end] ?? "")) continue;
+    while (end < value.length && /[A-Za-z0-9_.-]/.test(value[end])) end += 1;
+    if (value[end] === "=" && isCredentialKey(value.slice(index + 1, end))) {
+      invalid(field, "credential-bearing URL must use the secret channel.");
+    }
+  }
 }
 
 function normalized(name: string): string {
@@ -630,7 +678,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     if (health.url) rejectUrlCredentials(health.url, `${field}.url`);
     let url: URL;
     try { url = new URL(resolveHttpReadinessUrl(health, ports)); }
-    catch (error) { invalid(field, `invalid direct HTTP readiness URL: ${error instanceof Error ? error.message : String(error)}`); }
+    catch { invalid(field, "invalid direct HTTP readiness URL."); }
     rejectUrlCredentials(url.toString(), field);
     if (!health.port && selectedRouteHostnames.has(url.hostname.toLowerCase().replace(/\.$/, ""))) invalid(field, "URL-only readiness cannot wait for a selected proxy route before installation; use its leased port.");
     if (health.port) {
