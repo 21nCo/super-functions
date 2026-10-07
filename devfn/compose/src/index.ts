@@ -1,11 +1,13 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { assertEnvironmentKeyCasing, resolveContainedPath, type ComposeServiceSpec } from "@devfn/config";
+import { assertEnvironmentKeyCasing, isCredentialKey, resolveContainedPath, type ComposeServiceSpec } from "@devfn/config";
 import { waitForReadiness } from "@devfn/processes";
+import { declaredComposeInputs, type DeclaredEnvFile } from "./source-files.js";
 
 const execFileAsync = promisify(execFile);
 const MINIMUM_COMPOSE_VERSION = [2, 24, 4] as const;
@@ -90,41 +92,91 @@ export function createComposeReadinessEnvironment(spec: ComposeServiceSpec, reso
   return createComposeEnvironment({ ...spec, env: resolved }, resolved, source);
 }
 
-/** Fingerprint declared Compose inputs without hashing inherited host or secret values. */
+function canonicalComposeValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalComposeValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+    .map(([key, entry]) => {
+      if (key === "environment") return [key, Object.keys(entry && typeof entry === "object" ? entry : {}).sort()];
+      if (key !== "args" && key !== "labels") return [key, canonicalComposeValue(entry)];
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [key, canonicalComposeValue(entry)];
+      return [key, Object.fromEntries(Object.entries(entry).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+        .map(([name, content]) => [name, isCredentialKey(name) ? "<secret-channel>" : canonicalComposeValue(content)]))];
+    }));
+}
+
+function canonicalDeclaredEnvironment(values: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(values).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+    .map(([key, value]) => [key, isCredentialKey(key) ? "<secret-channel>" : value]));
+}
+
+async function interpolateComposePaths(paths: string[], root: string, environment: NodeJS.ProcessEnv): Promise<string[]> {
+  if (!paths.some((name) => name.includes("$"))) return paths;
+  // Ask the accepted Compose version to apply its own interpolation grammar.
+  // A private temporary extension field avoids resolving or serializing env-file
+  // contents, and avoids a second, subtly different interpolation parser here.
+  const directory = await mkdtemp(path.join(tmpdir(), "devfn-compose-paths-"));
+  const helper = path.join(directory, "compose.yaml");
+  try {
+    await writeFile(helper, JSON.stringify({ "x-devfn-paths": paths, services: { placeholder: { image: "busybox" } } }), { mode: 0o600 });
+    const output = (await execFileAsync("docker", ["compose", "--project-directory", root, "-f", helper, "config", "--format", "json"],
+      { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+    const resolved = (JSON.parse(output) as { "x-devfn-paths"?: unknown })["x-devfn-paths"];
+    if (!Array.isArray(resolved) || resolved.length !== paths.length || resolved.some((name) => typeof name !== "string")) throw new Error("invalid Compose path interpolation");
+    return resolved as string[];
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+/** Fingerprint effective Compose inputs without hashing inherited host or secret values. */
 export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: string, instanceId: string, environment: NodeJS.ProcessEnv): Promise<string> {
   const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
-  const sourceInfo = await stat(sourceFile, { bigint: true });
   let effective: string;
   try {
     effective = (await execFileAsync("docker", ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId),
-      "-f", sourceFile, "config", "--no-interpolate", "--no-env-resolution", "--format", "json"],
+      "-f", sourceFile, "config", "--no-interpolate", "--format", "json"],
     { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
   } catch {
     throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve effective Compose configuration for ${spec.service}.`);
   }
   const configuration = JSON.parse(effective) as { services?: Record<string, { env_file?: Array<string | { path: string; required?: boolean }> }> };
-  const envFiles = configuration.services?.[spec.service]?.env_file ?? [];
+  const service = configuration.services?.[spec.service];
+  if (!service) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose service ${spec.service} is absent from the effective configuration.`);
+  let envFiles: DeclaredEnvFile[];
+  let declaredEnvironment: Record<string, unknown>;
+  try {
+    const declared = await declaredComposeInputs(sourceFile, spec.service, (names, directory) => interpolateComposePaths(names, directory, environment));
+    declaredEnvironment = declared.environment;
+    envFiles = service.env_file
+      ? service.env_file.map((item) => ({ name: typeof item === "string" ? item : item.path, required: typeof item === "string" || item.required !== false, directory: path.dirname(sourceFile) }))
+      : declared.envFiles;
+  } catch {
+    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to inventory Compose environment files for ${spec.service}.`);
+  }
   const fileMetadata = await Promise.all(envFiles.map(async (item) => {
-    const name = typeof item === "string" ? item : item.path;
-    // Compose resolves relative env_file paths from the Compose file's
-    // directory. Recent Compose config output uses absolute paths already.
-    // Inspect metadata only; never read or hash secret-bearing file contents.
-    const file = path.resolve(path.dirname(sourceFile), name);
+    let file: string;
+    try {
+      const [resolved] = await interpolateComposePaths([item.name], item.directory, environment);
+      file = path.resolve(item.directory, resolved);
+    } catch {
+      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve a Compose environment file for ${spec.service}.`);
+    }
     try {
       const info = await stat(file, { bigint: true });
-      return [name, String(info.size), String(info.mtimeNs), String(info.ctimeNs)];
+      return [String(info.size), String(info.mtimeNs), String(info.ctimeNs)];
     } catch (error) {
-      if (typeof item !== "string" && item.required === false && (error as NodeJS.ErrnoException).code === "ENOENT") {
-        return [name, "optional-absent"];
-      }
-      throw error;
+      if (!item.required && (error as NodeJS.ErrnoException).code === "ENOENT") return ["optional-absent"];
+      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Required Compose environment file for ${spec.service} is unavailable.`);
     }
   }));
-  // Compose validates the source and identifies env files. Fingerprint only
-  // metadata: Compose source and env files can contain credentials, and a
-  // receipt digest must not be derived from their contents or inherited env.
+  // Compose has already merged transitive include and extends sources into the
+  // effective service. Keep non-secret structural inputs; omit values in
+  // environment, build args and labels. Secret env-file bytes are never read.
+  const { env_file: _envFiles, ...effectiveService } = service;
   return createHash("sha256")
-    .update(JSON.stringify([String(sourceInfo.size), String(sourceInfo.mtimeNs), String(sourceInfo.ctimeNs)]))
+    .update(JSON.stringify(canonicalComposeValue(effectiveService)))
+    .update("\0").update(JSON.stringify(canonicalDeclaredEnvironment(declaredEnvironment)))
     .update("\0").update(JSON.stringify(fileMetadata)).digest("hex");
 }
 
@@ -184,14 +236,14 @@ function effectivePortBindings(ports: EffectivePort[]): string[] {
     const published = String(port.published ?? "");
     if (!Number.isInteger(port.target) || port.target < 1 || (published !== "" && !/^\d+(?:-\d+)?$/.test(published))) throw new Error("Compose returned an unsupported published port.");
     return `${port.target}/${port.protocol ?? "tcp"}|${port.host_ip || "0.0.0.0"}|${published}`;
-  }).sort((left, right) => left.localeCompare(right));
+  }).sort();
 }
 
 function containerPortBindings(value: Record<string, Array<{ HostIp: string; HostPort: string }> | null> | null): string[] {
   return Object.entries(value ?? {}).flatMap(([target, bindings]) => {
     if (!bindings) throw new Error("Docker returned an incomplete port binding.");
     return bindings.map((binding) => `${target}|${binding.HostIp || "0.0.0.0"}|${binding.HostPort}`);
-  }).sort((left, right) => left.localeCompare(right));
+  }).sort();
 }
 
 function bindingsMatch(expected: string[], observed: string[]): boolean {
@@ -199,7 +251,7 @@ function bindingsMatch(expected: string[], observed: string[]): boolean {
   const unmatched = [...observed];
   const bySpecificity = [...expected].sort((left, right) => {
     const score = (item: string) => { const value = item.split("|")[2]; return value === "" || value === "0" ? 2 : value.includes("-") ? 1 : 0; };
-    return score(left) - score(right) || left.localeCompare(right);
+    return score(left) - score(right) || (left < right ? -1 : left > right ? 1 : 0);
   });
   for (const binding of bySpecificity) {
     const [target, host, published] = binding.split("|");

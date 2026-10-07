@@ -63,7 +63,7 @@ describe("endpoint and template contract", () => {
     const resolve = () => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
     expect(resolve().environment.VALUE_12000).toBe("ready");
     environment.VALUE_0 = "{{env.VALUE_12000}}";
-    expect(resolve).toThrow(/cyclic reference/);
+    expect(resolve).toThrow(/cyclic reference containing VALUE_0/);
   }, 30_000);
 
   it("treats ordinary long-option values as data while rejecting plural API keys", () => {

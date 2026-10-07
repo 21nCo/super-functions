@@ -79,8 +79,8 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
       const spec = { ...processSpec, env: node.environment, command: node.command, script: node.script };
       startup = {
         kind: "process", command: resolveAdapterCommand(spec), cwd: processSpec.cwd ?? ".",
-        environment: Object.entries(node.environment).sort(([a], [b]) => a.localeCompare(b)),
-        envAllowlist: [...(processSpec.envAllowlist ?? [])].sort((a, b) => a.localeCompare(b)), secretEnv: [...(processSpec.secretEnv ?? [])].sort((a, b) => a.localeCompare(b)),
+        environment: Object.entries(node.environment).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0),
+        envAllowlist: [...(processSpec.envAllowlist ?? [])].sort(), secretEnv: [...(processSpec.secretEnv ?? [])].sort(),
       };
     } else if (serviceSpec) {
       const spec = { ...serviceSpec, env: node.environment };
@@ -88,8 +88,8 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
       startup = {
         kind: "service", file: serviceSpec.file ?? "compose.yaml", service: serviceSpec.service,
         projectName: serviceSpec.projectName ?? "devfn", ports: serviceSpec.ports ?? {},
-        environment: Object.entries(node.environment).sort(([a], [b]) => a.localeCompare(b)),
-        envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort((a, b) => a.localeCompare(b)), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort((a, b) => a.localeCompare(b)),
+        environment: Object.entries(node.environment).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0),
+        envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort(), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort(),
         source: await fingerprintComposeSource(spec, root, resolved.ownerId, environment),
       };
     } else continue;
@@ -105,7 +105,7 @@ function portSpecFingerprints(config: DevFnConfig, names: readonly string[]): Re
     if (!canonical.exact) delete canonical.exact;
     if (!canonical.ephemeral) delete canonical.ephemeral;
     return [name, createHash("sha256")
-      .update(JSON.stringify(Object.entries(canonical).sort(([a], [b]) => a.localeCompare(b))))
+      .update(JSON.stringify(Object.entries(canonical).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)))
       .digest("hex")];
   }));
 }
@@ -486,7 +486,7 @@ export class DevFnOrchestrator {
     if (plan.proxy && !await new CaddyProxyController(stateDir).available()) diagnostics.push({ code: "DEVFN_CADDY_UNAVAILABLE", severity: "error", message: "Caddy is required by this profile but unavailable." });
     const identity = await resolveInstanceIdentity(options.config.project.id, options.root);
     const registry = await new FilePortRegistry(path.join(stateDir, "registry.json")).reconcile();
-    const scan = await scanListenerState();
+    const scan = await scanListenerState(plan.nodes.some((node) => node.kind === "service"));
     const listeners = scan.listeners;
     const unavailableWarnings = new Set<string>();
     const localProcessPorts = new Map<string, "tcp" | "udp">();
@@ -532,6 +532,13 @@ export class DevFnOrchestrator {
         if (!unavailableWarnings.has(warningKey)) {
           diagnostics.push({ code: "DEVFN_LISTENER_INSPECTION_UNAVAILABLE", severity: "warning", message: `${item.protocol.toUpperCase()} listener ownership could not be inspected; recorded active owners were retained.` });
           unavailableWarnings.add(warningKey);
+        }
+        continue;
+      }
+      if (allocation?.container && !scan.inspection.docker && relevantListeners.every((listener) => isDockerProxyListener(listener.process))) {
+        if (!unavailableWarnings.has("docker")) {
+          diagnostics.push({ code: "DEVFN_LISTENER_INSPECTION_UNAVAILABLE", severity: "warning", message: "Docker listener ownership could not be inspected; recorded active container owners were retained." });
+          unavailableWarnings.add("docker");
         }
         continue;
       }

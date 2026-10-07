@@ -101,7 +101,10 @@ function resolveValues(values: Record<string, string>, base: CheckedValues, gene
       if (remaining === 0) queue.push(dependent);
     }
   }
-  if (visited !== outstanding.size) invalid(field, "cyclic reference in template.");
+  if (visited !== outstanding.size) {
+    const participant = [...outstanding].find(([, count]) => count > 0)?.[0];
+    invalid(field, `cyclic reference containing ${participant}.`);
+  }
   return { values: resolved, checked: resolvedChecked };
 }
 
