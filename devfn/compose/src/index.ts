@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -93,7 +93,7 @@ export function createComposeReadinessEnvironment(spec: ComposeServiceSpec, reso
 /** Fingerprint declared Compose inputs without hashing inherited host or secret values. */
 export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: string, instanceId: string, environment: NodeJS.ProcessEnv): Promise<string> {
   const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
-  const source = await readFile(sourceFile);
+  const sourceInfo = await stat(sourceFile, { bigint: true });
   let effective: string;
   try {
     effective = (await execFileAsync("docker", ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId),
@@ -102,20 +102,29 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   } catch {
     throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve effective Compose configuration for ${spec.service}.`);
   }
-  const configuration = JSON.parse(effective) as { services?: Record<string, { env_file?: Array<string | { path: string }> }> };
+  const configuration = JSON.parse(effective) as { services?: Record<string, { env_file?: Array<string | { path: string; required?: boolean }> }> };
   const envFiles = configuration.services?.[spec.service]?.env_file ?? [];
   const fileMetadata = await Promise.all(envFiles.map(async (item) => {
     const name = typeof item === "string" ? item : item.path;
-    // Compose accepts absolute env_file paths as well as paths relative to the
-    // project. Inspect metadata only; do not read or hash secret-bearing bytes.
-    const file = path.resolve(root, name);
-    const info = await stat(file, { bigint: true });
-    return [name, String(info.mtimeNs), String(info.ctimeNs)];
+    // Compose resolves relative env_file paths from the Compose file's
+    // directory. Recent Compose config output uses absolute paths already.
+    // Inspect metadata only; never read or hash secret-bearing file contents.
+    const file = path.resolve(path.dirname(sourceFile), name);
+    try {
+      const info = await stat(file, { bigint: true });
+      return [name, String(info.size), String(info.mtimeNs), String(info.ctimeNs)];
+    } catch (error) {
+      if (typeof item !== "string" && item.required === false && (error as NodeJS.ErrnoException).code === "ENOENT") {
+        return [name, "optional-absent"];
+      }
+      throw error;
+    }
   }));
-  // --no-interpolate prevents ambient values, including secretEnv, from
-  // affecting this digest. File metadata detects env_file edits without
-  // deriving a receipt hash from their credential-bearing contents.
-  return createHash("sha256").update(source).update("\0").update(effective)
+  // Compose validates the source and identifies env files. Fingerprint only
+  // metadata: Compose source and env files can contain credentials, and a
+  // receipt digest must not be derived from their contents or inherited env.
+  return createHash("sha256")
+    .update(JSON.stringify([String(sourceInfo.size), String(sourceInfo.mtimeNs), String(sourceInfo.ctimeNs)]))
     .update("\0").update(JSON.stringify(fileMetadata)).digest("hex");
 }
 
@@ -275,7 +284,7 @@ export class ComposeController {
             if (separator < 0) throw new Error("Docker returned a malformed container environment.");
             return [entry.slice(0, separator), entry.slice(separator + 1)];
           }));
-          const extraKeys = Object.keys(actual).filter((key) => !Object.prototype.hasOwnProperty.call(expected, key));
+          const extraKeys = Object.keys(actual).filter((key) => !Object.hasOwn(expected, key));
           if (Object.entries(expected).some(([key, value]) => actual[key] !== value) || extraKeys.some((key) => key.startsWith("DEVFN_"))) {
             throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} has a stale startup environment; refusing to reuse it.`);
           }

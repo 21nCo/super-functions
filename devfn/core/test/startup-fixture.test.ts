@@ -83,7 +83,6 @@ networks:
     const stateDir = path.join(root, "state");
     const observed = path.join(root, "observed.json");
     await writeFile(path.join(root, "server.mjs"), serverScript);
-    const owner = (await resolveInstanceIdentity("compose-endpoint-fixture", root)).instanceId;
     const config = validateDevFnConfig({
       version: 1, project: { id: "public-host-fixture" }, ports: { native: {} },
       processes: { native: { adapter: "command", command: [process.execPath, "server.mjs"], exposure: "public", ports: ["native"], health: { type: "http", port: "native", timeoutMs: 10_000 }, env: { HOST: "0.0.0.0", OBSERVED_FILE: observed } } },
@@ -182,6 +181,12 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
       config.processes!.native.envAllowlist!.pop();
       config.processes!.native.secretEnv!.pop();
+      config.ports!.native.exposure = "public";
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+      delete config.ports!.native.exposure;
+      config.ports!.native.range = [receipt.allocations[0].port, receipt.allocations[0].port];
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+      delete config.ports!.native.range;
       const nativePort = config.ports!.native;
       nativePort.exact = true;
       nativePort.preferred = receipt.allocations[0].port === 65535 ? 65534 : receipt.allocations[0].port + 1;
@@ -189,12 +194,15 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       delete nativePort.exact;
       delete nativePort.preferred;
       const fingerprints = receipt.startupFingerprints;
+      const portFingerprints = receipt.portSpecFingerprints;
       delete receipt.startupFingerprints;
+      delete receipt.portSpecFingerprints;
       await writeReceipt(receipt);
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") }))
         .rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       receipt.startupFingerprints = fingerprints;
+      receipt.portSpecFingerprints = portFingerprints;
       await writeReceipt(receipt);
       config.processes!.native.command!.push("--db-password=synthetic-sentinel");
       const rejectedStatus = await orchestrator.status({ config, root });
@@ -301,6 +309,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
     const withProxy = process.env.DEVFN_REAL_PROXY === "1";
     const withTls = withProxy && process.env.DEVFN_REAL_TLS === "1";
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-endpoint-"));
+    const owner = (await resolveInstanceIdentity("compose-endpoint-fixture", root)).instanceId;
     const observed = path.join(root, "observed");
     await mkdir(observed);
     await writeFile(path.join(root, "web.mjs"), `import { createServer } from "node:http";

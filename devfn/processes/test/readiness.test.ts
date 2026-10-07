@@ -18,6 +18,20 @@ describe("process readiness", () => {
       .toThrow(/configured URL origin/);
   });
 
+  it("rejects same-origin userinfo before a leased origin can erase it", () => {
+    const marker = "synthetic-sentinel";
+    for (const health of [
+      { type: "http" as const, port: "api", url: `http://alice:${marker}@svc.test/ready` },
+      { type: "http" as const, port: "api", url: "http://svc.test/base", path: `http://alice:${marker}@svc.test/ready` },
+    ]) {
+      let error = "";
+      try { resolveHttpReadinessUrl(health, { api: 4101 }); }
+      catch (failure) { error = (failure as Error).message; }
+      expect(error).toMatch(/secret channel/);
+      expect(error).not.toContain(marker);
+    }
+  });
+
   it("uses the same direct HTTPS endpoint at startup and on a later status probe", async () => {
     const urls: string[] = [];
     const originalFetch = globalThis.fetch;

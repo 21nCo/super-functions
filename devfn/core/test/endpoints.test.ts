@@ -55,6 +55,17 @@ describe("endpoint and template contract", () => {
       .toThrow(/aggregate expanded templates/);
   });
 
+  it("resolves a deep acyclic chain without recursion and rejects its cycle", () => {
+    const config = fixture();
+    const environment: Record<string, string> = { VALUE_0: "ready" };
+    for (let index = 1; index <= 12_000; index += 1) environment[`VALUE_${index}`] = `{{env.VALUE_${index - 1}}}`;
+    config.profiles.default.environment = environment;
+    const resolve = () => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(resolve().environment.VALUE_12000).toBe("ready");
+    environment.VALUE_0 = "{{env.VALUE_12000}}";
+    expect(resolve).toThrow(/cyclic reference/);
+  }, 30_000);
+
   it("treats ordinary long-option values as data while rejecting plural API keys", () => {
     const config = fixture();
     const worker = config.processes!.worker;
@@ -73,6 +84,11 @@ describe("endpoint and template contract", () => {
     const second = resolveLocalHostname("app.localhost", "app", "fixture", "owner-two");
     expect(first).not.toBe(second);
     expect(first).toMatch(/^app\.o-[a-f0-9]{20}\.localhost$/);
+  });
+  it("rejects owner qualification that exceeds the full DNS hostname limit", () => {
+    const label = "a".repeat(58);
+    const hostname = `${label}.${label}.${label}.${label}.localhost`;
+    expect(() => resolveLocalHostname(hostname, "app", "fixture", "owner")).toThrow(/length limit/);
   });
   it("resolves leased direct URLs and argv for an opaque owner before startup", () => {
     const config = fixture();
@@ -409,7 +425,7 @@ describe("endpoint and template contract", () => {
       ordinary.processes!.worker.command = ["curl", "--user", "alice", "--header", "X-Request-Id: fixture"];
       expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(ordinary.processes!.worker.command);
     } finally { await rm(root, { recursive: true, force: true }); }
-  });
+  }, 20_000);
 
   it("rejects attached header options across argv consumers before mutation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-credential-header-"));
@@ -941,6 +957,8 @@ describe("endpoint and template contract", () => {
         const port = kind === "process" ? "api" : "web";
         for (const health of [
           { type: "http" as const, port, url: `http://local.test/x;password=${marker}/y` },
+          { type: "http" as const, port, url: "http://local.test/base", path: `http://alice:${marker}@local.test/health` },
+          { type: "http" as const, port, url: "http://local.test/base", path: `http://alice%3A${marker}%40local.test/health` },
           { type: "http" as const, port, url: `http://local.test/base`, path: `x%3Bpassword%3D${marker}/y` },
           { type: "http" as const, port, path: `/x;password=${marker}/y` },
         ]) {

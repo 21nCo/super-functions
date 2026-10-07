@@ -65,6 +65,7 @@ export function resolveHttpReadinessUrl(health: Extract<HealthCheck, { type: "ht
   const port = health.port ? ports[health.port] : undefined;
   const configured = health.url ? new URL(health.url) : undefined;
   if (configured && configured.protocol !== "http:" && configured.protocol !== "https:") throw new Error("HTTP readiness URL must use http or https.");
+  if (configured && (configured.username || configured.password)) throw new Error("HTTP readiness URL credentials must use the secret channel.");
   let url = health.url ?? "";
   if (health.url && health.path) {
     const parsed = new URL(url);
@@ -75,6 +76,7 @@ export function resolveHttpReadinessUrl(health: Extract<HealthCheck, { type: "ht
     parsed.pathname = `${parsed.pathname.replace(/\/$/, "")}/`;
     const appended = new URL(health.path.replace(/^\/+/, ""), parsed);
     if (appended.origin !== parsed.origin) throw new Error("HTTP readiness path must stay on the configured URL origin.");
+    if (appended.username || appended.password) throw new Error("HTTP readiness URL credentials must use the secret channel.");
     if (!appended.search) appended.search = baseSearch;
     if (!appended.hash) appended.hash = baseHash;
     url = appended.toString();

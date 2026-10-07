@@ -47,6 +47,8 @@ export interface LifecycleReceipt {
   environmentOutputs: string[];
   /** Digests of effective startup inputs; no environment values are persisted. */
   startupFingerprints?: Record<string, string>;
+  /** Selected non-secret port declarations at startup; absent in legacy receipts. */
+  portSpecFingerprints?: Record<string, string>;
   cleanup?: CleanupResult;
   error?: { code: string; message: string };
 }

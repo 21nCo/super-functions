@@ -60,49 +60,48 @@ function resolveValues(values: Record<string, string>, base: CheckedValues, gene
   const resolved: Record<string, string> = Object.assign(Object.create(null), base.values);
   const resolvedChecked: Record<string, string> = Object.assign(Object.create(null), base.checked);
   const generatedKeys = new Map(Object.keys(generated.values).map((key) => [key.toUpperCase(), key]));
-  const checkedReferences = new Set<string>();
-  const activeReferences = new Set<string>();
-  const checkReferences = (key: string): void => {
-    if (checkedReferences.has(key)) return;
-    if (activeReferences.has(key)) invalid(field, `cyclic reference containing ${key}.`);
-    activeReferences.add(key);
-    for (const match of values[key].matchAll(REFERENCE)) {
-      if (match[1] === key && Object.hasOwn(generated.values, key)) continue;
-      if (Object.hasOwn(values, match[1])) checkReferences(match[1]);
-    }
-    activeReferences.delete(key);
-    checkedReferences.add(key);
-  };
-  for (const key of Object.keys(values)) checkReferences(key);
+  const dependents = new Map<string, string[]>();
+  const outstanding = new Map<string, number>();
   for (const key of Object.keys(values)) {
     const generatedKey = generatedKeys.get(key.toUpperCase());
     if (generatedKey && generatedKey !== key) invalid(`${field}.${key}`, `collides with generated environment key ${generatedKey}.`);
     if (!generatedKey) { delete resolved[key]; delete resolvedChecked[key]; }
-  }
-  const visiting = new Set<string>();
-  const checked = new Set<string>();
-  const visit = (key: string): [string, string] => {
-    if (!Object.prototype.hasOwnProperty.call(values, key)) {
-      if (Object.prototype.hasOwnProperty.call(resolved, key)) return [resolved[key], resolvedChecked[key]];
-      invalid(field, `missing reference ${key}.`);
+    const dependencies = new Set<string>();
+    for (const match of values[key].matchAll(REFERENCE)) {
+      const reference = match[1];
+      if (reference === key && Object.hasOwn(generated.values, key)) continue;
+      if (Object.hasOwn(values, reference)) dependencies.add(reference);
+      else if (Object.hasOwn(generated.values, reference)) continue;
+      else if (!Object.hasOwn(resolved, reference)) invalid(field, `missing reference ${reference}.`);
     }
-    if (checked.has(key)) return [resolved[key], resolvedChecked[key]];
-    if (visiting.has(key)) invalid(field, `cyclic reference containing ${key}.`);
-    visiting.add(key);
+    outstanding.set(key, dependencies.size);
+    for (const dependency of dependencies) {
+      const consumers = dependents.get(dependency) ?? [];
+      consumers.push(key);
+      dependents.set(dependency, consumers);
+    }
+  }
+  const queue = [...outstanding].filter(([, count]) => count === 0).map(([key]) => key);
+  let visited = 0;
+  for (let index = 0; index < queue.length; index += 1) {
+    const key = queue[index];
     const expanded = expand(values[key], `${field}.${key}`, (reference) => {
-      if (reference === key && Object.prototype.hasOwnProperty.call(generated.values, key)) return [generated.values[key], generated.checked[key]];
-      if (Object.prototype.hasOwnProperty.call(generated.values, reference)) return [generated.values[reference], generated.checked[reference]];
-      return visit(reference);
+      if (Object.hasOwn(generated.values, reference)) return [generated.values[reference], generated.checked[reference]];
+      if (Object.hasOwn(resolved, reference)) return [resolved[reference], resolvedChecked[reference]];
+      invalid(field, `missing reference ${reference}.`);
     }, budget);
-    visiting.delete(key);
-    checked.add(key);
-    if (!Object.prototype.hasOwnProperty.call(generated.values, key)) {
+    if (!Object.hasOwn(generated.values, key)) {
       resolved[key] = expanded[0];
       resolvedChecked[key] = expanded[1];
     }
-    return [resolved[key], resolvedChecked[key]];
-  };
-  for (const key of Object.keys(values)) visit(key);
+    visited += 1;
+    for (const dependent of dependents.get(key) ?? []) {
+      const remaining = outstanding.get(dependent)! - 1;
+      outstanding.set(dependent, remaining);
+      if (remaining === 0) queue.push(dependent);
+    }
+  }
+  if (visited !== outstanding.size) invalid(field, "cyclic reference in template.");
   return { values: resolved, checked: resolvedChecked };
 }
 
@@ -460,6 +459,14 @@ function maskJsonStrings(value: string): string {
   return chars.join("");
 }
 
+function trimArgumentQuotes(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && (value[start] === '"' || value[start] === "'" || value[start] === "`")) start += 1;
+  while (end > start && (value[end - 1] === '"' || value[end - 1] === "'" || value[end - 1] === "`")) end -= 1;
+  return value.slice(start, end);
+}
+
 /** Check options that become credential-bearing only with their value. */
 function rejectCredentialVector(values: readonly string[], field: string): void {
   // Package scripts are one string; native commands and health probes are
@@ -486,16 +493,16 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       // the same key grammar used for bare and split assignment operands.
       // `tokens` already contains the bounded decoded variants, so encoded
       // option delimiters and assignment delimiters take this path too.
-      const longOptionValue = token.match(/^--[A-Za-z][A-Za-z0-9_-]*=(.*)$/)?.[1]
-        ?.replace(/^["'`]+|["'`]+$/g, "");
-      const attachedAssignment = longOptionValue?.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/);
+      const longOptionValue = token.match(/^--[A-Za-z][A-Za-z0-9_-]*=(.*)$/)?.[1];
+      const attachedValue = longOptionValue === undefined ? undefined : trimArgumentQuotes(longOptionValue);
+      const attachedAssignment = attachedValue?.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/);
       const forwardingOption = /^--(?:env|build-arg)=/i.test(token);
       if (attachedAssignment && isCredentialKey(attachedAssignment[1]) &&
-          (forwardingOption || /(?:=|:=|@)/.test(longOptionValue!.slice(attachedAssignment[1].length)))) {
+          (forwardingOption || /(?:=|:=|@)/.test(attachedValue!.slice(attachedAssignment[1].length)))) {
         invalid(field, "credential-bearing argv must use the secret channel.");
       }
       if (/^--(?:env|build-arg)$/i.test(token)) {
-        const next = tokens[index + 1]?.replace(/^["'`]+|["'`]+$/g, "");
+        const next = tokens[index + 1] === undefined ? undefined : trimArgumentQuotes(tokens[index + 1]);
         const assignment = next?.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/);
         if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
       }
@@ -676,6 +683,7 @@ export function resolveLocalHostname(configured: string | undefined, key: string
   const safeOwner = `o-${createHash("sha256").update(ownerId).digest("hex").slice(0, 20)}`;
   const result = template.includes("{instance}") ? template.replaceAll("{instance}", safeOwner) :
     template.replace(/\.localhost$/i, `.${safeOwner}.localhost`);
+  if (result.length > 253) invalid(`hostnames.${key}`, "local hostname exceeds the DNS length limit.");
   if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(result)) invalid(`hostnames.${key}`, `local hostname ${result} must be a concrete .localhost name.`);
   return result;
 }
@@ -713,6 +721,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     if (health?.type !== "http") continue;
     const field = `${node.kind === "process" ? "processes" : "services"}.${node.name}.health`;
     if (health.url) rejectUrlCredentials(health.url, `${field}.url`);
+    if (health.path) rejectUrlCredentials(health.path, `${field}.path`);
     let url: URL;
     try { url = new URL(resolveHttpReadinessUrl(health, ports)); }
     catch { invalid(field, "invalid direct HTTP readiness URL."); }
@@ -771,7 +780,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
           Object.fromEntries((config.processes![producer.name].ports ?? []).map((port) => [port, true]));
         for (const port of Object.keys(producerPorts)) {
           const key = `DEVFN_URL_${normalized(port)}`;
-          if (!Object.prototype.hasOwnProperty.call(directUrls, port)) continue;
+          if (!Object.hasOwn(directUrls, port)) continue;
           const producerNetworks = input.composeNetworks?.[producer.name] ?? [];
           const consumerNetworks = input.composeNetworks?.[node.name] ?? [];
           const reachable = producerNetworks.some((name) => consumerNetworks.includes(name));
@@ -796,7 +805,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     const readinessEnvironment = node.kind === "service" ?
       resolveValues(spec.env ?? {}, environment, checkedGenerated, `${field}.env`, budget) : nodeEnvironment;
     const lookup = (key: string): [string, string] => {
-      if (!Object.prototype.hasOwnProperty.call(nodeEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
+      if (!Object.hasOwn(nodeEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
       return [nodeEnvironment.values[key], nodeEnvironment.checked[key]];
     };
     const argv = (item: string, location: string): [string, string] => {
@@ -811,7 +820,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     if (scriptPair) rejectCredentialVector([scriptPair[1]], `${field}.script`);
     const script = scriptPair?.[0];
     const healthLookup = (key: string): [string, string] => {
-      if (!Object.prototype.hasOwnProperty.call(readinessEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
+      if (!Object.hasOwn(readinessEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
       return [readinessEnvironment.values[key], readinessEnvironment.checked[key]];
     };
     const healthPairs = spec.health?.type === "command" ? spec.health.command.map((item, index): [string, string] => {

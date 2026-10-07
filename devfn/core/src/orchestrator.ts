@@ -80,7 +80,7 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
       startup = {
         kind: "process", command: resolveAdapterCommand(spec), cwd: processSpec.cwd ?? ".",
         environment: Object.entries(node.environment).sort(([a], [b]) => a.localeCompare(b)),
-        envAllowlist: [...(processSpec.envAllowlist ?? [])].sort(), secretEnv: [...(processSpec.secretEnv ?? [])].sort(),
+        envAllowlist: [...(processSpec.envAllowlist ?? [])].sort((a, b) => a.localeCompare(b)), secretEnv: [...(processSpec.secretEnv ?? [])].sort((a, b) => a.localeCompare(b)),
       };
     } else if (serviceSpec) {
       const spec = { ...serviceSpec, env: node.environment };
@@ -89,13 +89,25 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
         kind: "service", file: serviceSpec.file ?? "compose.yaml", service: serviceSpec.service,
         projectName: serviceSpec.projectName ?? "devfn", ports: serviceSpec.ports ?? {},
         environment: Object.entries(node.environment).sort(([a], [b]) => a.localeCompare(b)),
-        envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort(), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort(),
+        envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort((a, b) => a.localeCompare(b)), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort((a, b) => a.localeCompare(b)),
         source: await fingerprintComposeSource(spec, root, resolved.ownerId, environment),
       };
     } else continue;
     fingerprints[name] = createHash("sha256").update(JSON.stringify(startup)).digest("hex");
   }
   return fingerprints;
+}
+
+function portSpecFingerprints(config: DevFnConfig, names: readonly string[]): Record<string, string> {
+  return Object.fromEntries(names.map((name) => {
+    const spec = config.ports?.[name] ?? {};
+    const canonical = { ...spec, protocol: spec.protocol ?? "tcp", exposure: spec.exposure ?? "loopback" };
+    if (!canonical.exact) delete canonical.exact;
+    if (!canonical.ephemeral) delete canonical.ephemeral;
+    return [name, createHash("sha256")
+      .update(JSON.stringify(Object.entries(canonical).sort(([a], [b]) => a.localeCompare(b))))
+      .digest("hex")];
+  }));
 }
 
 function isDockerProxyListener(processName?: string): boolean {
@@ -156,6 +168,13 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
       (config.ports?.[name]?.exact === true && config.ports[name].preferred !== ports[name])) ||
       plan.nodes.length !== receipt.processes.length + receipt.services.length ||
       plan.nodes.some((node) => !(node.kind === "process" ? receipt.processes : receipt.services).some((managed) => managed.name === node.name))) return false;
+    if (receipt.portSpecFingerprints) {
+      const currentPorts = portSpecFingerprints(config, plan.portNames);
+      if (Object.keys(currentPorts).length !== Object.keys(receipt.portSpecFingerprints).length ||
+        Object.entries(currentPorts).some(([name, fingerprint]) => receipt.portSpecFingerprints?.[name] !== fingerprint)) return false;
+    }
+    if (receipt.allocations.some((allocation) => allocation.protocol !== (config.ports?.[allocation.service]?.protocol ?? "tcp") ||
+      allocation.host !== (config.ports?.[allocation.service]?.exposure === "public" ? "0.0.0.0" : "127.0.0.1"))) return false;
     const loadedPolicy = await loadDevFnPolicy(root, config.policy);
     resolved = await resolveWithComposeNetworks(config, plan, root, receipt.instanceId, ports, loadedPolicy?.policy.hostnameSuffix);
     if (receipt.startupFingerprints) {
@@ -271,6 +290,7 @@ export class DevFnOrchestrator {
       state: "starting", root: options.root, runtimeDir, stateDir: path.resolve(stateDir), startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       allocations, processes: [], services: [], startedNodes: [], routes: [], urls: {}, environmentOutputs: [],
       startupFingerprints: fingerprints,
+      portSpecFingerprints: portSpecFingerprints(options.config, plan.portNames),
     };
     try {
       await registry.updateInvocation(invocationId, { state: "starting" });

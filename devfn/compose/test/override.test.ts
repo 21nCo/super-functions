@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -44,6 +44,30 @@ describe("ComposeController", () => {
       expect(changedEnvironment).not.toBe(first);
       await writeFile(file, 'services:\n  api:\n    image: busybox\n    command: ["sleep", "20"]\n    env_file: service.env\n');
       expect(await fingerprint()).not.toBe(changedEnvironment);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("tracks nested optional env_file inputs without requiring missing files", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-optional-env-"));
+    const nested = path.join(root, "nested");
+    await mkdir(nested);
+    const file = path.join(nested, "compose.yaml");
+    const envFile = path.join(nested, "service.env");
+    const spec = { adapter: "compose" as const, file: "nested/compose.yaml", service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await writeFile(path.join(root, "service.env"), "MODE=unrelated\n");
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    env_file:\n      - path: service.env\n        required: false\n');
+      const absent = await fingerprint();
+      await writeFile(envFile, "MODE=one\n");
+      const present = await fingerprint();
+      expect(present).not.toBe(absent);
+      await writeFile(envFile, "MODE=second\n");
+      expect(await fingerprint()).not.toBe(present);
+      await rm(envFile);
+      expect(await fingerprint()).toBe(absent);
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    env_file: service.env\n');
+      await expect(fingerprint()).rejects.toThrow();
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
