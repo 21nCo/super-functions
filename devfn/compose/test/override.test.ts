@@ -109,6 +109,39 @@ describe("ComposeController", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("ignores environment inputs removed by Compose merge tags", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-effective-env-"));
+    const base = path.join(root, "base.yaml");
+    const source = path.join(root, "compose.yaml");
+    const ignoredFile = path.join(root, "ignored.env");
+    const activeFile = path.join(root, "active.env");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    const baseText = (value: string) => `services:\n  base:\n    image: busybox\n    environment:\n      BASE_ONLY: ${value}\n    env_file: ignored.env\n`;
+    try {
+      await writeFile(base, baseText("first"));
+      await writeFile(ignoredFile, "MODE=ignored\n");
+      await writeFile(activeFile, "MODE=active\n");
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !override\n      CURRENT: one\n    env_file: !override [active.env]\n");
+      const original = await fingerprint();
+      await writeFile(base, baseText("second"));
+      await writeFile(ignoredFile, "MODE=changed\n");
+      expect(await fingerprint()).toBe(original);
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !override\n      CURRENT: two\n    env_file: !override [active.env]\n");
+      const changedLiteral = await fingerprint();
+      expect(changedLiteral).not.toBe(original);
+      await writeFile(activeFile, "MODE=changed\n");
+      const changedFile = await fingerprint();
+      expect(changedFile).not.toBe(changedLiteral);
+      await rm(ignoredFile);
+      expect(await fingerprint()).toBe(changedFile);
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !reset {}\n    env_file: !reset []\n");
+      const reset = await fingerprint();
+      await writeFile(base, baseText("third"));
+      expect(await fingerprint()).toBe(reset);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("resolves interpolated optional env files without hashing ambient values", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-interpolated-env-"));
     const file = path.join(root, "compose.yaml");

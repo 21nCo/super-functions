@@ -134,13 +134,22 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
   let effective: string;
   try {
-    effective = (await execFileAsync("docker", ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId),
-      "-f", sourceFile, "config", "--no-interpolate", "--format", "json"],
-    { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+    const args = ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId),
+      "-f", sourceFile, "config", "--no-interpolate", "--format", "json"];
+    try {
+      effective = (await execFileAsync("docker", [...args, "--no-env-resolution"],
+        { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+    } catch (error) {
+      if (!/unknown flag: --no-env-resolution/.test(String((error as { stderr?: unknown }).stderr ?? ""))) throw error;
+      // Compose 2.24.4 does not support --no-env-resolution. Its config output
+      // merges env_file values; the source inventory below supplies provenance.
+      effective = (await execFileAsync("docker", args,
+        { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+    }
   } catch {
     throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve effective Compose configuration for ${spec.service}.`);
   }
-  const configuration = JSON.parse(effective) as { services?: Record<string, { env_file?: Array<string | { path: string; required?: boolean }> }> };
+  const configuration = JSON.parse(effective) as { services?: Record<string, { environment?: Record<string, unknown>; env_file?: Array<string | { path: string; required?: boolean }> }> };
   const service = configuration.services?.[spec.service];
   if (!service) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose service ${spec.service} is absent from the effective configuration.`);
   let envFiles: DeclaredEnvFile[];
@@ -171,12 +180,16 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
     }
   }));
   // Compose has already merged transitive include and extends sources into the
-  // effective service. Keep non-secret structural inputs; omit values in
-  // environment, build args and labels. Secret env-file bytes are never read.
+  // effective service. Only hash literal values that survived Compose's merge.
+  // On 2.24.4, env_file values are present in service.environment; provenance
+  // from the source graph keeps those values out of the digest.
   const { env_file: _envFiles, ...effectiveService } = service;
+  const effectiveLiterals = Object.fromEntries(Object.keys(service.environment ?? {})
+    .filter((key) => Object.hasOwn(declaredEnvironment, key))
+    .map((key) => [key, declaredEnvironment[key]]));
   return createHash("sha256")
     .update(JSON.stringify(canonicalComposeValue(effectiveService)))
-    .update("\0").update(JSON.stringify(canonicalDeclaredEnvironment(declaredEnvironment)))
+    .update("\0").update(JSON.stringify(canonicalDeclaredEnvironment(effectiveLiterals)))
     .update("\0").update(JSON.stringify(fileMetadata)).digest("hex");
 }
 

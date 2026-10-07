@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { parse } from "yaml";
+import { parseDocument } from "yaml";
 
 export interface DeclaredEnvFile { name: string; required: boolean; directory: string }
 export interface DeclaredComposeInputs { envFiles: DeclaredEnvFile[]; environment: Record<string, unknown> }
@@ -21,13 +21,13 @@ export async function declaredComposeInputs(
   serviceName: string,
   interpolate: (names: string[], directory: string) => Promise<string[]>,
 ): Promise<DeclaredComposeInputs> {
-  const documents = new Map<string, Record<string, unknown>>();
+  const documents = new Map<string, { data: Record<string, unknown>; tags: Record<string, { environment?: string; env_file?: string }> }>();
   const visitedDocuments = new Set<string>();
   const visitedServices = new Set<string>();
   const found: DeclaredEnvFile[] = [];
   const environment: Record<string, unknown> = {};
 
-  async function load(file: string): Promise<Record<string, unknown>> {
+  async function load(file: string): Promise<{ data: Record<string, unknown>; tags: Record<string, { environment?: string; env_file?: string }> }> {
     const cached = documents.get(file);
     if (cached) return cached;
     if (documents.size >= 128) throw new Error("Compose source graph exceeds the input limit");
@@ -35,10 +35,19 @@ export async function declaredComposeInputs(
     if (content.length > 10 * 1024 * 1024) throw new Error("Compose source exceeds the input limit");
     // Compose's !override and !reset tags are valid source syntax. YAML keeps
     // their underlying values; suppress warnings that could echo source text.
-    const document = record(parse(content, { logLevel: "silent" }));
-    if (!document) throw new Error("invalid Compose source document");
-    documents.set(file, document);
-    return document;
+    const document = parseDocument(content, { logLevel: "silent" });
+    const data = record(document.toJS());
+    if (!data || document.errors.length) throw new Error("invalid Compose source document");
+    const tags: Record<string, { environment?: string; env_file?: string }> = {};
+    for (const name of Object.keys(record(data.services) ?? {})) {
+      tags[name] = {
+        environment: (document.getIn(["services", name, "environment"], true) as { tag?: string } | undefined)?.tag,
+        env_file: (document.getIn(["services", name, "env_file"], true) as { tag?: string } | undefined)?.tag,
+      };
+    }
+    const result = { data, tags };
+    documents.set(file, result);
+    return result;
   }
 
   async function resolveName(name: string, directory: string): Promise<string> {
@@ -51,7 +60,7 @@ export async function declaredComposeInputs(
     if (visitedServices.has(key)) return;
     visitedServices.add(key);
     const document = await load(file);
-    const service = record(record(document.services)?.[name]);
+    const service = record(record(document.data.services)?.[name]);
     if (!service) return;
     const extended = service.extends;
     if (extended) {
@@ -60,6 +69,8 @@ export async function declaredComposeInputs(
       const baseFile = typeof reference.file === "string" ? await resolveName(reference.file, path.dirname(file)) : file;
       await visitService(baseFile, reference.service, path.dirname(baseFile));
     }
+    const envFileTag = document.tags[name]?.env_file;
+    if (envFileTag === "!override" || envFileTag === "!reset") found.length = 0;
     const declared = service.env_file;
     if (declared !== undefined) {
       const entries = Array.isArray(declared) ? declared : [declared];
@@ -70,6 +81,8 @@ export async function declaredComposeInputs(
         found.push({ name: item.path, required: item.required !== false, directory });
       }
     }
+    const environmentTag = document.tags[name]?.environment;
+    if (environmentTag === "!override" || environmentTag === "!reset") for (const key of Object.keys(environment)) delete environment[key];
     const literals = service.environment;
     if (Array.isArray(literals)) {
       for (const literal of literals) {
@@ -88,7 +101,7 @@ export async function declaredComposeInputs(
     const key = `${file}\0${directory}`;
     if (visitedDocuments.has(key)) return;
     visitedDocuments.add(key);
-    const document = await load(file);
+    const document = (await load(file)).data;
     await visitService(file, serviceName, directory);
     const includes = document.include === undefined ? [] : Array.isArray(document.include) ? document.include : [document.include];
     for (const include of includes) {
