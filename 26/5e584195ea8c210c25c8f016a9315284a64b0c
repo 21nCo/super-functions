@@ -1,0 +1,31 @@
+devfn/cli/test/cli.test.ts
+  s_c3b9c133fcbeac::t_b74c6a2887f7f7 12
+devfn/compose/README.md
+  s_c3b9c133fcbeac::t_49a6a55dc40734 5
+devfn/compose/src/source-files.ts
+  s_c3b9c133fcbeac::t_0637c787b2caa6 3,7-8,10-15,19,21-32,35-45,47,50-57,60,64,66-69,71-73,75-100,102-116,118,121,131-148,151-153,155-163,165-170,172,174,176-181,184-189,192,194-219,221,225-227,229,232
+devfn/compose/test/fingerprint-contract.test.ts
+  s_c3b9c133fcbeac::t_8e087d40890b72 1-75
+devfn/compose/test/override.test.ts
+  s_c3b9c133fcbeac::t_edb63856ca3514 98-100,102-105,110,163,167,172
+devfn/core/src/orchestrator.ts
+  s_c3b9c133fcbeac::t_2e5891a44e7f2b 8,74,84-86,93,102,263-269
+devfn/core/test/startup-fixture.test.ts
+  s_c3b9c133fcbeac::t_3ec75811eacf08 53-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "265e584195ea8c210c25c8f016a9315284a64b0c",
+  "prompts": {},
+  "sessions": {
+    "s_c3b9c133fcbeac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f207834-d395-404b-a75d-0e0f016f4291",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
