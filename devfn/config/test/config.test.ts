@@ -6,6 +6,16 @@ import { describe, expect, it } from "vitest";
 import { discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
 
 describe("DevFn configuration", () => {
+  it("rejects case-colliding allowlist and secret keys at schema validation", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: ["MODE", "mode"] } } }))
+      .toThrow(/colliding environment keys/);
+    expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"],
+      envAllowlist: ["API_TOKEN", "api_token"], secretEnv: ["API_TOKEN", "api_token"] } } }))
+      .toThrow(/colliding environment keys/);
+    expect(isCredentialKey("API_KEYS")).toBe(true);
+    expect(isCredentialKey("THEME")).toBe(false);
+  });
   it("classifies credential aliases across separators, case boundaries and documented compact qualifiers", () => {
     for (const alias of ["key", "pass", "passcode", "passphrase", "pwd", "auth", "sig", "token", "secret", "password", "cred", "credential", "creds"]) {
       for (const separator of ["_", "-", "."]) expect(isCredentialKey(`db${separator}${alias}`)).toBe(true);

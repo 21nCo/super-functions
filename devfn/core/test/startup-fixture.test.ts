@@ -8,7 +8,7 @@ import { validateDevFnConfig } from "@devfn/config";
 import { proxyOwnerStatus } from "@devfn/proxy";
 import { describe, expect, it } from "vitest";
 
-import { DevFnOrchestrator, readReceipt, resolveInstanceIdentity, resolveLocalHostname } from "../src/index.js";
+import { DevFnOrchestrator, readReceipt, resolveInstanceIdentity, resolveLocalHostname, writeReceipt } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -32,6 +32,8 @@ const serverScript = `import { createServer } from "node:http";
 import { writeFile } from "node:fs/promises";
 const upstream = process.argv[2];
 if (upstream && upstream !== process.env.DEVFN_URL_NATIVE && !(await fetch(upstream + "/health")).ok) throw new Error("upstream unavailable");
+const server = createServer((request, response) => { response.writeHead(!process.env.EXPECTED_HEALTH_PATH || request.url === process.env.EXPECTED_HEALTH_PATH ? 200 : 404); response.end("ok"); });
+await new Promise((resolve) => server.listen(Number(process.env.DEVFN_PORT_NATIVE), process.env.HOST || "127.0.0.1", resolve));
 await writeFile(process.env.OBSERVED_FILE, JSON.stringify({
   port: process.env.DEVFN_PORT_NATIVE,
   url: process.env.DEVFN_URL_NATIVE,
@@ -40,12 +42,11 @@ await writeFile(process.env.OBSERVED_FILE, JSON.stringify({
   profileOnly: process.env.PROFILE_ONLY,
   argv: process.argv.slice(2),
   host: process.env.HOST,
+  boundHost: server.address().address,
   devfnHost: process.env.DEVFN_HOST,
   inheritedSecretPresent: Boolean(process.env.DB_PRIVATE_KEY),
 }));
 if (process.env.SECRET_TOKEN) console.log(process.env.SECRET_TOKEN);
-createServer((request, response) => { response.writeHead(!process.env.EXPECTED_HEALTH_PATH || request.url === process.env.EXPECTED_HEALTH_PATH ? 200 : 404); response.end("ok"); })
-  .listen(Number(process.env.DEVFN_PORT_NATIVE), "127.0.0.1");
 `;
 
 describe("real local startup fixtures", () => {
@@ -82,6 +83,7 @@ networks:
     const stateDir = path.join(root, "state");
     const observed = path.join(root, "observed.json");
     await writeFile(path.join(root, "server.mjs"), serverScript);
+    const owner = (await resolveInstanceIdentity("compose-endpoint-fixture", root)).instanceId;
     const config = validateDevFnConfig({
       version: 1, project: { id: "public-host-fixture" }, ports: { native: {} },
       processes: { native: { adapter: "command", command: [process.execPath, "server.mjs"], exposure: "public", ports: ["native"], health: { type: "http", port: "native", timeoutMs: 10_000 }, env: { HOST: "0.0.0.0", OBSERVED_FILE: observed } } },
@@ -94,7 +96,7 @@ networks:
       const receipt = await orchestrator.up({ config, root, stateDir, allowPublic: true });
       started = true;
       expect(receipt.processes).toHaveLength(1);
-      expect(JSON.parse(await readFile(observed, "utf8"))).toMatchObject({ host: "0.0.0.0" });
+      expect(JSON.parse(await readFile(observed, "utf8"))).toMatchObject({ host: "0.0.0.0", boundHost: "0.0.0.0" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
     } finally {
       if (started) await orchestrator.down({ config, root, stateDir });
@@ -138,12 +140,13 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
     const withProxy = process.env.DEVFN_REAL_PROXY === "1";
     const withTls = withProxy && process.env.DEVFN_REAL_TLS === "1";
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-native-endpoint-"));
-    const observed = path.join(root, "observed.json");
-    const owner = (await resolveInstanceIdentity("endpoint-fixture", root)).instanceId;
-    if (withProxy) await writeFile(path.join(root, "policy.json"), JSON.stringify({ version: 1, hostnameSuffix: ".test.localhost" }));
     const originalSecret = process.env.SECRET_TOKEN;
     const originalDbSecret = process.env.DB_PRIVATE_KEY;
     const originalPgSecret = process.env.PGPASSWORD;
+    try {
+    const observed = path.join(root, "observed.json");
+    const owner = (await resolveInstanceIdentity("endpoint-fixture", root)).instanceId;
+    if (withProxy) await writeFile(path.join(root, "policy.json"), JSON.stringify({ version: 1, hostnameSuffix: ".test.localhost" }));
     const secret = `private-${Date.now()}-credential`;
     process.env.SECRET_TOKEN = secret;
     process.env.DB_PRIVATE_KEY = secret;
@@ -171,6 +174,28 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(observation).toMatchObject({ port: String(receipt.allocations[0].port), url: `http://127.0.0.1:${receipt.allocations[0].port}`, host: "127.0.0.1", devfnHost: "127.0.0.1", mode: "node", profileOnly: "first", inheritedSecretPresent: true });
       expect(observation.argv).toEqual([observation.url, "literal $HOME `id` ; & |", "127.0.0.1", "127.0.0.1"]);
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      process.env.SECRET_TOKEN = `${secret}-rotated`;
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      process.env.SECRET_TOKEN = secret;
+      config.processes!.native.envAllowlist!.push("ADDED_TOKEN");
+      config.processes!.native.secretEnv!.push("ADDED_TOKEN");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      config.processes!.native.envAllowlist!.pop();
+      config.processes!.native.secretEnv!.pop();
+      const nativePort = config.ports!.native;
+      nativePort.exact = true;
+      nativePort.preferred = receipt.allocations[0].port === 65535 ? 65534 : receipt.allocations[0].port + 1;
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      delete nativePort.exact;
+      delete nativePort.preferred;
+      const fingerprints = receipt.startupFingerprints;
+      delete receipt.startupFingerprints;
+      await writeReceipt(receipt);
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") }))
+        .rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+      receipt.startupFingerprints = fingerprints;
+      await writeReceipt(receipt);
       config.processes!.native.command!.push("--db-password=synthetic-sentinel");
       const rejectedStatus = await orchestrator.status({ config, root });
       expect(rejectedStatus).toMatchObject({ ok: false, state: "degraded", urls: {} });
@@ -260,6 +285,8 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
     } finally {
       if (started) await orchestrator.down({ config, root, stateDir: path.join(root, "state") });
       if (withProxy) await stopFixtureProxy(path.join(root, "state"));
+    }
+    } finally {
       if (originalSecret === undefined) delete process.env.SECRET_TOKEN;
       else process.env.SECRET_TOKEN = originalSecret;
       if (originalDbSecret === undefined) delete process.env.DB_PRIVATE_KEY;
@@ -317,7 +344,7 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       version: 1, project: { id: "compose-endpoint-fixture" },
       ports: { web: {}, consumer: {}, native: {} },
       services: {
-        web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web", url: `${withTls ? "https" : "http"}://${withProxy ? "web.localhost" : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 30_000 }, env: { HOST: "0.0.0.0", MODE: "service" } },
+        web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web", url: `${withTls ? "https" : "http"}://${withProxy ? resolveLocalHostname("web.localhost", "web", "compose-endpoint-fixture", owner) : "route-not-yet-installed.localhost"}/health?probe=1`, timeoutMs: 30_000 }, env: { HOST: "0.0.0.0", MODE: "service" } },
         consumer: { adapter: "compose", service: "consumer", ports: { consumer: 8081 }, dependsOn: ["web"], health: { type: "command", command: [process.execPath, "-e", "Promise.all([fetch(process.argv[1] + '/health'), fetch(process.env.HEALTH_UPSTREAM + '/health')]).then((responses) => { if (responses.some((response) => !response.ok)) process.exitCode = 1; }).catch(() => { process.exitCode = 1; });", "{{env.DEVFN_URL_WEB}}"], timeoutMs: 30_000 }, env: { HEALTH_UPSTREAM: "{{env.DEVFN_URL_WEB}}" } },
       },
       processes: { native: { adapter: "command", command: [process.execPath, "server.mjs", "{{env.DEVFN_URL_WEB}}"], ports: ["native"], dependsOn: ["consumer"], health: { type: "http", port: "native", timeoutMs: 30_000 }, env: { OBSERVED_FILE: path.join(root, "native.json"), UPSTREAM_URL: "{{env.DEVFN_URL_WEB}}", MODE: "node" } } },
@@ -391,7 +418,7 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
         const log = await execFileAsync("docker", ["logs", service.containerIds[0]]);
         expect(log.stdout + log.stderr).not.toContain("synthetic-sentinel");
       }
-      if (withProxy) expect(receipt.urls.web).toBe(`${withTls ? "https" : "http"}://web.localhost`);
+      if (withProxy) expect(receipt.urls.web).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname("web.localhost", "web", "compose-endpoint-fixture", owner)}`);
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       config.services!.web.env!.MODE = "service-next";

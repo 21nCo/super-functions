@@ -115,7 +115,7 @@ export async function scanListenerState(includeDocker = true): Promise<ListenerS
     } catch { /* unavailable */ }
   }
   if (includeDocker) {
-    try { results.push(...parseDockerListeners((await execFileAsync("docker", ["ps", "--format", "{{.ID}}\\t{{.Names}}\\t{{.Ports}}"], { timeout: 1_000 })).stdout)); inspection.docker = true; }
+    try { results.push(...parseDockerListeners((await execFileAsync("docker", ["ps", "--format", "{{.ID}}\\t{{.Names}}\\t{{.Ports}}"], { timeout: 2_000 })).stdout)); inspection.docker = true; }
     catch { /* Docker is optional */ }
   }
   return { listeners: results.sort((a, b) => a.port - b.port || a.source.localeCompare(b.source)), inspection };

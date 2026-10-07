@@ -65,9 +65,7 @@ export function resolveHttpReadinessUrl(health: Extract<HealthCheck, { type: "ht
   const port = health.port ? ports[health.port] : undefined;
   const configured = health.url ? new URL(health.url) : undefined;
   if (configured && configured.protocol !== "http:" && configured.protocol !== "https:") throw new Error("HTTP readiness URL must use http or https.");
-  // A leased port is reachable before any proxy route is installed. Retain the
-  // configured path and query while replacing only the unavailable origin.
-  let url = port === undefined ? (health.url ?? "") : `${configured?.protocol ?? "http:"}//127.0.0.1:${port}${configured ? `${configured.pathname}${configured.search}${configured.hash}` : (health.path ?? "/")}`;
+  let url = health.url ?? "";
   if (health.url && health.path) {
     const parsed = new URL(url);
     const baseSearch = parsed.search;
@@ -80,6 +78,12 @@ export function resolveHttpReadinessUrl(health: Extract<HealthCheck, { type: "ht
     if (!appended.search) appended.search = baseSearch;
     if (!appended.hash) appended.hash = baseHash;
     url = appended.toString();
+  }
+  // Validate an absolute path against the configured origin first. The direct
+  // lease replaces the origin only after that relationship is established.
+  if (port !== undefined) {
+    const source = url ? new URL(url) : undefined;
+    url = `${source?.protocol ?? "http:"}//127.0.0.1:${port}${source ? `${source.pathname}${source.search}${source.hash}` : (health.path ?? "/")}`;
   }
   const parsed = new URL(url);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("HTTP readiness URL must use http or https.");

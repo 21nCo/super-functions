@@ -11,6 +11,13 @@ describe("process readiness", () => {
       .toBe("https://127.0.0.1:4101/base/health?ready=1");
   });
 
+  it("validates an absolute health path against its configured origin before leasing", () => {
+    expect(resolveHttpReadinessUrl({ type: "http", port: "api", url: "http://svc.test/base?old=1", path: "http://svc.test/ready?new=1" }, { api: 4101 }))
+      .toBe("http://127.0.0.1:4101/ready?new=1");
+    expect(() => resolveHttpReadinessUrl({ type: "http", port: "api", url: "http://svc.test/base", path: "http://other.test/ready" }, { api: 4101 }))
+      .toThrow(/configured URL origin/);
+  });
+
   it("uses the same direct HTTPS endpoint at startup and on a later status probe", async () => {
     const urls: string[] = [];
     const originalFetch = globalThis.fetch;

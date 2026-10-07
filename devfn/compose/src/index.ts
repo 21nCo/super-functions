@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -61,9 +61,18 @@ export function composeProjectName(prefix: string, instanceId: string): string {
   // significant to the declared project even though Docker renders them alike.
   const prefixDigest = createHash("sha256").update(prefix).digest("hex").slice(0, 12);
   const suffix = `p-${prefixDigest}-o-${ownerDigest}`;
-  const normalizedPrefix = prefix.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "") || "d";
   const budget = 48 - suffix.length - 1;
-  const safePrefix = normalizedPrefix.slice(0, budget);
+  let safePrefix = "";
+  for (const character of prefix.toLowerCase()) {
+    if (safePrefix.length >= budget) break;
+    const safe = /[a-z0-9_-]/.test(character) ? character : "-";
+    if (safe === "-" && safePrefix.endsWith("-")) continue;
+    if (!safePrefix && (safe === "-" || safe === "_")) continue;
+    safePrefix += safe;
+  }
+  let end = safePrefix.length;
+  while (end > 0 && (safePrefix[end - 1] === "-" || safePrefix[end - 1] === "_")) end -= 1;
+  safePrefix = safePrefix.slice(0, end) || "d";
   return `${safePrefix}-${suffix}`;
 }
 
@@ -81,18 +90,33 @@ export function createComposeReadinessEnvironment(spec: ComposeServiceSpec, reso
   return createComposeEnvironment({ ...spec, env: resolved }, resolved, source);
 }
 
-/** Digest source bytes and Compose's effective interpolation without retaining values. */
+/** Fingerprint declared Compose inputs without hashing inherited host or secret values. */
 export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: string, instanceId: string, environment: NodeJS.ProcessEnv): Promise<string> {
   const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
   const source = await readFile(sourceFile);
   let effective: string;
   try {
     effective = (await execFileAsync("docker", ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId),
-      "-f", sourceFile, "config", "--format", "json"], { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+      "-f", sourceFile, "config", "--no-interpolate", "--no-env-resolution", "--format", "json"],
+    { cwd: root, env: environment, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
   } catch {
     throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve effective Compose configuration for ${spec.service}.`);
   }
-  return createHash("sha256").update(source).update("\0").update(effective).digest("hex");
+  const configuration = JSON.parse(effective) as { services?: Record<string, { env_file?: Array<string | { path: string }> }> };
+  const envFiles = configuration.services?.[spec.service]?.env_file ?? [];
+  const fileMetadata = await Promise.all(envFiles.map(async (item) => {
+    const name = typeof item === "string" ? item : item.path;
+    // Compose accepts absolute env_file paths as well as paths relative to the
+    // project. Inspect metadata only; do not read or hash secret-bearing bytes.
+    const file = path.resolve(root, name);
+    const info = await stat(file, { bigint: true });
+    return [name, String(info.mtimeNs), String(info.ctimeNs)];
+  }));
+  // --no-interpolate prevents ambient values, including secretEnv, from
+  // affecting this digest. File metadata detects env_file edits without
+  // deriving a receipt hash from their credential-bearing contents.
+  return createHash("sha256").update(source).update("\0").update(effective)
+    .update("\0").update(JSON.stringify(fileMetadata)).digest("hex");
 }
 
 /** Read Compose's effective service networks before publishing sibling DNS URLs. */
@@ -149,16 +173,38 @@ interface EffectivePort { target: number; published?: string | number; host_ip?:
 function effectivePortBindings(ports: EffectivePort[]): string[] {
   return ports.map((port) => {
     const published = String(port.published ?? "");
-    if (!Number.isInteger(port.target) || port.target < 1 || !/^\d+$/.test(published)) throw new Error("Compose returned an unsupported published port.");
+    if (!Number.isInteger(port.target) || port.target < 1 || (published !== "" && !/^\d+(?:-\d+)?$/.test(published))) throw new Error("Compose returned an unsupported published port.");
     return `${port.target}/${port.protocol ?? "tcp"}|${port.host_ip || "0.0.0.0"}|${published}`;
-  }).sort();
+  }).sort((left, right) => left.localeCompare(right));
 }
 
 function containerPortBindings(value: Record<string, Array<{ HostIp: string; HostPort: string }> | null> | null): string[] {
   return Object.entries(value ?? {}).flatMap(([target, bindings]) => {
     if (!bindings) throw new Error("Docker returned an incomplete port binding.");
     return bindings.map((binding) => `${target}|${binding.HostIp || "0.0.0.0"}|${binding.HostPort}`);
-  }).sort();
+  }).sort((left, right) => left.localeCompare(right));
+}
+
+function bindingsMatch(expected: string[], observed: string[]): boolean {
+  if (expected.length !== observed.length) return false;
+  const unmatched = [...observed];
+  const bySpecificity = [...expected].sort((left, right) => {
+    const score = (item: string) => { const value = item.split("|")[2]; return value === "" || value === "0" ? 2 : value.includes("-") ? 1 : 0; };
+    return score(left) - score(right) || left.localeCompare(right);
+  });
+  for (const binding of bySpecificity) {
+    const [target, host, published] = binding.split("|");
+    const range = published.match(/^(\d+)-(\d+)$/);
+    const index = unmatched.findIndex((actual) => {
+      const [actualTarget, actualHost, actualPort] = actual.split("|");
+      if (target !== actualTarget || host !== actualHost || !/^\d+$/.test(actualPort)) return false;
+      const port = Number(actualPort);
+      return published === "" || published === "0" || (range ? port >= Number(range[1]) && port <= Number(range[2]) : published === actualPort);
+    });
+    if (index < 0) return false;
+    unmatched.splice(index, 1);
+  }
+  return unmatched.length === 0;
 }
 
 export function renderComposeOverride(spec: ComposeServiceSpec, ports: Record<string, number>, hosts: Record<string, string> = {}, protocols: Record<string, "tcp" | "udp"> = {}, metadata?: { instanceId: string; lifecycleName: string }): string {
@@ -275,7 +321,7 @@ export class ComposeController {
         const expectedPorts = effectivePortBindings(service.ports ?? []);
         const portRows = (await this.run("docker", ["inspect", "--format", "{{json .HostConfig.PortBindings}}", ...before],
           { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.trim().split("\n");
-        if (portRows.length !== before.length || portRows.some((row) => JSON.stringify(containerPortBindings(JSON.parse(row))) !== JSON.stringify(expectedPorts))) {
+        if (portRows.length !== before.length || portRows.some((row) => !bindingsMatch(expectedPorts, containerPortBindings(JSON.parse(row))))) {
           throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} has stale published ports; refusing to reuse it.`);
         }
       } catch (error) {

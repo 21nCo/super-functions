@@ -61,7 +61,7 @@ describe("ComposeController", () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-dual-owner-"));
     const file = path.join(root, "compose.yaml");
     const controller = new ComposeController();
-    const prefix = path.basename(root).toLowerCase().slice(0, 22);
+    const prefix = path.basename(root).toLowerCase();
     const owners = ["Owner", "owner"];
     await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n');
     const start = (owner: string) => controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: prefix }, root,
@@ -252,21 +252,23 @@ describe("ComposeController", () => {
 
   it("refuses stale environment in an unmanaged container before Compose up", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-stale-"));
-    for (const running of [true, false]) {
-      const calls: string[][] = [];
-      const controller = new ComposeController(async (_file, args) => {
-        calls.push([...args]);
-        if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
-        if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
-        if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: { DEVFN_PORT_API: "4102" } } } }), stderr: "" };
-        if (args[0] === "inspect") return { stdout: args.includes("{{json .Config.Env}}") ? '["DEVFN_PORT_API=4101"]\n' : "<no value>\t<no value>\t<no value>\n", stderr: "" };
-        return { stdout: "", stderr: "" };
-      });
-      await expect(controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
-        runtimeDir: path.join(root, ".devfn", "instances", "owner"), instanceId: "owner", ports: {}, environment: { DEVFN_PORT_API: "4102" } })).rejects.toThrow(/stale startup environment/);
-      expect(calls.some((args) => args.includes("up"))).toBe(false);
-      expect(calls.some((args) => args[0] === "stop" || args[0] === "rm")).toBe(false);
-    }
+    try {
+      for (const running of [true, false]) {
+        const calls: string[][] = [];
+        const controller = new ComposeController(async (_file, args) => {
+          calls.push([...args]);
+          if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+          if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
+          if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: { DEVFN_PORT_API: "4102" } } } }), stderr: "" };
+          if (args[0] === "inspect") return { stdout: args.includes("{{json .Config.Env}}") ? '["DEVFN_PORT_API=4101"]\n' : "<no value>\t<no value>\t<no value>\n", stderr: "" };
+          return { stdout: "", stderr: "" };
+        });
+        await expect(controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
+          runtimeDir: path.join(root, ".devfn", "instances", "owner"), instanceId: "owner", ports: {}, environment: { DEVFN_PORT_API: "4102" } })).rejects.toThrow(/stale startup environment/);
+        expect(calls.some((args) => args.includes("up"))).toBe(false);
+        expect(calls.some((args) => args[0] === "stop" || args[0] === "rm")).toBe(false);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 
   it("refuses unmanaged containers with stale command or leased port config before Compose up", async () => {
@@ -292,6 +294,37 @@ describe("ComposeController", () => {
           runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: change === "port" ? { api: 4102 } : {} }).then(() => "", (failure: Error) => failure.message);
         expect(error).toMatch(change === "command" ? /stale startup configuration/ : /stale published ports/);
         expect(calls.some((args) => args.includes("up") || args[0] === "stop" || args[0] === "rm")).toBe(false);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("reuses valid random and ranged unmanaged ports but rejects an outside binding", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-published-"));
+    try {
+      for (const [published, actual, allowed] of [["", "44001", true], ["44000-44010", "44001", true], ["44000-44010", "44011", false]] as const) {
+        const calls: string[][] = [];
+        const controller = new ComposeController(async (_file, args) => {
+          calls.push([...args]);
+          if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+          if (args.includes("ps")) return { stdout: "old-id\n", stderr: "" };
+          if (args.includes("--hash")) return { stdout: `api ${MOCK_COMPOSE_HASH}\n`, stderr: "" };
+          if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: {}, ports: [{ target: 8080, published, host_ip: "127.0.0.1", protocol: "tcp" }] } } }), stderr: "" };
+          if (args.includes("{{json .Config.Env}}")) return { stdout: "[]\n", stderr: "" };
+          if (args.some((arg) => arg.includes("com.docker.compose.config-hash"))) return { stdout: `${MOCK_COMPOSE_HASH}\n`, stderr: "" };
+          if (args.includes("{{json .HostConfig.PortBindings}}")) return { stdout: JSON.stringify({ "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: actual }] }) + "\n", stderr: "" };
+          if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? "<no value>\t<no value>\t<no value>\n" : "true\n", stderr: "" };
+          return { stdout: "", stderr: "" };
+        });
+        const start = controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
+          runtimeDir: path.join(root, `runtime-${published || "random"}-${actual}`), instanceId: "owner", ports: {} });
+        if (allowed) {
+          const managed = await start;
+          expect(managed.preExisting).toBe(true);
+          expect(calls.some((args) => args.includes("up"))).toBe(true);
+        } else {
+          await expect(start).rejects.toThrow(/stale published ports/);
+          expect(calls.some((args) => args.includes("up"))).toBe(false);
+        }
       }
     } finally { await rm(root, { recursive: true, force: true }); }
   });

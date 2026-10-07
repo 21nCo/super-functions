@@ -19,7 +19,61 @@ const fixture = (): DevFnConfig => validateDevFnConfig({
   profiles: { default: { processes: ["worker"], environment: { MODE: "profile", BASE: "{{env.DEVFN_URL_API}}" } } },
 });
 
+type TemplateConsumer = "profile" | "process-env" | "command" | "script" | "health" | "compose-health";
+
+function configureTemplateConsumer(source: TemplateConsumer, value: string, options: { argv?: string[]; script?: string; field?: string } = {}): DevFnConfig {
+  const config = fixture();
+  const argv = options.argv ?? ["tool", value];
+  const field = options.field ?? "TARGET";
+  if (source === "profile") config.profiles.default.environment = { [field]: value };
+  if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, [field]: value };
+  if (source === "command") config.processes!.worker.command = argv;
+  if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = options.script ?? `start ${argv.join(" ")}`; }
+  if (source === "health") config.processes!.worker.health = { type: "command", command: argv };
+  if (source === "compose-health") {
+    config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: argv } } };
+    config.profiles.default.services = ["web"];
+    config.profiles.default.processes = [];
+    config.profiles.default.environment = {};
+  }
+  return config;
+}
+
 describe("endpoint and template contract", () => {
+  it("bounds acyclic expansion and preserves generated alias self-references", () => {
+    const config = fixture();
+    config.ports!.api.env = "PORT";
+    config.profiles.default.environment = { PORT: "{{env.PORT}}" };
+    expect(resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).environment.PORT).toBe("4101");
+    const environment: Record<string, string> = { A0: "x" };
+    for (let index = 1; index <= 18; index += 1) environment[`A${index}`] = `{{env.A${index - 1}}}{{env.A${index - 1}}}`;
+    config.profiles.default.environment = environment;
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }))
+      .toThrow(/size limit/);
+    config.profiles.default.environment = Object.fromEntries(Array.from({ length: 40 }, (_unused, index) => [`VALUE_${index}`, "v".repeat(60_000)]));
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }))
+      .toThrow(/aggregate expanded templates/);
+  });
+
+  it("treats ordinary long-option values as data while rejecting plural API keys", () => {
+    const config = fixture();
+    const worker = config.processes!.worker;
+    worker.command = ["node", "--mode=auth", "--format=key", "--env=NODE_ENV=development"];
+    const ordinary = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
+    expect(ordinary.nodes.worker.command).toEqual(worker.command);
+    for (const argument of ["--env=API_KEYS=SYNTHETIC_DO_NOT_USE", "API_KEYS=SYNTHETIC_DO_NOT_USE"]) {
+      worker.command = ["node", argument];
+      expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } }))
+        .toThrow(/credential/);
+    }
+  });
+
+  it("qualifies a static local hostname by opaque owner", () => {
+    const first = resolveLocalHostname("app.localhost", "app", "fixture", "owner-one");
+    const second = resolveLocalHostname("app.localhost", "app", "fixture", "owner-two");
+    expect(first).not.toBe(second);
+    expect(first).toMatch(/^app\.o-[a-f0-9]{20}\.localhost$/);
+  });
   it("resolves leased direct URLs and argv for an opaque owner before startup", () => {
     const config = fixture();
     const result = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "session:any/owner", ports: { api: 4101, worker: 4102 } });
@@ -372,16 +426,8 @@ describe("endpoint and template contract", () => {
     ];
     try {
       for (const vector of headerVectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
-        const config = fixture();
-        if (source === "command") config.processes!.worker.command = ["curl", ...vector];
-        if (source === "script") {
-          config.processes!.worker.adapter = "npm";
-          config.processes!.worker.script = `start curl ${vector.join(" ")}`;
-        }
-        if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
+        const config = configureTemplateConsumer(source, vector.join(" "), { argv: ["curl", ...vector] });
         if (source === "compose-health") {
-          config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
-          config.profiles.default.services = ["web"];
           config.profiles.default.environment = { MODE: "profile" };
         }
         expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
@@ -427,19 +473,7 @@ describe("endpoint and template contract", () => {
     ];
     try {
       for (const vector of vectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
-        const config = fixture();
-        if (source === "command") config.processes!.worker.command = ["curl", ...vector];
-        if (source === "script") {
-          config.processes!.worker.adapter = "npm";
-          config.processes!.worker.script = `start curl ${vector.join(" ")}`;
-        }
-        if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
-        if (source === "compose-health") {
-          config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
-          config.profiles.default.services = ["web"];
-          config.profiles.default.processes = [];
-          config.profiles.default.environment = {};
-        }
+        const config = configureTemplateConsumer(source, vector.join(" "), { argv: ["curl", ...vector] });
         expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
         const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
         expect(failure).toMatch(/secret channel/);
@@ -468,16 +502,7 @@ describe("endpoint and template contract", () => {
         ["--data-raw", `{"payload":{"pass\\u0077ord":"${marker}"`],
       ];
       for (const vector of vectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
-        const config = fixture();
-        if (source === "command") config.processes!.worker.command = ["curl", ...vector];
-        if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start curl ${vector.join(" ")}`; }
-        if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
-        if (source === "compose-health") {
-          config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
-          config.profiles.default.services = ["web"];
-          config.profiles.default.processes = [];
-          config.profiles.default.environment = {};
-        }
+        const config = configureTemplateConsumer(source, vector.join(" "), { argv: ["curl", ...vector] });
         expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } })).toThrow(/secret channel/);
         const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
         expect(failure).toMatch(/secret channel/);
@@ -500,16 +525,7 @@ describe("endpoint and template contract", () => {
     try {
       for (const vector of [["--cookie", "theme=dark"], ["--cookie=theme=dark"], ["-b", "theme=dark"]]) {
         for (const source of ["command", "script", "health", "compose-health"] as const) {
-          const config = fixture();
-          if (source === "command") config.processes!.worker.command = ["curl", ...vector];
-          if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start curl ${vector.join(" ")}`; }
-          if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
-          if (source === "compose-health") {
-            config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
-            config.profiles.default.services = ["web"];
-            config.profiles.default.processes = [];
-            config.profiles.default.environment = {};
-          }
+          const config = configureTemplateConsumer(source, vector.join(" "), { argv: ["curl", ...vector] });
           config.processes!.worker.envAllowlist = ["MYAPIKEY"];
           config.processes!.worker.secretEnv = ["MYAPIKEY"];
           const resolved = resolve(config);
@@ -529,16 +545,7 @@ describe("endpoint and template contract", () => {
         [`--cookie=theme=dark%3B%20GITHUBAPIKEY%3D${marker}`],
       ];
       for (const vector of badVectors) for (const source of ["command", "script", "health", "compose-health"] as const) {
-        const config = fixture();
-        if (source === "command") config.processes!.worker.command = ["curl", ...vector];
-        if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start curl ${vector.join(" ")}`; }
-        if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
-        if (source === "compose-health") {
-          config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
-          config.profiles.default.services = ["web"];
-          config.profiles.default.processes = [];
-          config.profiles.default.environment = {};
-        }
+        const config = configureTemplateConsumer(source, vector.join(" "), { argv: ["curl", ...vector] });
         expect(() => resolve(config)).toThrow(/secret channel/);
         const failure = await new DevFnOrchestrator().up({ config, root, stateDir }).then(() => "", (error: Error) => error.message);
         expect(failure).toMatch(/secret channel/);
@@ -578,19 +585,7 @@ describe("endpoint and template contract", () => {
       ["--data-raw", `{"password" "${marker}"}`],
       ["--data-raw", `{'pass\\u0077ord'/*unterminated ${marker}`],
     ];
-    const configure = (source: "command" | "script" | "health" | "compose-health", vector: string[]): DevFnConfig => {
-      const config = fixture();
-      if (source === "command") config.processes!.worker.command = ["curl", ...vector];
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start curl ${vector.join(" ")}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", ...vector] };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", ...vector] } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: "command" | "script" | "health" | "compose-health", vector: string[]): DevFnConfig => configureTemplateConsumer(source, vector.join(" "), { argv: ["curl", ...vector] });
     try {
       for (const vector of bad) for (const source of ["command", "script", "health", "compose-health"] as const) {
         const config = configure(source, vector);
@@ -628,19 +623,7 @@ describe("endpoint and template contract", () => {
     const stateDir = path.join(root, "state");
     const marker = "SYNTHETIC_DO_NOT_USE";
     const sources = ["command", "script", "health", "compose-health"] as const;
-    const configure = (source: typeof sources[number], vector: string[]): DevFnConfig => {
-      const config = fixture();
-      if (source === "command") config.processes!.worker.command = vector;
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start ${vector.join(" ")}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: vector };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: vector } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: typeof sources[number], vector: string[]): DevFnConfig => configureTemplateConsumer(source, vector.join(" "), { argv: vector });
     const bad = [
       ["curl", "--data-raw", `{"page":1 "password":"${marker}"}`],
       ["curl", "--data-raw", `<password>${marker}</password>`],
@@ -694,20 +677,7 @@ describe("endpoint and template contract", () => {
     ];
     const ordinary = '<request xmlns:x="urn:x" note="> x:password=ordinary" x:page="2"/>';
     const sources = ["command", "script", "health", "compose-health"] as const;
-    const configure = (source: typeof sources[number], xml: string): DevFnConfig => {
-      const config = fixture();
-      const command = ["curl", "--data-raw", xml];
-      if (source === "command") config.processes!.worker.command = command;
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start curl --data-raw ${xml}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: typeof sources[number], xml: string): DevFnConfig => configureTemplateConsumer(source, xml, { argv: ["curl", "--data-raw", xml] });
     try {
       for (const source of sources) for (const body of bodies) {
         const config = configure(source, body);
@@ -728,19 +698,7 @@ describe("endpoint and template contract", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-context-credential-"));
     const stateDir = path.join(root, "state");
     const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
-    const configure = (source: "command" | "script" | "health" | "compose-health", value: string) => {
-      const config = fixture();
-      if (source === "command") config.processes!.worker.command = ["tool", value];
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: "command" | "script" | "health" | "compose-health", value: string) => configureTemplateConsumer(source, value);
     try {
       const sources = ["command", "script", "health", "compose-health"] as const;
       for (const source of sources) {
@@ -776,21 +734,7 @@ describe("endpoint and template contract", () => {
     const sensitive = `{"note":"<!--"}<request page="2"><password>${marker}</password></request>`;
     const ordinary = '{"note":"<!-- <password>ordinary</password>"}<request page="2"/>';
     const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
-    const configure = (source: "profile" | "process-env" | "command" | "script" | "health" | "compose-health", value: string): DevFnConfig => {
-      const config = fixture();
-      if (source === "profile") config.profiles.default.environment = { PAYLOAD: value };
-      if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, PAYLOAD: value };
-      if (source === "command") config.processes!.worker.command = ["tool", value];
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: "profile" | "process-env" | "command" | "script" | "health" | "compose-health", value: string): DevFnConfig => configureTemplateConsumer(source, value, { field: "PAYLOAD" });
     try {
       for (const source of ["profile", "process-env", "command", "script", "health", "compose-health"] as const) {
         expect(() => resolve(configure(source, ordinary)), source).not.toThrow();
@@ -809,21 +753,7 @@ describe("endpoint and template contract", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-nested-url-"));
     const stateDir = path.join(root, "state");
     const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
-    const configure = (source: "profile" | "process-env" | "command" | "script" | "health" | "compose-health", value: string): DevFnConfig => {
-      const config = fixture();
-      if (source === "profile") config.profiles.default.environment = { TARGET: value };
-      if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, TARGET: value };
-      if (source === "command") config.processes!.worker.command = ["tool", value];
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: "profile" | "process-env" | "command" | "script" | "health" | "compose-health", value: string): DevFnConfig => configureTemplateConsumer(source, value);
     try {
       for (const source of ["profile", "process-env", "command", "script", "health", "compose-health"] as const) {
         for (const ordinary of ["https://outer.example.test/?next=https://inner.example.test/path", "https://outer.example.test/?next=//inner.example.test/path", "\\\\server\\share", "/user@example.test", "literal $HOME `id` ; & |"])
@@ -845,21 +775,7 @@ describe("endpoint and template contract", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-json-url-"));
     const stateDir = path.join(root, "state");
     const sources = ["profile", "process-env", "command", "script", "health", "compose-health"] as const;
-    const configure = (source: typeof sources[number], value: string): DevFnConfig => {
-      const config = fixture();
-      if (source === "profile") config.profiles.default.environment = { TARGET: value };
-      if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, TARGET: value };
-      if (source === "command") config.processes!.worker.command = ["tool", value];
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: typeof sources[number], value: string): DevFnConfig => configureTemplateConsumer(source, value);
     const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
     const secret = `//alice:${marker}@inner.example.test/path`;
     const sensitive = [
@@ -900,21 +816,7 @@ describe("endpoint and template contract", () => {
       `https://host.test/x%3Bpassword%3D${marker}/y`,
     ];
     const sources = ["profile", "process-env", "command", "script", "health", "compose-health"] as const;
-    const configure = (source: typeof sources[number], value: string): DevFnConfig => {
-      const config = fixture();
-      if (source === "profile") config.profiles.default.environment = { TARGET: value };
-      if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, TARGET: value };
-      if (source === "command") config.processes!.worker.command = ["tool", value];
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: typeof sources[number], value: string): DevFnConfig => configureTemplateConsumer(source, value);
     try {
       for (const source of sources) {
         for (const value of values) {
@@ -938,21 +840,7 @@ describe("endpoint and template contract", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-url-controls-"));
     const stateDir = path.join(root, "state");
     const sources = ["profile", "process-env", "command", "script", "health", "compose-health"] as const;
-    const configure = (source: typeof sources[number], value: string): DevFnConfig => {
-      const config = fixture();
-      if (source === "profile") config.profiles.default.environment = { TARGET: value };
-      if (source === "process-env") config.processes!.worker.env = { ...config.processes!.worker.env, TARGET: value };
-      if (source === "command") config.processes!.worker.command = ["tool", value];
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${value}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", value] };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", value] } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: typeof sources[number], value: string): DevFnConfig => configureTemplateConsumer(source, value);
     const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
     try {
       for (const source of sources) {
@@ -1256,19 +1144,7 @@ describe("endpoint and template contract", () => {
     const stateDir = path.join(root, "state");
     const marker = "SYNTHETIC_DO_NOT_USE";
     const sources = ["command", "script", "health", "compose-health"] as const;
-    const configure = (source: typeof sources[number], body: string): DevFnConfig => {
-      const config = fixture();
-      if (source === "command") config.processes!.worker.command = ["curl", "--data-raw", body];
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start --data-raw '${body}'`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: ["curl", "--data-raw", body] };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["curl", "--data-raw", body] } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: typeof sources[number], body: string): DevFnConfig => configureTemplateConsumer(source, body, { argv: ["curl", "--data-raw", body], script: `start --data-raw '${body}'` });
     const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
     try {
       for (const body of [
@@ -1311,19 +1187,7 @@ describe("endpoint and template contract", () => {
     const stateDir = path.join(root, "state");
     const marker = "SYNTHETIC_DO_NOT_USE";
     const sources = ["command", "script", "health", "compose-health"] as const;
-    const configure = (source: typeof sources[number], operand: string): DevFnConfig => {
-      const config = fixture();
-      if (source === "command") config.processes!.worker.command = ["env", operand];
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start ${operand}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: ["env", operand] };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["env", operand] } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: typeof sources[number], operand: string): DevFnConfig => configureTemplateConsumer(source, operand, { argv: ["env", operand], script: `start ${operand}` });
     try {
       for (const operand of [
         `{page:1,password/*comment*/:"${marker}"}`,
@@ -1357,19 +1221,7 @@ describe("endpoint and template contract", () => {
     const stateDir = path.join(root, "state");
     const marker = "SYNTHETIC_DO_NOT_USE";
     const sources = ["command", "script", "health", "compose-health"] as const;
-    const configure = (source: typeof sources[number], vector: string[]): DevFnConfig => {
-      const config = fixture();
-      if (source === "command") config.processes!.worker.command = ["tool", ...vector];
-      if (source === "script") { config.processes!.worker.adapter = "npm"; config.processes!.worker.script = `start tool ${vector.join(" ")}`; }
-      if (source === "health") config.processes!.worker.health = { type: "command", command: ["tool", ...vector] };
-      if (source === "compose-health") {
-        config.services = { web: { adapter: "compose", service: "web", health: { type: "command", command: ["tool", ...vector] } } };
-        config.profiles.default.services = ["web"];
-        config.profiles.default.processes = [];
-        config.profiles.default.environment = {};
-      }
-      return config;
-    };
+    const configure = (source: typeof sources[number], vector: string[]): DevFnConfig => configureTemplateConsumer(source, vector.join(" "), { argv: ["tool", ...vector] });
     const resolve = (config: DevFnConfig) => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
     try {
       const sensitive = [

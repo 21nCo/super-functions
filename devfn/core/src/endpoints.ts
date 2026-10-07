@@ -44,6 +44,8 @@ export interface EndpointResolution {
 
 const REFERENCE = /\{\{env\.([A-Za-z_][A-Za-z0-9_]*)\}\}/g;
 const SPECIAL_URL_SCHEMES = ["https:", "http:", "wss:", "ws:", "ftp:"] as const;
+const MAX_TEMPLATE_VALUE_BYTES = 64 * 1024;
+const MAX_TEMPLATE_AGGREGATE_BYTES = 2 * 1024 * 1024;
 
 function invalid(field: string, message: string): never {
   throw new DevFnError("DEVFN_RUNTIME_INVALID", `${field}: ${message}`);
@@ -54,7 +56,7 @@ interface CheckedValues {
   checked: Record<string, string>;
 }
 
-function resolveValues(values: Record<string, string>, base: CheckedValues, generated: CheckedValues, field: string): CheckedValues {
+function resolveValues(values: Record<string, string>, base: CheckedValues, generated: CheckedValues, field: string, budget: { remaining: number }): CheckedValues {
   const resolved: Record<string, string> = Object.assign(Object.create(null), base.values);
   const resolvedChecked: Record<string, string> = Object.assign(Object.create(null), base.checked);
   const generatedKeys = new Map(Object.keys(generated.values).map((key) => [key.toUpperCase(), key]));
@@ -64,7 +66,10 @@ function resolveValues(values: Record<string, string>, base: CheckedValues, gene
     if (checkedReferences.has(key)) return;
     if (activeReferences.has(key)) invalid(field, `cyclic reference containing ${key}.`);
     activeReferences.add(key);
-    for (const match of values[key].matchAll(REFERENCE)) if (Object.prototype.hasOwnProperty.call(values, match[1])) checkReferences(match[1]);
+    for (const match of values[key].matchAll(REFERENCE)) {
+      if (match[1] === key && Object.hasOwn(generated.values, key)) continue;
+      if (Object.hasOwn(values, match[1])) checkReferences(match[1]);
+    }
     activeReferences.delete(key);
     checkedReferences.add(key);
   };
@@ -88,7 +93,7 @@ function resolveValues(values: Record<string, string>, base: CheckedValues, gene
       if (reference === key && Object.prototype.hasOwnProperty.call(generated.values, key)) return [generated.values[key], generated.checked[key]];
       if (Object.prototype.hasOwnProperty.call(generated.values, reference)) return [generated.values[reference], generated.checked[reference]];
       return visit(reference);
-    });
+    }, budget);
     visiting.delete(key);
     checked.add(key);
     if (!Object.prototype.hasOwnProperty.call(generated.values, key)) {
@@ -101,7 +106,8 @@ function resolveValues(values: Record<string, string>, base: CheckedValues, gene
   return { values: resolved, checked: resolvedChecked };
 }
 
-function expand(value: string, field: string, lookup: (name: string) => [string, string]): [string, string] {
+function expand(value: string, field: string, lookup: (name: string) => [string, string], budget: { remaining: number }): [string, string] {
+  if (value.length > MAX_TEMPLATE_VALUE_BYTES) invalid(field, "template value exceeds the preflight size limit.");
   // Parse the manifest source only. Referenced values (including opaque owners)
   // are data and must never be parsed as another template.
   const literal = value.replace(REFERENCE, "");
@@ -117,6 +123,18 @@ function expand(value: string, field: string, lookup: (name: string) => [string,
     if (!references.has(key)) references.set(key, lookup(key));
     return references.get(key)!;
   };
+  let expandedSize = value.length;
+  let checkedSize = value.length;
+  for (const match of value.matchAll(REFERENCE)) {
+    const [replacement, checkedReplacement] = resolved(match[1]);
+    expandedSize += replacement.length - match[0].length;
+    checkedSize += checkedReplacement.length - match[0].length;
+    if (expandedSize > MAX_TEMPLATE_VALUE_BYTES || checkedSize > MAX_TEMPLATE_VALUE_BYTES) {
+      invalid(field, "expanded template value exceeds the preflight size limit.");
+    }
+  }
+  budget.remaining -= Math.max(expandedSize, checkedSize);
+  if (budget.remaining < 0) invalid(field, "aggregate expanded templates exceed the preflight size limit.");
   const expanded = value.replace(REFERENCE, (_match, key: string) => resolved(key)[0]);
   if (expanded.includes("\0")) invalid(field, "NUL is not a valid environment or argv value.");
   const checked = value.replace(REFERENCE, (_match, key: string) => resolved(key)[1]);
@@ -471,7 +489,11 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       const longOptionValue = token.match(/^--[A-Za-z][A-Za-z0-9_-]*=(.*)$/)?.[1]
         ?.replace(/^["'`]+|["'`]+$/g, "");
       const attachedAssignment = longOptionValue?.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/);
-      if (attachedAssignment && isCredentialKey(attachedAssignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
+      const forwardingOption = /^--(?:env|build-arg)=/i.test(token);
+      if (attachedAssignment && isCredentialKey(attachedAssignment[1]) &&
+          (forwardingOption || /(?:=|:=|@)/.test(longOptionValue!.slice(attachedAssignment[1].length)))) {
+        invalid(field, "credential-bearing argv must use the secret channel.");
+      }
       if (/^--(?:env|build-arg)$/i.test(token)) {
         const next = tokens[index + 1]?.replace(/^["'`]+|["'`]+$/g, "");
         const assignment = next?.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/);
@@ -652,13 +674,15 @@ export function resolveLocalHostname(configured: string | undefined, key: string
   const budget = ownerLabel ? 63 - ownerLabel.replaceAll("{instance}", "").length : 63;
   if (budget < 22) invalid(`hostnames.${key}`, "hostname has no room for an opaque owner component.");
   const safeOwner = `o-${createHash("sha256").update(ownerId).digest("hex").slice(0, 20)}`;
-  const result = template.replaceAll("{instance}", safeOwner);
+  const result = template.includes("{instance}") ? template.replaceAll("{instance}", safeOwner) :
+    template.replace(/\.localhost$/i, `.${safeOwner}.localhost`);
   if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(result)) invalid(`hostnames.${key}`, `local hostname ${result} must be a concrete .localhost name.`);
   return result;
 }
 
 /** Resolve one selected profile before launch; no process, lease, or filesystem mutation occurs here. */
 export function resolveEndpointTemplates(input: EndpointResolutionInput): EndpointResolution {
+  const budget = { remaining: MAX_TEMPLATE_AGGREGATE_BYTES };
   const { plan, ownerId, ports } = input;
   const config = validateDevFnConfig(input.config);
   if (!ownerId || ownerId.includes("\0")) invalid("ownerId", "must be a non-empty opaque value without NUL.");
@@ -678,6 +702,9 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
   if (plan.proxy) for (const [name, hostname] of Object.entries(config.hostnames ?? {})) {
     if (!hostname.profiles || hostname.profiles.includes(plan.profile)) {
       selectedRouteHostnames.add(resolveLocalHostname(hostname.hostname, name, config.project.id, ownerId, input.hostnameSuffix).toLowerCase());
+      if (hostname.hostname && !hostname.hostname.includes("{instance}")) {
+        selectedRouteHostnames.add(hostname.hostname.replaceAll("{project}", config.project.id).toLowerCase());
+      }
       httpPorts.add(hostname.target);
     }
   }
@@ -722,7 +749,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     }
   }
   const checkedGenerated: CheckedValues = { values: generated, checked: { ...generated, DEVFN_INSTANCE_ID: "devfnopaqueowner" } };
-  const environment = resolveValues(profile.environment ?? {}, checkedGenerated, checkedGenerated, `profiles.${plan.profile}.environment`);
+  const environment = resolveValues(profile.environment ?? {}, checkedGenerated, checkedGenerated, `profiles.${plan.profile}.environment`, budget);
   const nodes: Record<string, ResolvedNodeStartup> = Object.create(null);
   for (const node of plan.nodes) {
     const spec = node.kind === "process" ? config.processes?.[node.name] : config.services?.[node.name];
@@ -762,18 +789,18 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
         }
       }
     }
-    const profileEnvironment = node.kind === "service" ? resolveValues(profile.environment ?? {}, nodeGenerated, nodeGenerated, `profiles.${plan.profile}.environment`) : environment;
+    const profileEnvironment = node.kind === "service" ? resolveValues(profile.environment ?? {}, nodeGenerated, nodeGenerated, `profiles.${plan.profile}.environment`, budget) : environment;
     const nodeEnvironment = resolveValues(spec.env ?? {},
       { values: { ...profileEnvironment.values, ...nativeBind }, checked: { ...profileEnvironment.checked, ...nativeBind } },
-      { values: { ...nodeGenerated.values, ...nativeBind }, checked: { ...nodeGenerated.checked, ...nativeBind } }, `${field}.env`);
+      { values: { ...nodeGenerated.values, ...nativeBind }, checked: { ...nodeGenerated.checked, ...nativeBind } }, `${field}.env`, budget);
     const readinessEnvironment = node.kind === "service" ?
-      resolveValues(spec.env ?? {}, environment, checkedGenerated, `${field}.env`) : nodeEnvironment;
+      resolveValues(spec.env ?? {}, environment, checkedGenerated, `${field}.env`, budget) : nodeEnvironment;
     const lookup = (key: string): [string, string] => {
       if (!Object.prototype.hasOwnProperty.call(nodeEnvironment.values, key)) invalid(field, `missing reference ${key}.`);
       return [nodeEnvironment.values[key], nodeEnvironment.checked[key]];
     };
     const argv = (item: string, location: string): [string, string] => {
-      const [value, checked] = expand(item, location, lookup);
+      const [value, checked] = expand(item, location, lookup, budget);
       if (value.length === 0) invalid(location, "argv value cannot be empty.");
       return [value, checked];
     };
@@ -789,7 +816,7 @@ export function resolveEndpointTemplates(input: EndpointResolutionInput): Endpoi
     };
     const healthPairs = spec.health?.type === "command" ? spec.health.command.map((item, index): [string, string] => {
       const location = `${field}.health.command[${index}]`;
-      const [value, checked] = expand(item, location, healthLookup);
+      const [value, checked] = expand(item, location, healthLookup, budget);
       if (!value.length) invalid(location, "argv value cannot be empty.");
       return [value, checked];
     }) : undefined;

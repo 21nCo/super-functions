@@ -49,11 +49,15 @@ function resolvedHealth(health: HealthCheck | undefined, command: string[] | und
   return health;
 }
 
+function provisionalComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, ownerId: string): Record<string, string[]> {
+  return Object.fromEntries(plan.nodes.filter((node) => node.kind === "service").map((node) =>
+    [node.name, [`${composeProjectName(config.services![node.name].projectName ?? "devfn", ownerId)}_default`]]));
+}
+
 async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, root: string, ownerId: string, ports: Record<string, number>, hostnameSuffix?: string): Promise<ReturnType<typeof resolveEndpointTemplates>> {
   // Validate literals before calling Docker. Provisional defaults are used only
   // for that read-only validation; the result is never published or started.
-  const provisionalNetworks = Object.fromEntries(plan.nodes.filter((node) => node.kind === "service").map((node) =>
-    [node.name, [`${composeProjectName(config.services![node.name].projectName ?? "devfn", ownerId)}_default`]]));
+  const provisionalNetworks = provisionalComposeNetworks(config, plan, ownerId);
   const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks: provisionalNetworks });
   const composeNetworks: Record<string, string[]> = {};
   for (const node of plan.nodes) {
@@ -75,7 +79,8 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
       const spec = { ...processSpec, env: node.environment, command: node.command, script: node.script };
       startup = {
         kind: "process", command: resolveAdapterCommand(spec), cwd: processSpec.cwd ?? ".",
-        environment: Object.entries(createProcessEnvironment(spec, resolved.generated)).sort(([a], [b]) => a.localeCompare(b)),
+        environment: Object.entries(node.environment).sort(([a], [b]) => a.localeCompare(b)),
+        envAllowlist: [...(processSpec.envAllowlist ?? [])].sort(), secretEnv: [...(processSpec.secretEnv ?? [])].sort(),
       };
     } else if (serviceSpec) {
       const spec = { ...serviceSpec, env: node.environment };
@@ -83,7 +88,8 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
       startup = {
         kind: "service", file: serviceSpec.file ?? "compose.yaml", service: serviceSpec.service,
         projectName: serviceSpec.projectName ?? "devfn", ports: serviceSpec.ports ?? {},
-        environment: Object.entries(environment).sort(([a], [b]) => a.localeCompare(b)),
+        environment: Object.entries(node.environment).sort(([a], [b]) => a.localeCompare(b)),
+        envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort(), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort(),
         source: await fingerprintComposeSource(spec, root, resolved.ownerId, environment),
       };
     } else continue;
@@ -146,14 +152,17 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
   let resolved: ReturnType<typeof resolveEndpointTemplates>;
   try {
     const plan = createPlan(config, receipt.profile);
-    if (plan.portNames.length !== receipt.allocations.length || plan.portNames.some((name) => ports[name] === undefined) ||
+    if (plan.portNames.length !== receipt.allocations.length || plan.portNames.some((name) => ports[name] === undefined ||
+      (config.ports?.[name]?.exact === true && config.ports[name].preferred !== ports[name])) ||
       plan.nodes.length !== receipt.processes.length + receipt.services.length ||
       plan.nodes.some((node) => !(node.kind === "process" ? receipt.processes : receipt.services).some((managed) => managed.name === node.name))) return false;
     const loadedPolicy = await loadDevFnPolicy(root, config.policy);
     resolved = await resolveWithComposeNetworks(config, plan, root, receipt.instanceId, ports, loadedPolicy?.policy.hostnameSuffix);
-    const current = await startupFingerprints(config, root, resolved);
-    if (!receipt.startupFingerprints || Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||
-      Object.entries(current).some(([name, fingerprint]) => receipt.startupFingerprints?.[name] !== fingerprint)) return false;
+    if (receipt.startupFingerprints) {
+      const current = await startupFingerprints(config, root, resolved);
+      if (Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||
+        Object.entries(current).some(([name, fingerprint]) => receipt.startupFingerprints?.[name] !== fingerprint)) return false;
+    }
   } catch { return false; }
   const compose = new ComposeController();
   const supervisor = new ProcessSupervisor();
@@ -194,6 +203,9 @@ export class DevFnOrchestrator {
     const requestedStateDir = options.stateDir ?? defaultStateDir();
     const identity = await resolveInstanceIdentity(options.config.project.id, options.root);
     const loadedPolicy = await loadDevFnPolicy(options.root, options.config.policy);
+    // Effective network evidence must reject unreachable sibling references
+    // before state creation. Re-read it under the lifecycle lock after ports
+    // are reserved because the Compose source can change between these steps.
     await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, Object.fromEntries(plan.portNames.map((name) => [name, 1])), loadedPolicy?.policy.hostnameSuffix);
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
     const stateDir = await realpath(requestedStateDir);

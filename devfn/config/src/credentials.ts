@@ -1,6 +1,6 @@
 /** Shared grammar for environment keys, argv flags and URL parameters. */
 const CREDENTIAL_ALIASES = new Set([
-  "accesskey", "accesskeyid", "accesstoken", "apikey", "auth", "authkey", "authorization", "authtoken",
+  "accesskey", "accesskeyid", "accesstoken", "apikey", "apikeys", "auth", "authkey", "authorization", "authtoken",
   "bearer", "clientsecret", "cookie", "cred", "credential", "credentials", "creds", "key", "passwd", "password",
   "pass", "passcode", "passkey", "passphrase", "privatekey", "pwd", "refreshtoken", "secret", "secretkey", "sessionid", "sessiontoken",
   "sig", "signature", "token", "pat", "phpsessid", "xamzcredential", "xamzsignature", "xgoogcredential", "xgoogsignature",
@@ -18,7 +18,7 @@ const COMPACT_QUALIFIERS = new Set([
 // qualifier or a word boundary, so MONKEY and COMPASS remain ordinary names.
 const UNAMBIGUOUS_SUFFIXES = [
   "password", "passwd", "passphrase", "passcode", "passkey", "secret", "token", "credential", "credentials",
-  "apikey", "accesskey",
+  "apikey", "apikeys", "accesskey",
   "secretkey", "accesskeyid",
   "privatekey", "sessionid", "sessiontoken", "authorization",
 ];
@@ -27,7 +27,11 @@ function words(name: string): string[] {
   // Numbered copies of a credential field retain the field's meaning.
   return name.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
-    .split(/[^A-Za-z0-9]+/).map((word) => word.replace(/[0-9]+$/, "").toLowerCase()).filter(Boolean);
+    .split(/[^A-Za-z0-9]+/).map((word) => {
+      let end = word.length;
+      while (end > 0 && word.charCodeAt(end - 1) >= 48 && word.charCodeAt(end - 1) <= 57) end -= 1;
+      return word.slice(0, end).toLowerCase();
+    }).filter(Boolean);
 }
 
 function compactCredential(name: string, qualifiers = 0): boolean {
