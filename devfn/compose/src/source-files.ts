@@ -6,10 +6,13 @@ const MAX_SOURCE_FILES = 128;
 const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 const MAX_TRAVERSALS = 512;
 const MAX_INTERPOLATIONS = 128;
+const MAX_MATERIALIZED_BYTES = 10 * 1024 * 1024;
 
 export interface ComposeSourceInventory {
   service: Record<string, unknown> | null;
   resources: Record<string, unknown>;
+  serviceDirectory: string;
+  interpolationEnvFiles: string[];
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -32,19 +35,60 @@ function envMapping(value: unknown): Record<string, unknown> | null {
   return record(value);
 }
 
+function absoluteEnvFiles(value: unknown, directory: string): unknown {
+  const absolute = (entry: unknown): unknown => {
+    if (typeof entry === "string") return entry.includes("$")
+      ? { path: entry, devfnOrigin: directory } : path.resolve(directory, entry);
+    const descriptor = record(entry);
+    return descriptor && typeof descriptor.path === "string"
+      ? { ...descriptor, path: descriptor.path.includes("$") ? descriptor.path : path.resolve(directory, descriptor.path), devfnOrigin: directory } : entry;
+  };
+  return Array.isArray(value) ? value.map(absolute) : absolute(value);
+}
+
 function mergeService(base: Record<string, unknown>, child: Record<string, unknown>, replace: ReadonlySet<string>): Record<string, unknown> {
   const merged = { ...base };
   for (const [key, value] of Object.entries(child)) {
     const parent = merged[key];
     if (key === "environment" && !replace.has(key)) {
       merged[key] = { ...(envMapping(parent) ?? {}), ...(envMapping(value) ?? {}) };
+    } else if (key === "env_file" && !replace.has(key) && Array.isArray(parent) && Array.isArray(value)) {
+      merged[key] = [...parent, ...value];
     } else if (!replace.has(key) && record(parent) && record(value)) {
-      merged[key] = { ...record(parent), ...record(value) };
+      merged[key] = mergeService(record(parent)!, record(value)!, new Set());
     } else {
       merged[key] = value;
     }
   }
   return merged;
+}
+
+function materializedSize(value: unknown, remaining: number, active = new Set<object>()): number {
+  if (remaining < 0) throw new Error("Compose source graph exceeds the materialization limit");
+  if (typeof value === "string") return Buffer.byteLength(value) + 2;
+  if (value && typeof value === "object") {
+    if (active.has(value)) throw new Error("cyclic Compose source alias");
+    active.add(value);
+  }
+  if (Array.isArray(value)) {
+    let size = 2;
+    for (const item of value) {
+      size += materializedSize(item, remaining - size, active) + 1;
+      if (size > remaining) throw new Error("Compose source graph exceeds the materialization limit");
+    }
+    active.delete(value);
+    return size;
+  }
+  if (record(value)) {
+    let size = 2;
+    for (const [key, item] of Object.entries(record(value)!)) {
+      size += Buffer.byteLength(key) + 3 + materializedSize(item, remaining - size, active);
+      if (size > remaining) throw new Error("Compose source graph exceeds the materialization limit");
+    }
+    active.delete(value as object);
+    return size;
+  }
+  return 8;
 }
 
 export function normalizeComposeRawService(service: Record<string, unknown>): Record<string, unknown> {
@@ -71,7 +115,10 @@ export async function assertComposeSourceGraphBounded(
   const activeServices = new Set<string>();
   const serviceCache = new Map<string, Record<string, unknown> | null>();
   let selectedService: Record<string, unknown> | null = null;
+  let selectedDirectory = path.dirname(sourceFile);
+  let selectedEnvFiles: string[] = [];
   let totalBytes = 0;
+  let materializedBytes = 0;
   let interpolations = 0;
 
   async function interpolateBounded(names: string[], directory: string, envFiles: string[]): Promise<string[]> {
@@ -133,6 +180,8 @@ export async function assertComposeSourceGraphBounded(
     // A compact anchor graph may expand far beyond the source byte budget.
     const data = record(document.toJS({ maxAliasCount: 100 }));
     if (!data) throw new Error("invalid Compose source document");
+    materializedBytes += materializedSize(data, MAX_MATERIALIZED_BYTES - materializedBytes);
+    if (materializedBytes > MAX_MATERIALIZED_BYTES) throw new Error("Compose source graph exceeds the materialization limit");
     const tags = new Map<string, Set<string>>();
     for (const [name, service] of Object.entries(record(data.services) ?? {})) {
       if (!record(service)) continue;
@@ -155,6 +204,12 @@ export async function assertComposeSourceGraphBounded(
     return true;
   }
 
+  function cacheService(key: string, service: Record<string, unknown> | null): void {
+    if (service) materializedBytes += materializedSize(service, MAX_MATERIALIZED_BYTES - materializedBytes);
+    if (materializedBytes > MAX_MATERIALIZED_BYTES) throw new Error("Compose source graph exceeds the materialization limit");
+    serviceCache.set(key, service);
+  }
+
   async function visitService(file: string, name: string, directory: string, envFiles: string[]): Promise<Record<string, unknown> | null> {
     const key = `service\0${file}\0${name}\0${directory}\0${envFiles.join("\0")}`;
     if (activeServices.has(key)) throw new Error("cyclic Compose extends declaration");
@@ -164,8 +219,9 @@ export async function assertComposeSourceGraphBounded(
     const loaded = await load(file);
     const rawService = record(record(loaded.data.services)?.[name]);
     const service = rawService ? normalizeComposeRawService(rawService) : null;
+    if (service?.env_file !== undefined) service.env_file = absoluteEnvFiles(service.env_file, directory);
     if (!service?.extends) {
-      serviceCache.set(key, service);
+      cacheService(key, service);
       activeServices.delete(key);
       return service;
     }
@@ -176,7 +232,7 @@ export async function assertComposeSourceGraphBounded(
       ? path.resolve(directory, (await interpolateBounded([reference.file], directory, envFiles))[0]) : file;
     const base = await visitService(baseFile, reference.service, baseFile === file ? directory : path.dirname(baseFile), envFiles);
     const merged = mergeService(base ?? {}, service, loaded.tags.get(name) ?? new Set());
-    serviceCache.set(key, merged);
+    cacheService(key, merged);
     activeServices.delete(key);
     return merged;
   }
@@ -186,7 +242,11 @@ export async function assertComposeSourceGraphBounded(
     await checkInterpolationFiles(directory, envFiles);
     const { data } = await load(file);
     const candidate = await visitService(file, serviceName, directory, envFiles);
-    if (candidate) selectedService = candidate;
+    if (candidate) {
+      selectedService = candidate;
+      selectedDirectory = directory;
+      selectedEnvFiles = envFiles;
+    }
     const includes = data.include === undefined ? [] : Array.isArray(data.include) ? data.include : [data.include];
     for (const include of includes) {
       const descriptor = typeof include === "string" ? { path: include } : record(include);
@@ -218,16 +278,20 @@ export async function assertComposeSourceGraphBounded(
         const item = await visitService(includedFile, serviceName, projectDirectory, localEnvFiles);
         if (item) merged = mergeService(merged ?? {}, item, loaded.tags.get(serviceName) ?? new Set());
       }
-      if (merged) selectedService = merged;
+      if (merged) {
+        selectedService = merged;
+        selectedDirectory = projectDirectory;
+        selectedEnvFiles = localEnvFiles;
+      }
     }
   }
 
   await visitDocument(sourceFile, path.dirname(sourceFile), []);
   const resources: Record<string, unknown> = {};
   for (const { data } of documents.values()) {
-    for (const kind of ["volumes", "networks", "configs"] as const) {
+    for (const kind of ["volumes", "networks", "configs", "secrets"] as const) {
       resources[kind] = { ...(record(resources[kind]) ?? {}), ...(record(data[kind]) ?? {}) };
     }
   }
-  return { service: selectedService, resources };
+  return { service: selectedService, resources, serviceDirectory: selectedDirectory, interpolationEnvFiles: selectedEnvFiles };
 }

@@ -89,7 +89,7 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
       const spec = { ...processSpec, env: node.environment, command: node.command, script: node.script };
       startup = {
         kind: "process", command: resolveAdapterCommand(spec), cwd: processSpec.cwd ?? ".",
-        exposure: processSpec.exposure ?? "loopback", ports: processSpec.ports ?? [],
+        exposure: processSpec.exposure ?? "local", ports: processSpec.ports ?? [],
         environment: declaredEnvironment,
         envAllowlist: [...(processSpec.envAllowlist ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), secretEnv: [...(processSpec.secretEnv ?? [])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0),
       };

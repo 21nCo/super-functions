@@ -6,11 +6,26 @@ import { promisify } from "node:util";
 import { checkReadinessNow } from "@devfn/processes";
 import { describe, expect, it } from "vitest";
 import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
+import { assertComposeSourceGraphBounded } from "../src/source-files.js";
 
 const execFileAsync = promisify(execFile);
 const MOCK_COMPOSE_HASH = "a".repeat(64);
 
 describe("ComposeController", () => {
+  it("bounds expanded extends ancestors without Docker", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-expanded-"));
+    const source = path.join(root, "compose.yaml");
+    const services = ["  api:\n    extends: step0"];
+    for (let index = 0; index < 490; index += 1) {
+      services.push(`  step${index}:\n    ${index === 489 ? "image: busybox" : `extends: step${index + 1}`}\n    environment:\n      KEY_${index}: ${"x".repeat(256)}`);
+    }
+    try {
+      await writeFile(source, `services:\n${services.join("\n")}\n`);
+      await expect(assertComposeSourceGraphBounded(source, "api", async (names) => names))
+        .rejects.toThrow(/materialization limit/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 10_000);
+
   it("bounds aggregate Compose source bytes before Docker config", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-source-limit-"));
     const spec = { adapter: "compose" as const, service: "api" };

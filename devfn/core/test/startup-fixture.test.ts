@@ -50,6 +50,43 @@ if (process.env.SECRET_TOKEN) console.log(process.env.SECRET_TOKEN);
 `;
 
 describe("real local startup fixtures", () => {
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("keeps env_file secret aliases private through status and replacement", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-envfile-lifecycle-"));
+    const stateDir = path.join(root, "state");
+    const envFile = path.join(root, "service.env");
+    const oldSecret = process.env.CUSTOM;
+    await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n    env_file: service.env\n");
+    await writeFile(envFile, "CUSTOM=${CUSTOM}\nALIAS=prefix-${CUSTOM}\nMODE=10\n");
+    const config = validateDevFnConfig({ version: 1, project: { id: "envfile-lifecycle-fixture" },
+      services: { api: { adapter: "compose", service: "api", envAllowlist: ["CUSTOM"], secretEnv: ["CUSTOM"] } },
+      profiles: { default: { services: ["api"] } } });
+    const orchestrator = new DevFnOrchestrator();
+    process.env.CUSTOM = "10";
+    try {
+      const first = await orchestrator.up({ config, root, stateDir });
+      const inspect = async (id: string): Promise<string[]> => {
+        const result = await execFileAsync("docker", ["inspect", "--format", "{{json .Config.Env}}", id]);
+        return JSON.parse(result.stdout) as string[];
+      };
+      expect(await inspect(first.services[0].containerIds[0])).toEqual(expect.arrayContaining(["CUSTOM=10", "ALIAS=prefix-10", "MODE=10"]));
+      process.env.CUSTOM = "SYNTHETIC_DO_NOT_USE";
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+      expect((await readReceipt(config, root, first.instanceId))?.invocationId).toBe(first.invocationId);
+      await writeFile(envFile, "CUSTOM=${CUSTOM}\nALIAS=prefix-${CUSTOM}\nMODE=11\n");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const next = await orchestrator.up({ config, root, stateDir });
+      expect(next.invocationId).not.toBe(first.invocationId);
+      expect(await inspect(next.services[0].containerIds[0])).toEqual(expect.arrayContaining(["CUSTOM=SYNTHETIC_DO_NOT_USE", "ALIAS=prefix-SYNTHETIC_DO_NOT_USE", "MODE=11"]));
+      expect(JSON.stringify(await readReceipt(config, root, next.instanceId))).not.toContain("SYNTHETIC_DO_NOT_USE");
+    } finally {
+      await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+      if (oldSecret === undefined) delete process.env.CUSTOM;
+      else process.env.CUSTOM = oldSecret;
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("keeps an owned Compose container running when a replacement source is invalid", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-replacement-"));
     const stateDir = path.join(root, "state");
@@ -64,7 +101,8 @@ describe("real local startup fixtures", () => {
       const receipt = await orchestrator.up({ config, root, stateDir });
       containerId = receipt.services[0].containerIds[0];
       await writeFile(source, "services:\n  api: [invalid\n");
-      await expect(orchestrator.up({ config, root, stateDir })).rejects.toThrow();
+      await expect(orchestrator.up({ config, root, stateDir }))
+        .rejects.toMatchObject({ code: "DEVFN_COMPOSE_START_FAILED" });
       const inspection = await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", containerId]);
       expect(inspection.stdout.trim()).toBe("true");
       expect((await readReceipt(config, root, receipt.instanceId))?.invocationId).toBe(receipt.invocationId);
@@ -88,6 +126,8 @@ describe("real local startup fixtures", () => {
     try {
       const receipt = await orchestrator.up({ config, root, stateDir });
       expect(receipt.services).toHaveLength(1);
+      const observed = await execFileAsync("docker", ["inspect", "--format", "{{json .Config.Env}}", receipt.services[0].containerIds[0]]);
+      expect(JSON.parse(observed.stdout) as string[]).toContain("WORK_DIR=/tmp/project");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
     } finally {
       await orchestrator.down({ config, root, stateDir }).catch(() => undefined);

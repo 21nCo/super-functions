@@ -281,7 +281,7 @@ function rejectStructuredCredentialPayload(value: string, field: string): void {
     for (let depth = 0; depth < 3; depth += 1) {
       if (isCredentialKey(key)) invalid(field, "credential-bearing structured argv must use the secret channel.");
       const decoded = key.replace(/\\(?:u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|(.))/g, (_match, unicode: string | undefined, hex: string | undefined, escaped: string | undefined) =>
-        unicode ? String.fromCharCode(parseInt(unicode, 16)) : hex ? String.fromCharCode(parseInt(hex, 16)) : escaped ?? "");
+        unicode ? String.fromCodePoint(Number.parseInt(unicode, 16)) : hex ? String.fromCodePoint(Number.parseInt(hex, 16)) : escaped ?? "");
       if (decoded === key) break;
       key = decoded;
     }
@@ -489,16 +489,16 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       const token = tokens[index].replace(/^["']|["']$/g, "");
       // `env`, `cross-env`, make and shells accept assignment operands with
       // no flag at all. They are still persisted in resolved command plans.
-      const assignmentOperand = token.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=)/);
+      const assignmentOperand = /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=)/.exec(token);
       if (assignmentOperand && isCredentialKey(assignmentOperand[1])) invalid(field, "credential-bearing argv must use the secret channel.");
       // Long options can wrap an environment or build assignment in their
       // attached value. Inspect the value after the option's first '=' with
       // the same key grammar used for bare and split assignment operands.
       // `tokens` already contains the bounded decoded variants, so encoded
       // option delimiters and assignment delimiters take this path too.
-      const longOptionValue = token.match(/^--[A-Za-z][A-Za-z0-9_-]*=(.*)$/)?.[1];
+      const longOptionValue = /^--[A-Za-z][A-Za-z0-9_-]*=(.*)$/.exec(token)?.[1];
       const attachedValue = longOptionValue === undefined ? undefined : trimArgumentQuotes(longOptionValue);
-      const attachedAssignment = attachedValue?.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/);
+      const attachedAssignment = attachedValue === undefined ? undefined : /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/.exec(attachedValue);
       const forwardingOption = /^--(?:env|build-arg)=/i.test(token);
       if (attachedAssignment && isCredentialKey(attachedAssignment[1]) &&
           (forwardingOption || /(?:=|:=|@)/.test(attachedValue!.slice(attachedAssignment[1].length)))) {
@@ -506,7 +506,7 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       }
       if (/^--(?:env|build-arg)$/i.test(token)) {
         const next = tokens[index + 1] === undefined ? undefined : trimArgumentQuotes(tokens[index + 1]);
-        const assignment = next?.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/);
+        const assignment = next === undefined ? undefined : /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@|$)/.exec(next);
         if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
       }
       const short = curlShortValueOption(token);
@@ -516,11 +516,11 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       if (short) {
         const raw = short.attached || tokens[index + 1];
         if (raw !== undefined) for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
-          const assignment = candidate.match(/^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@)/);
+          const assignment = /^([A-Za-z_][A-Za-z0-9_.-]*)(?:=|:=|@)/.exec(candidate);
           if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
         }
       }
-      const certOption = token.match(/^--cert(?:=(.*))?$/i);
+      const certOption = /^--cert(?:=(.*))?$/i.exec(token);
       if (certOption || short?.option === "E") {
         const raw = certOption ? certOption[1] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
         if (raw !== undefined) for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
@@ -533,15 +533,15 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       // curl accepts both -Hname:value and -H name:value, as well as long
       // header options. A short attached header has no word boundary before
       // its name, so the general header scan above cannot identify it.
-      const headerOption = token.match(/^--(?:proxy-)?header(?:=(.*))?$/i);
+      const headerOption = /^--(?:proxy-)?header(?:=(.*))?$/i.exec(token);
       if (headerOption || short?.option === "H") {
         const raw = headerOption ? headerOption[1] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
         if (raw !== undefined) {
-          const name = raw.replace(/["'`]/g, "").trimStart().match(/^([A-Za-z][A-Za-z0-9_-]*)\s*:/)?.[1];
+          const name = /^([A-Za-z][A-Za-z0-9_-]*)\s*:/.exec(raw.replace(/["'`]/g, "").trimStart())?.[1];
           if (name && isCredentialKey(name)) invalid(field, "credential-bearing header must use the secret channel.");
         }
       }
-      const option = token.match(/^(--(?:proxy-)?user(?:name)?|-u|-U)(?:=(.*))?$/i);
+      const option = /^(--(?:proxy-)?user(?:name)?|-u|-U)(?:=(.*))?$/i.exec(token);
       if (option || short?.option === "u" || short?.option === "U") {
         const raw = option ? option[2] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
         if (raw !== undefined) for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, ""))) {
@@ -550,16 +550,16 @@ function rejectCredentialVector(values: readonly string[], field: string): void 
       }
       // Form and query options carry name=value data that may be decoded by
       // the client after DevFn has already persisted the resolved argv.
-      const formOption = token.match(/^(--(?:data(?:-ascii|-binary|-raw|-urlencode)?|form(?:-string)?|url-query)|-[dF])(?:=(.*))?$/i);
+      const formOption = /^(--(?:data(?:-ascii|-binary|-raw|-urlencode)?|form(?:-string)?|url-query)|-[dF])(?:=(.*))?$/i.exec(token);
       if (formOption || short?.option === "d" || short?.option === "F") {
         const raw = formOption ? formOption[2] ?? tokens[index + 1] : short!.attached || tokens[index + 1];
         if (raw === undefined) continue;
         for (const candidate of decodedVariants(raw.replace(/^["']|["']$/g, "").replace(/^\+/, ""))) {
-          const assignment = candidate.match(/^([^=:@\s]+)(?:=|:=|@)/);
+          const assignment = /^([^=:@\s]+)(?:=|:=|@)/.exec(candidate);
           if (assignment && isCredentialKey(assignment[1])) invalid(field, "credential-bearing argv must use the secret channel.");
         }
       }
-      const cookieOption = token.match(/^--cookie(?:=(.*))?$/i);
+      const cookieOption = /^--cookie(?:=(.*))?$/i.exec(token);
       if (cookieOption || short?.option === "b") {
         // Quoted cookie lists may have been split for inspection at spaces.
         const raw = [cookieOption ? cookieOption[1] ?? "" : short!.attached,
