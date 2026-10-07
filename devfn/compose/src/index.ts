@@ -97,6 +97,12 @@ function implicitInterpolationKeys(spec: ComposeServiceSpec): Set<string> {
   return new Set(INHERITED_COMPOSE_ENV_KEYS.filter((key) => !explicit.has(key)));
 }
 
+function interpolationNameEnd(value: string, start: number): number {
+  let end = start + 1;
+  while (end < value.length && /\w/.test(value[end])) end += 1;
+  return end;
+}
+
 function* interpolationTokens(value: string): Generator<{ start: number; end: number; name: string }> {
   let nextClose = -1;
   let noMoreCloses = false;
@@ -107,8 +113,7 @@ function* interpolationTokens(value: string): Generator<{ start: number; end: nu
     const braced = value[index + 1] === "{";
     const start = index + (braced ? 2 : 1);
     if (!/[A-Za-z_]/.test(value[start] ?? "")) { index += 1; continue; }
-    let nameEnd = start + 1;
-    while (nameEnd < value.length && /[A-Za-z0-9_]/.test(value[nameEnd])) nameEnd += 1;
+    const nameEnd = interpolationNameEnd(value, start);
     if (braced && nextClose < nameEnd && !noMoreCloses) {
       nextClose = value.indexOf("}", nameEnd);
       noMoreCloses = nextClose < 0;
@@ -246,21 +251,40 @@ async function selectedConfigFileState(resources: Record<string, unknown>): Prom
   return state;
 }
 
+function quotedEnvInterpolation(value: string, quote: string): string {
+  if (quote === "'") return value.replaceAll("$", () => "$$");
+  let result = "";
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === "\\" && value[index + 1] === "\\") {
+      result += "\\\\";
+      index += 1;
+    } else if (value[index] === "\\" && value[index + 1] === "$") {
+      result += "$$";
+      index += 1;
+    } else result += value[index];
+  }
+  return result;
+}
+
+function closingEnvQuote(line: string, start: number, quote: string): number {
+  for (let cursor = start; cursor < line.length; cursor += 1) {
+    if (line[cursor] === "\\" && cursor + 1 < line.length) { cursor += 1; continue; }
+    if (line[cursor] === quote) return cursor;
+  }
+  return -1;
+}
+
 function quotedEnvFileValue(lines: string[], startLine: number, startCursor: number, quote: string): { value: string; lastLine: number } {
   const parts: string[] = [];
   for (let lineIndex = startLine; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
-    let cursor = lineIndex === startLine ? startCursor : 0;
-    const valueStart = cursor;
-    while (cursor < line.length) {
-      if (line[cursor] === "\\" && cursor + 1 < line.length) { cursor += 2; continue; }
-      if (line[cursor] === quote) {
-        parts.push(line.slice(valueStart, cursor));
-        const rest = line.slice(cursor + 1).trimStart();
-        if (rest && !rest.startsWith("#")) throw new Error("unsupported env_file assignment");
-        return { value: quote === "'" ? "" : parts.join("\n"), lastLine: lineIndex };
-      }
-      cursor += 1;
+    const valueStart = lineIndex === startLine ? startCursor : 0;
+    const close = closingEnvQuote(line, valueStart, quote);
+    if (close >= 0) {
+      parts.push(line.slice(valueStart, close));
+      const rest = line.slice(close + 1).trimStart();
+      if (rest && !rest.startsWith("#")) throw new Error("unsupported env_file assignment");
+      return { value: quotedEnvInterpolation(parts.join("\n"), quote), lastLine: lineIndex };
     }
     parts.push(line.slice(valueStart));
   }
@@ -317,41 +341,60 @@ function envFileAssignments(content: string): Record<string, string> {
   return values;
 }
 
+interface EnvFileDeclaration { path: string; required?: boolean; format?: string; devfnOrigin?: string }
+
+function envFileDeclarations(inventory: ComposeSourceInventory): EnvFileDeclaration[] {
+  const declared = inventory.service?.env_file;
+  let files: unknown[] = [];
+  if (Array.isArray(declared)) files = declared;
+  else if (declared != null) files = [declared];
+  const entries = files.map((entry) => typeof entry === "string"
+    ? { path: entry, required: true, devfnOrigin: inventory.serviceDirectory }
+    : entry as EnvFileDeclaration);
+  if (entries.some((entry) => typeof entry.path !== "string")) throw new Error("invalid env_file path");
+  return entries;
+}
+
+async function resolvedEnvFilePaths(entries: readonly EnvFileDeclaration[], inventory: ComposeSourceInventory,
+  environment: NodeJS.ProcessEnv): Promise<string[]> {
+  const resolved = new Array<string>(entries.length);
+  const byOrigin = new Map<string, number[]>();
+  for (const [index, entry] of entries.entries()) {
+    const origin = entry.devfnOrigin ?? inventory.serviceDirectory;
+    const indices = byOrigin.get(origin) ?? [];
+    indices.push(index);
+    byOrigin.set(origin, indices);
+  }
+  for (const [origin, indices] of byOrigin) {
+    const values = await interpolateComposePaths(indices.map((index) => entries[index].path), origin, environment, inventory.interpolationEnvFiles);
+    for (const [offset, index] of indices.entries()) resolved[index] = path.resolve(origin, values[offset]);
+  }
+  return resolved;
+}
+
+async function readEnvFileContent(filename: string, required: boolean | undefined, remaining: number): Promise<string | undefined> {
+  try {
+    const size = (await stat(filename)).size;
+    if (size > remaining) throw new Error("env_file byte limit");
+    const content = await readFile(filename, "utf8");
+    if (Buffer.byteLength(content) > remaining) throw new Error("env_file byte limit");
+    return content;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" && required === false) return undefined;
+    throw error;
+  }
+}
+
 async function rawEnvFileValues(inventory: ComposeSourceInventory, environment: NodeJS.ProcessEnv, service: string): Promise<Record<string, string>> {
   try {
-    const declared = inventory.service?.env_file;
-    const files = declared == null ? [] : Array.isArray(declared) ? declared : [declared];
-    const entries = files.map((entry) => typeof entry === "string"
-      ? { path: entry, required: true, devfnOrigin: inventory.serviceDirectory }
-      : entry as { path: string; required?: boolean; format?: string; devfnOrigin?: string });
-    if (entries.some((entry) => typeof entry.path !== "string")) throw new Error("invalid env_file path");
-    const resolved = new Array<string>(entries.length);
-    const byOrigin = new Map<string, number[]>();
-    for (const [index, entry] of entries.entries()) {
-      const origin = entry.devfnOrigin ?? inventory.serviceDirectory;
-      const indices = byOrigin.get(origin) ?? [];
-      indices.push(index);
-      byOrigin.set(origin, indices);
-    }
-    for (const [origin, indices] of byOrigin) {
-      const values = await interpolateComposePaths(indices.map((index) => entries[index].path), origin, environment, inventory.interpolationEnvFiles);
-      for (const [offset, index] of indices.entries()) resolved[index] = path.resolve(origin, values[offset]);
-    }
+    const entries = envFileDeclarations(inventory);
+    const resolved = await resolvedEnvFilePaths(entries, inventory, environment);
     const values: Record<string, string> = {};
-    let totalBytes = 0;
+    let remaining = 10 * 1024 * 1024;
     for (const [index, entry] of entries.entries()) {
-      const filename = resolved[index];
-      let content: string;
-      try {
-        const size = (await stat(filename)).size;
-        if (size > 10 * 1024 * 1024 - totalBytes) throw new Error("env_file byte limit");
-        content = await readFile(filename, "utf8");
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT" && entry.required === false) continue;
-        throw error;
-      }
-      totalBytes += Buffer.byteLength(content);
-      if (totalBytes > 10 * 1024 * 1024) throw new Error("env_file byte limit");
+      const content = await readEnvFileContent(resolved[index], entry.required, remaining);
+      if (content === undefined) continue;
+      remaining -= Buffer.byteLength(content);
       if (entry.format !== "raw") Object.assign(values, envFileAssignments(content));
     }
     return values;
@@ -415,16 +458,46 @@ async function composeInterpolationPresence(
   // Compose variable names cannot contain dots or hyphens. Such names can
   // still be environment keys, but placing them in ${...} makes the probe
   // invalid before the valid service is started.
-  const variableNames = [...names].filter((name) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name));
+  const variableNames = [...names].filter((name) => /^[A-Za-z_]\w*$/.test(name));
   if (variableNames.length === 0) return new Map();
-  const scoped = await probeComposeInterpolationPresence(variableNames, inventory.serviceDirectory,
-    inventory.interpolationEnvFiles, environment);
-  if (inventory.serviceDirectory === projectDirectory && inventory.interpolationEnvFiles.length === 0) return scoped;
-  // An included service has its own env-file defaults, but the parent
-  // project environment takes precedence. Probe both scopes without ever
-  // emitting the values, then use the parent presence when it is defined.
-  const parent = await probeComposeInterpolationPresence(variableNames, projectDirectory, [], environment);
-  return new Map(variableNames.map((name) => [name, parent.get(name) ?? scoped.get(name) ?? null]));
+  const scopes = inventory.interpolationScopes.length ? inventory.interpolationScopes
+    : [{ directory: projectDirectory, envFiles: [] }];
+  const presence = new Map<string, boolean | null>();
+  // Compose applies the outer project environment before each included
+  // project's defaults. Probe the selected include ancestry, inner first,
+  // so an outer defined value wins without exposing its bytes.
+  for (const scope of [...scopes].reverse()) {
+    const values = await probeComposeInterpolationPresence(variableNames, scope.directory, scope.envFiles, environment);
+    for (const name of variableNames) {
+      const value = values.get(name);
+      if (value !== null && value !== undefined) presence.set(name, value);
+    }
+  }
+  return presence;
+}
+
+type ComposeConfiguration = { services?: Record<string, Record<string, unknown>> };
+
+async function credentialSafeComposeConfiguration(args: string[], root: string, environment: NodeJS.ProcessEnv,
+  sourceFile: string, inventory: ComposeSourceInventory, rawService: Record<string, unknown>,
+  rawSelectedResources: Record<string, unknown>, secretNames: ReadonlySet<string>, service: string): Promise<ComposeConfiguration> {
+  try {
+    const presence = await composeInterpolationPresence(secretNames, inventory, path.dirname(sourceFile), environment);
+    // Missing variables must stay missing so Compose chooses the same default.
+    // Typed fields use valid sentinels while credential bytes stay out of the digest.
+    const booleanNames = booleanComposeInterpolations(rawService, rawSelectedResources);
+    const masked = [...secretNames].filter((name) => presence.has(name)).map((name) => {
+      let value = "";
+      if (presence.get(name)) value = booleanNames.has(name) ? "true" : "1";
+      return [name, value];
+    });
+    const maskedEnvironment = { ...environment, ...Object.fromEntries(masked) };
+    const output = (await execFileAsync("docker", args, { cwd: root, env: maskedEnvironment,
+      timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
+    return JSON.parse(output) as ComposeConfiguration;
+  } catch {
+    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve credential-safe Compose configuration for ${service}.`);
+  }
 }
 
 /** Fingerprint effective Compose inputs without hashing inherited host or secret values. */
@@ -446,7 +519,7 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   } catch {
     throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve effective Compose configuration for ${spec.service}.`);
   }
-  let configuration: { services?: Record<string, Record<string, unknown>> };
+  let configuration: ComposeConfiguration;
   try {
     configuration = JSON.parse(effective) as typeof configuration;
   } catch {
@@ -476,27 +549,9 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
       ? rawDeclaredEnvironment as Record<string, unknown> : {}),
   };
   assertSelectedInterpolation(rawEnvironment, implicitInterpolationKeys(spec), referencedInterpolation);
-  let safeConfiguration = configuration;
-  if (secretNames.size > 0) {
-    try {
-      const presence = await composeInterpolationPresence(secretNames, inventory, path.dirname(sourceFile), environment);
-      // A missing variable must stay missing so Compose can choose the same
-      // default branch. Typed fields need stable valid sentinels: numeric
-      // ports accept 1, while Boolean service fields require true.
-      const booleanNames = booleanComposeInterpolations(rawService, rawSelectedResources);
-      const masked = [...secretNames].filter((name) => presence.has(name) && presence.get(name) !== null).map((name) => {
-        let value = "";
-        if (presence.get(name)) value = booleanNames.has(name) ? "true" : "1";
-        return [name, value];
-      });
-      const maskedEnvironment = { ...environment, ...Object.fromEntries(masked) };
-      const output = (await execFileAsync("docker", args, { cwd: root, env: maskedEnvironment,
-        timeout: 20_000, maxBuffer: 10 * 1024 * 1024 })).stdout;
-      safeConfiguration = JSON.parse(output) as typeof configuration;
-    } catch {
-      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to resolve credential-safe Compose configuration for ${spec.service}.`);
-    }
-  }
+  const safeConfiguration = secretNames.size > 0
+    ? await credentialSafeComposeConfiguration(args, root, environment, sourceFile, inventory, rawService, rawSelectedResources, secretNames, spec.service)
+    : configuration;
   const safeSelected = safeConfiguration.services?.[spec.service];
   if (!safeSelected) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose service ${spec.service} is absent from the effective configuration.`);
   const { env_file: _safeEnvFiles, environment: _safeEnvironment, ...safeEffectiveService } = safeSelected;
@@ -572,7 +627,7 @@ function directDockerEnvironment(persisted?: Record<string, string>): NodeJS.Pro
 }
 
 function supportedComposeVersion(output: string): boolean {
-  const match = output.match(/(?:^|\D)(\d+)\.(\d+)\.(\d+)(?:\D|$)/);
+  const match = /(?:^|\D)(\d+)\.(\d+)\.(\d+)(?:\D|$)/.exec(output);
   if (!match) return false;
   const actual = match.slice(1, 4).map(Number);
   for (let index = 0; index < MINIMUM_COMPOSE_VERSION.length; index += 1) {
@@ -583,7 +638,9 @@ function supportedComposeVersion(output: string): boolean {
 
 function dockerContainerMissing(error: unknown): boolean {
   const candidate = error as { message?: unknown; stderr?: unknown };
-  const detail = `${typeof candidate.stderr === "string" ? candidate.stderr : ""}\n${typeof candidate.message === "string" ? candidate.message : ""}`;
+  const stderr = typeof candidate.stderr === "string" ? candidate.stderr : "";
+  const message = typeof candidate.message === "string" ? candidate.message : "";
+  const detail = `${stderr}\n${message}`;
   return /no such (?:object|container)/i.test(detail);
 }
 
@@ -594,14 +651,14 @@ function effectivePortBindings(ports: EffectivePort[]): string[] {
     const published = String(port.published ?? "");
     if (!Number.isInteger(port.target) || port.target < 1 || (published !== "" && !/^\d+(?:-\d+)?$/.test(published))) throw new Error("Compose returned an unsupported published port.");
     return `${port.target}/${port.protocol ?? "tcp"}|${port.host_ip || "0.0.0.0"}|${published}`;
-  }).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  }).sort(compareCanonicalKeys);
 }
 
 function containerPortBindings(value: Record<string, Array<{ HostIp: string; HostPort: string }> | null> | null): string[] {
   return Object.entries(value ?? {}).flatMap(([target, bindings]) => {
     if (!bindings) throw new Error("Docker returned an incomplete port binding.");
     return bindings.map((binding) => `${target}|${binding.HostIp || "0.0.0.0"}|${binding.HostPort}`);
-  }).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  }).sort(compareCanonicalKeys);
 }
 
 function bindingsMatch(expected: string[], observed: string[]): boolean {
@@ -613,7 +670,7 @@ function bindingsMatch(expected: string[], observed: string[]): boolean {
   });
   for (const binding of bySpecificity) {
     const [target, host, published] = binding.split("|");
-    const range = published.match(/^(\d+)-(\d+)$/);
+    const range = /^(\d+)-(\d+)$/.exec(published);
     const index = unmatched.findIndex((actual) => {
       const [actualTarget, actualHost, actualPort] = actual.split("|");
       if (target !== actualTarget || host !== actualHost || !/^\d+$/.test(actualPort)) return false;
@@ -725,7 +782,7 @@ export class ComposeController {
         // image and other startup settings that --no-recreate would retain.
         const hashOutput = (await this.run("docker", ["compose", "-p", projectName, "-f", sourceFile, "config", "--hash", input.spec.service],
           { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.trim();
-        const expectedHash = hashOutput.match(/^\S+ ([a-f0-9]{64})$/)?.[1];
+        const expectedHash = /^\S+ ([a-f0-9]{64})$/.exec(hashOutput)?.[1];
         if (!expectedHash || !hashOutput.startsWith(`${input.spec.service} `)) throw new Error("incomplete Compose service hash");
         const actualRows = (await this.run("docker", ["inspect", "--format", '{{ index .Config.Labels "com.docker.compose.config-hash" }}', ...before],
           { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.trim().split("\n");

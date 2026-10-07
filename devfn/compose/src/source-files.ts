@@ -13,6 +13,7 @@ export interface ComposeSourceInventory {
   resources: Record<string, unknown>;
   serviceDirectory: string;
   interpolationEnvFiles: string[];
+  interpolationScopes: Array<{ directory: string; envFiles: string[] }>;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -105,7 +106,7 @@ function* pathInterpolationNames(value: string): Generator<string> {
     const start = index + (value[index + 1] === "{" ? 2 : 1);
     if (!/[A-Za-z_]/.test(value[start] ?? "")) { index += 1; continue; }
     let end = start + 1;
-    while (end < value.length && /[A-Za-z0-9_]/.test(value[end])) end += 1;
+    while (end < value.length && /\w/.test(value[end])) end += 1;
     yield value.slice(start, end);
     index = end;
   }
@@ -127,6 +128,7 @@ export async function assertComposeSourceGraphBounded(
   let selectedService: Record<string, unknown> | null = null;
   let selectedDirectory = path.dirname(sourceFile);
   let selectedEnvFiles: string[] = [];
+  let selectedScopes: ComposeSourceInventory["interpolationScopes"] = [{ directory: selectedDirectory, envFiles: [] }];
   let totalBytes = 0;
   let materializedBytes = 0;
   let interpolations = 0;
@@ -270,7 +272,7 @@ export async function assertComposeSourceGraphBounded(
     return merged;
   }
 
-  async function visitDocument(file: string, directory: string, envFiles: string[]): Promise<void> {
+  async function visitDocument(file: string, directory: string, envFiles: string[], scopes: ComposeSourceInventory["interpolationScopes"]): Promise<void> {
     if (!mark(`document\0${file}\0${directory}\0${envFiles.join("\0")}`)) return;
     await checkInterpolationFiles(directory, envFiles);
     const { data } = await load(file);
@@ -279,26 +281,32 @@ export async function assertComposeSourceGraphBounded(
       selectedService = candidate;
       selectedDirectory = directory;
       selectedEnvFiles = envFiles;
+      selectedScopes = scopes;
     }
-    const includes = data.include === undefined ? [] : Array.isArray(data.include) ? data.include : [data.include];
+    let includes: unknown[] = [];
+    if (Array.isArray(data.include)) includes = data.include;
+    else if (data.include !== undefined) includes = [data.include];
     for (const include of includes) {
       const { includedFiles, projectDirectory, localEnvFiles } = await resolveInclude(file, include, envFiles);
-      for (const includedFile of includedFiles) await visitDocument(includedFile, projectDirectory, localEnvFiles);
+      const childScopes = [...scopes, { directory: projectDirectory, envFiles: localEnvFiles }];
+      for (const includedFile of includedFiles) await visitDocument(includedFile, projectDirectory, localEnvFiles, childScopes);
       const merged = await mergedIncludedService(includedFiles, projectDirectory, localEnvFiles);
       if (merged) {
         selectedService = merged;
         selectedDirectory = projectDirectory;
         selectedEnvFiles = localEnvFiles;
+        selectedScopes = childScopes;
       }
     }
   }
 
-  await visitDocument(sourceFile, path.dirname(sourceFile), []);
+  await visitDocument(sourceFile, path.dirname(sourceFile), [], selectedScopes);
   const resources: Record<string, unknown> = {};
   for (const { data } of documents.values()) {
     for (const kind of ["volumes", "networks", "configs", "secrets"] as const) {
       resources[kind] = { ...(record(resources[kind]) ?? {}), ...(record(data[kind]) ?? {}) };
     }
   }
-  return { service: selectedService, resources, serviceDirectory: selectedDirectory, interpolationEnvFiles: selectedEnvFiles };
+  return { service: selectedService, resources, serviceDirectory: selectedDirectory, interpolationEnvFiles: selectedEnvFiles,
+    interpolationScopes: selectedScopes };
 }

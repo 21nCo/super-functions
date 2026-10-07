@@ -60,7 +60,7 @@ function stringMap(value: unknown, field: string, allowHost = false): Record<str
 }
 
 function environmentKey(key: string, field: string, allowHost = false): void {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) fail(`${field} must be an environment variable name.`, field);
+  if (!/^[A-Za-z_]\w*$/.test(key)) fail(`${field} must be an environment variable name.`, field);
   if (["__proto__", "constructor", "prototype"].includes(key)) fail(`${field} is not a supported environment key.`, field);
   if (key.toUpperCase().startsWith("DEVFN_") || (!allowHost && key.toUpperCase() === "HOST")) fail(`${field} is reserved for DevFn startup.`, field);
 }

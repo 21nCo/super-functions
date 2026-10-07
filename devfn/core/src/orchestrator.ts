@@ -150,6 +150,52 @@ export function resolveAllocationUrls(allocations: readonly PortAllocation[], ro
   return urls;
 }
 
+function selectedProxyRoutes(config: DevFnConfig, plan: LifecyclePlan, instanceId: string, ports: Readonly<Record<string, number>>, suffix: string): Array<Omit<ProxyRoute, "updatedAt">> {
+  if (!plan.proxy) return [];
+  return Object.entries(config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile))
+    .map(([name, spec]) => ({
+      id: `${instanceId}:${name}`, instanceId,
+      hostname: resolveLocalHostname(spec.hostname, name, config.project.id, instanceId, suffix),
+      targetHost: "127.0.0.1", targetPort: ports[spec.target], tls: spec.tls ?? "off",
+    }));
+}
+
+function receiptRoutesMatch(receipt: LifecycleReceipt, expected: readonly Omit<ProxyRoute, "updatedAt">[]): boolean {
+  if (receipt.routes.length !== expected.length) return false;
+  const actual = new Map(receipt.routes.map((route) => [route.id, route]));
+  if (actual.size !== expected.length) return false;
+  return expected.every((route) => {
+    const saved = actual.get(route.id);
+    return saved?.instanceId === route.instanceId && saved.hostname === route.hostname &&
+      saved.targetHost === route.targetHost && saved.targetPort === route.targetPort && saved.tls === route.tls;
+  });
+}
+
+function selectedHttpPorts(config: DevFnConfig, plan: LifecyclePlan): Set<string> {
+  const ports = new Set<string>();
+  for (const node of plan.nodes) {
+    const health = node.kind === "process" ? config.processes?.[node.name]?.health : config.services?.[node.name]?.health;
+    if (health?.type === "http" && health.port) ports.add(health.port);
+  }
+  return ports;
+}
+
+function startupOwners(config: DevFnConfig, receipt: LifecycleReceipt): Record<string, { process?: PortAllocation["process"]; container?: PortAllocation["container"] }> {
+  const owners: Record<string, { process?: PortAllocation["process"]; container?: PortAllocation["container"] }> = {};
+  for (const process of receipt.processes) {
+    for (const name of config.processes?.[process.name]?.ports ?? []) {
+      owners[name] = { process: { pid: process.pid, ...(process.birthSignature ? { birthSignature: process.birthSignature } : {}) } };
+    }
+  }
+  for (const service of receipt.services) {
+    for (const name of Object.keys(config.services?.[service.name]?.ports ?? {})) {
+      owners[name] = { container: { id: service.containerIds[0], name: service.composeService,
+        ...(service.dockerEnvironment !== undefined ? { dockerEnvironment: service.dockerEnvironment } : {}) } };
+    }
+  }
+  return owners;
+}
+
 export async function verifyOwnedLoopbackListeners(processName: string, expected: Array<{ port: number; protocol: "tcp" | "udp" }>, ownerPid: number, scan: ListenerScanResult): Promise<{ port: number; protocol: "tcp" | "udp" } | undefined> {
   const requiredProtocols = new Set<"tcp" | "udp">(expected.length ? expected.map((item) => item.protocol) : ["tcp", "udp"]);
   for (const protocol of requiredProtocols) {
@@ -194,6 +240,8 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
       allocation.host !== (config.ports?.[allocation.service]?.exposure === "public" ? "0.0.0.0" : "127.0.0.1"))) return false;
     const loadedPolicy = await loadDevFnPolicy(root, config.policy);
     resolved = await resolveWithComposeNetworks(config, plan, root, receipt.instanceId, ports, loadedPolicy?.policy.hostnameSuffix);
+    if (!receiptRoutesMatch(receipt, selectedProxyRoutes(config, plan, receipt.instanceId, ports,
+      loadedPolicy?.policy.hostnameSuffix ?? ".localhost"))) return false;
     if (receipt.startupFingerprints) {
       const current = await startupFingerprints(config, root, resolved);
       if (Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||
@@ -256,30 +304,7 @@ export class DevFnOrchestrator {
 
   private async upLocked(options: UpOptions, stateDir: string, identity: InstanceIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>): Promise<LifecycleReceipt> {
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
-    const existing = await readReceipt(options.config, options.root, identity.instanceId);
-    if (existing && existing.state !== "stopped") {
-      assertReceiptStateDir(existing, stateDir);
-      const processStates = await Promise.all(existing.processes.map((item) => new ProcessSupervisor().status(item)));
-      const serviceStates = await Promise.all(existing.services.map((item) => new ComposeController().status(item)));
-      const managedCount = processStates.length + serviceStates.length;
-      const allRunning = managedCount > 0 && processStates.every((state) => state === "running") && serviceStates.every((state) => state === "running");
-      const allReady = allRunning && existing.profile === (options.profile ?? options.config.defaultProfile ?? "default") &&
-        await receiptIsReady(options.config, options.root, existing, processStates, serviceStates);
-      if (existing.state === "ready" && allReady) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
-      // Validate the replacement while the old lifecycle still owns its ports
-      // and containers. A malformed source must never turn a ready service off.
-      const replacementPlan = createPlan(options.config, options.profile);
-      const existingPorts = Object.fromEntries(existing.allocations.map((allocation) => [allocation.service, allocation.port]));
-      const replacementPorts = Object.fromEntries(replacementPlan.portNames.map((name) => [name, existingPorts[name] ?? 1]));
-      const replacement = await resolveWithComposeNetworks(options.config, replacementPlan, options.root, identity.instanceId, replacementPorts, loadedPolicy?.policy.hostnameSuffix);
-      await startupFingerprints(options.config, options.root, replacement);
-      const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
-      if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
-      existing.cleanup = recovered;
-      existing.state = "stopped";
-      existing.updatedAt = new Date().toISOString();
-      await writeReceipt(existing);
-    }
+    await this.prepareExisting(options, stateDir, identity, loadedPolicy, registry);
     await registry.recoverInterrupted(identity.instanceId);
     const plan = createPlan(options.config, options.profile);
     const publicNodes = plan.nodes.filter((node) => node.kind === "process" && options.config.processes?.[node.name]?.exposure === "public").map((node) => node.name);
@@ -337,56 +362,17 @@ export class DevFnOrchestrator {
     try {
       receipt.environmentOutputs = await writeEnvironmentOutputs(options.root, runtimeDir, options.config.environmentOutputs ?? [], environment);
       for (const node of plan.nodes) {
-        if (node.kind === "service") {
-          const spec = options.config.services![node.name];
-          await compose.start({
-            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir, instanceId: identity.instanceId, ports,
-            portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
-            portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.nodes[node.name].environment, readinessEnvironment: resolved.nodes[node.name].readinessEnvironment,
-            onStarted: async (managed) => {
-              receipt.services.push(managed);
-              receipt.startedNodes?.push({ name: node.name, kind: node.kind });
-              receipt.updatedAt = new Date().toISOString();
-              await writeReceipt(receipt);
-            },
-          });
-        } else {
-          const spec = options.config.processes![node.name];
-          const managed = await supervisor.start({
-            name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, command: resolved.nodes[node.name].command, script: resolved.nodes[node.name].script, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir, ports, environment: resolved.generated,
-            onStarted: async (managed) => {
-              receipt.processes.push(managed);
-              receipt.startedNodes?.push({ name: node.name, kind: node.kind });
-              receipt.updatedAt = new Date().toISOString();
-              await writeReceipt(receipt);
-            },
-          });
-          if (options.config.processes![node.name].exposure !== "public") {
-            const expected = (options.config.processes![node.name].ports ?? []).map((name) => ({ name, port: ports[name], protocol: options.config.ports?.[name]?.protocol ?? "tcp" }));
-            await waitForOwnedLoopbackListeners(node.name, expected, managed.pid, options.config.processes![node.name].health?.timeoutMs ?? 120_000);
-          }
-        }
+        await this.startSelectedNode(node, options, identity, receipt, resolved, ports, allocations, supervisor, compose);
         receipt.updatedAt = new Date().toISOString();
         await writeReceipt(receipt);
       }
       if (plan.proxy) {
-        const routes = profileHostnames.map(([name, spec]) => ({
-          id: `${identity.instanceId}:${name}`, instanceId: identity.instanceId,
-          hostname: resolveLocalHostname(spec.hostname, name, options.config.project.id, identity.instanceId, suffix), targetHost: "127.0.0.1", targetPort: ports[spec.target], tls: spec.tls ?? "off",
-        }));
+        const routes = selectedProxyRoutes(options.config, plan, identity.instanceId, ports, suffix);
         receipt.routes = await proxy.upsert(routes);
       }
-      const httpPorts = new Set<string>();
-      for (const node of plan.nodes) {
-        const health = node.kind === "process" ? options.config.processes?.[node.name]?.health : options.config.services?.[node.name]?.health;
-        if (health?.type === "http" && health.port) httpPorts.add(health.port);
-      }
-      receipt.urls = resolveAllocationUrls(allocations, receipt.routes, httpPorts, resolved.directUrls);
-      const owners: Record<string, { process?: PortAllocation["process"]; container?: PortAllocation["container"] }> = {};
-      for (const process of receipt.processes) for (const name of options.config.processes?.[process.name]?.ports ?? []) owners[name] = { process: { pid: process.pid, ...(process.birthSignature ? { birthSignature: process.birthSignature } : {}) } };
-      for (const service of receipt.services) for (const name of Object.keys(options.config.services?.[service.name]?.ports ?? {})) owners[name] = { container: { id: service.containerIds[0], name: service.composeService, ...(service.dockerEnvironment !== undefined ? { dockerEnvironment: service.dockerEnvironment } : {}) } };
+      receipt.urls = resolveAllocationUrls(allocations, receipt.routes, selectedHttpPorts(options.config, plan), resolved.directUrls);
       clearInterval(heartbeat);
-      await registry.markActive(invocationId, owners);
+      await registry.markActive(invocationId, startupOwners(options.config, receipt));
       receipt.state = "ready";
       receipt.updatedAt = new Date().toISOString();
       await writeReceipt(receipt);
@@ -401,6 +387,67 @@ export class DevFnOrchestrator {
       throw new DevFnError("DEVFN_START_FAILED", `DevFn startup failed: ${receipt.error.message}`, { cleanup, causeCode: receipt.error.code });
     } finally {
       clearInterval(heartbeat);
+    }
+  }
+
+  private async prepareExisting(options: UpOptions, stateDir: string, identity: InstanceIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>, registry: FilePortRegistry): Promise<void> {
+    const existing = await readReceipt(options.config, options.root, identity.instanceId);
+    if (existing && existing.state !== "stopped") {
+      assertReceiptStateDir(existing, stateDir);
+      const processStates = await Promise.all(existing.processes.map((item) => new ProcessSupervisor().status(item)));
+      const serviceStates = await Promise.all(existing.services.map((item) => new ComposeController().status(item)));
+      const managedCount = processStates.length + serviceStates.length;
+      const allRunning = managedCount > 0 && processStates.every((state) => state === "running") && serviceStates.every((state) => state === "running");
+      const allReady = allRunning && existing.profile === (options.profile ?? options.config.defaultProfile ?? "default") &&
+        await receiptIsReady(options.config, options.root, existing, processStates, serviceStates);
+      if (existing.state === "ready" && allReady) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
+      // Validate the replacement while the old lifecycle still owns its ports
+      // and containers. A malformed source must never turn a ready service off.
+      const replacementPlan = createPlan(options.config, options.profile);
+      const existingPorts = Object.fromEntries(existing.allocations.map((allocation) => [allocation.service, allocation.port]));
+      const replacementPorts = Object.fromEntries(replacementPlan.portNames.map((name) => [name, existingPorts[name] ?? 1]));
+      const replacement = await resolveWithComposeNetworks(options.config, replacementPlan, options.root, identity.instanceId, replacementPorts, loadedPolicy?.policy.hostnameSuffix);
+      await startupFingerprints(options.config, options.root, replacement);
+      const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
+      if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
+      existing.cleanup = recovered;
+      existing.state = "stopped";
+      existing.updatedAt = new Date().toISOString();
+      await writeReceipt(existing);
+    }
+  }
+
+  private async startSelectedNode(node: LifecyclePlan["nodes"][number], options: UpOptions, identity: InstanceIdentity,
+    receipt: LifecycleReceipt, resolved: ReturnType<typeof resolveEndpointTemplates>, ports: Record<string, number>,
+    allocations: readonly PortAllocation[], supervisor: ProcessSupervisor, compose: ComposeController): Promise<void> {
+    if (node.kind === "service") {
+      const spec = options.config.services![node.name];
+      await compose.start({
+        name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir: receipt.runtimeDir, instanceId: identity.instanceId, ports,
+        portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
+        portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.nodes[node.name].environment, readinessEnvironment: resolved.nodes[node.name].readinessEnvironment,
+        onStarted: async (managed) => {
+          receipt.services.push(managed);
+          receipt.startedNodes?.push({ name: node.name, kind: node.kind });
+          receipt.updatedAt = new Date().toISOString();
+          await writeReceipt(receipt);
+        },
+      });
+      return;
+    }
+    const spec = options.config.processes![node.name];
+    const managed = await supervisor.start({
+      name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, command: resolved.nodes[node.name].command, script: resolved.nodes[node.name].script, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir: receipt.runtimeDir, ports, environment: resolved.generated,
+      onStarted: async (started) => {
+        receipt.processes.push(started);
+        receipt.startedNodes?.push({ name: node.name, kind: node.kind });
+        receipt.updatedAt = new Date().toISOString();
+        await writeReceipt(receipt);
+      },
+    });
+    if (spec.exposure !== "public") {
+      const expected = (spec.ports ?? []).map((name) => ({ name, port: ports[name], protocol: options.config.ports?.[name]?.protocol ?? "tcp" }));
+      await waitForOwnedLoopbackListeners(node.name, expected, managed.pid, spec.health?.timeoutMs ?? 120_000);
     }
   }
 

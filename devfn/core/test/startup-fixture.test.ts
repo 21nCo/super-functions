@@ -49,6 +49,50 @@ await writeFile(process.env.OBSERVED_FILE, JSON.stringify({
 if (process.env.SECRET_TOKEN) console.log(process.env.SECRET_TOKEN);
 `;
 
+it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes when their hostname or TLS changes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "devfn-route-replacement-"));
+  const stateDir = path.join(root, "state");
+  const config = validateDevFnConfig({
+    version: 1, project: { id: "route-fixture" }, ports: { native: {} },
+    processes: { native: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["native"],
+      health: { type: "http", port: "native", timeoutMs: 10_000 }, env: { OBSERVED_FILE: path.join(root, "observed.json") } } },
+    profiles: { default: { processes: ["native"], proxy: true } },
+    hostnames: { native: { target: "native", hostname: "first.localhost", tls: "off" } },
+  });
+  const orchestrator = new DevFnOrchestrator();
+  try {
+    await writeFile(path.join(root, "server.mjs"), serverScript);
+    const first = await orchestrator.up({ config, root, stateDir });
+    expect(first.routes).toHaveLength(1);
+    config.hostnames!.native.hostname = "second.localhost";
+    expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+    const second = await orchestrator.up({ config, root, stateDir });
+    expect(second.invocationId).not.toBe(first.invocationId);
+    expect(second.routes[0].hostname).toContain("second.");
+    expect(second.routes[0].hostname).not.toBe(first.routes[0].hostname);
+    expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+    config.hostnames!.native.target = "missing";
+    expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+    await expect(orchestrator.up({ config, root, stateDir })).rejects.toThrow();
+    expect((await readReceipt(config, root, second.instanceId))?.invocationId).toBe(second.invocationId);
+    config.hostnames!.native.target = "native";
+    expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+    config.hostnames!.native.tls = "internal";
+    expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+    const third = await orchestrator.up({ config, root, stateDir });
+    expect(third.routes[0].tls).toBe("internal");
+    config.profiles.default.proxy = false;
+    expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+    const withoutProxy = await orchestrator.up({ config, root, stateDir });
+    expect(withoutProxy.routes).toEqual([]);
+    expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+  } finally {
+    await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+    await stopFixtureProxy(stateDir);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 60_000);
+
 describe("real local startup fixtures", () => {
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("keeps env_file secret aliases private through status and replacement", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-envfile-lifecycle-"));
@@ -58,7 +102,7 @@ describe("real local startup fixtures", () => {
     const oldProjectSecret = process.env.API_TOKEN;
     await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sh, -c, 'sleep 3600 # ${MODE} ${CUSTOM}']\n    env_file: service.env\n    environment:\n      API_TOKEN: ${API_TOKEN}\n");
     await writeFile(path.join(root, ".env"), "MODE=one\nAPI_TOKEN=private-one\n");
-    await writeFile(envFile, "CUSTOM=${CUSTOM}\nALIAS=prefix-${CUSTOM}\nMODE=10\n");
+    await writeFile(envFile, "CUSTOM=${CUSTOM}\nALIAS=prefix-${CUSTOM}\nMODE=10\nLITERAL=\"\\$HOME\"\nLABEL='one'\n");
     const config = validateDevFnConfig({ version: 1, project: { id: "envfile-lifecycle-fixture" },
       services: { api: { adapter: "compose", service: "api", envAllowlist: ["CUSTOM", "API_TOKEN"], secretEnv: ["CUSTOM", "API_TOKEN"] } },
       profiles: { default: { services: ["api"] } } });
@@ -82,12 +126,17 @@ describe("real local startup fixtures", () => {
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
       const replacedForMode = await orchestrator.up({ config, root, stateDir });
       expect(replacedForMode.invocationId).not.toBe(first.invocationId);
-      await writeFile(envFile, "CUSTOM=${CUSTOM}\nALIAS=prefix-${CUSTOM}\nMODE=11\n");
+      await writeFile(envFile, "CUSTOM=${CUSTOM}\nALIAS=prefix-${CUSTOM}\nMODE=11\nLITERAL=\"\\$HOME\"\nLABEL='one'\n");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
       const next = await orchestrator.up({ config, root, stateDir });
       expect(next.invocationId).not.toBe(replacedForMode.invocationId);
       expect(await inspect(next.services[0].containerIds[0])).toEqual(expect.arrayContaining(["CUSTOM=SYNTHETIC_DO_NOT_USE", "ALIAS=prefix-SYNTHETIC_DO_NOT_USE", "MODE=11"]));
       expect(JSON.stringify(await readReceipt(config, root, next.instanceId))).not.toContain("SYNTHETIC_DO_NOT_USE");
+      await writeFile(envFile, "CUSTOM=${CUSTOM}\nALIAS=prefix-${CUSTOM}\nMODE=11\nLITERAL=\"\\$HOME\"\nLABEL='two'\n");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const quotedEdit = await orchestrator.up({ config, root, stateDir });
+      expect(quotedEdit.invocationId).not.toBe(next.invocationId);
+      expect(await inspect(quotedEdit.services[0].containerIds[0])).toEqual(expect.arrayContaining(["LABEL=two"]));
     } finally {
       await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
       if (oldSecret === undefined) delete process.env.CUSTOM;
@@ -335,6 +384,19 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(observation).toMatchObject({ port: String(receipt.allocations[0].port), url: `http://127.0.0.1:${receipt.allocations[0].port}`, host: "127.0.0.1", devfnHost: "127.0.0.1", mode: "node", profileOnly: "first", inheritedSecretPresent: true });
       expect(observation.argv).toEqual([observation.url, "literal $HOME `id` ; & |", "127.0.0.1", "127.0.0.1"]);
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      if (withProxy) {
+        const hostname = config.hostnames!.native;
+        hostname.tls = hostname.tls === "off" ? "internal" : "off";
+        expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+        hostname.tls = withTls ? "internal" : "off";
+        hostname.hostname = "changed.localhost";
+        expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+        delete hostname.hostname;
+        config.profiles.default.proxy = false;
+        expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+        config.profiles.default.proxy = true;
+        expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      }
       process.env.SECRET_TOKEN = `${secret}-rotated`;
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       process.env.SECRET_TOKEN = secret;

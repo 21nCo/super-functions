@@ -29,7 +29,7 @@ function words(name: string): string[] {
     .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
     .split(/[^A-Za-z0-9]+/).map((word) => {
       let end = word.length;
-      while (end > 0 && word.charCodeAt(end - 1) >= 48 && word.charCodeAt(end - 1) <= 57) end -= 1;
+      while (end > 0 && (word.codePointAt(end - 1) ?? 0) >= 48 && (word.codePointAt(end - 1) ?? 0) <= 57) end -= 1;
       return word.slice(0, end).toLowerCase();
     }).filter(Boolean);
 }
