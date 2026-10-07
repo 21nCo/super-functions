@@ -27,7 +27,7 @@ Depth-first list of `{ label, path }` link leaves (skips separators).
 
 ### `resolveSidebarForRoute({ sidebars, route })`
 
-Returns the **first** sidebar id (alphabetical id order) whose flattened links contain **`route`**, or **`null`**.
+Returns the **first** sidebar id (alphabetical id order, with `default` checked last) whose flattened links contain **`route`**, or **`null`**.
 
 ## Breadcrumbs
 

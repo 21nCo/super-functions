@@ -49,6 +49,7 @@ interface DocsSiteServerState {
 }
 
 let serverStatePromise: Promise<DocsSiteServerState> | null = null;
+const compiledCaches = new WeakMap<DocsManifest, DocsSiteCompiledContentCache>();
 
 function shouldCacheServerState(): boolean {
   return process.env.NODE_ENV !== "development";
@@ -210,6 +211,7 @@ async function createDocsSiteServerState(): Promise<DocsSiteServerState> {
     manifest,
     compatPreset,
   });
+  compiledCaches.set(manifest, compiledCache);
 
   return {
     source: {
@@ -242,21 +244,29 @@ export async function loadDocsSiteSource(): Promise<DocsSiteSource> {
   return state.source;
 }
 
-export async function getCompiledDocsPage(pageId: string): Promise<CompiledContentArtifact> {
-  const state = await loadDocsSiteServerState();
+async function compiledCacheForSource(source?: DocsSiteSource): Promise<DocsSiteCompiledContentCache> {
+  if (!source) return (await loadDocsSiteServerState()).compiledCache;
+  let cache = compiledCaches.get(source.manifest);
+  if (!cache) {
+    cache = createCompiledCache({ manifest: source.manifest, compatPreset: source.compatPreset });
+    compiledCaches.set(source.manifest, cache);
+  }
+  return cache;
+}
+
+export async function getCompiledDocsPage(pageId: string, source?: DocsSiteSource): Promise<CompiledContentArtifact> {
   return getCompiledArtifactOrThrow({
     kind: "page",
     id: pageId,
-    cache: state.compiledCache,
+    cache: await compiledCacheForSource(source),
   });
 }
 
-export async function getCompiledDocsPost(postId: string): Promise<CompiledContentArtifact> {
-  const state = await loadDocsSiteServerState();
+export async function getCompiledDocsPost(postId: string, source?: DocsSiteSource): Promise<CompiledContentArtifact> {
   return getCompiledArtifactOrThrow({
     kind: "post",
     id: postId,
-    cache: state.compiledCache,
+    cache: await compiledCacheForSource(source),
   });
 }
 

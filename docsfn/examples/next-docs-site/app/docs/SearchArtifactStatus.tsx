@@ -49,5 +49,5 @@ export function SearchArtifactStatus() {
     };
   }, []);
 
-  return <p className="docs-example-search-status">{status}</p>;
+  return <p className="docs-example-search-status" role="status">{status}</p>;
 }

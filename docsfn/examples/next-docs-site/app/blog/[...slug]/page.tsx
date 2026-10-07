@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { generateDocsBlogParams, getDocsBlogPostData } from "@docsfn/next";
 import { DocsContent } from "@docsfn/react/DocsContent";
+import { compileReactContent, resolveMarkdownRelativeLinks } from "@docsfn/core";
 import { loadDocsSiteSource } from "@/source.config";
 
 type BlogPageParams = {
@@ -67,9 +68,12 @@ export default async function BlogPostPage(props: {
         </p>
       ) : null}
       <DocsContent
-        content={post.body}
-        sourcePath={post.id}
-        compatPreset={source.compatPreset}
+        compiled={resolveMarkdownRelativeLinks({
+          compiled: compileReactContent({
+            source: post.body, sourcePath: post.id.replace(/^blog:/, ""), compatPreset: source.compatPreset,
+          }),
+          route: post.path, sourcePath: post.id.replace(/^blog:/, ""),
+        })}
       />
     </article>
   );

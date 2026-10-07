@@ -17,6 +17,7 @@ Factory that returns a **`DocsSearchRuntime`** instance.
 | --- | --- | --- |
 | **`artifact`** | `DocsSearchArtifact?` | Inline artifact |
 | **`loadArtifact`** | `() => Promise<DocsSearchArtifact>?` | Lazy loader |
+| **`searchAdapters`** | `DocsSearchEngineAdapter[]?` | Custom engine adapters; defaults to SearchFn. |
 
 Provide either `artifact` or `loadArtifact`. If neither is given, methods throw `DOCS_ARTIFACT_INVALID`.
 
@@ -95,7 +96,8 @@ resolveSearchScopeForRoute(input: {
   route: string;
   kind: DocsSearchDocumentKind;
   routeScopeOverrides?: DocsSearchRouteScopeOverride[];
+  defaultScope?: DocsSearchScope;
 }): DocsSearchScope
 ```
 
-Resolves the effective search scope for a given route. If `routeScopeOverrides` contains a pattern matching the route, the override scope is returned; otherwise the scope is inferred from `kind` (`"page"` → `"docs"`, `"api"` → `"api"`, `"post"` → `"blog"`). Used internally by **`buildSearchIndex`** and available for custom index pipelines.
+Resolves the effective search scope for a given route. If `routeScopeOverrides` contains a pattern matching the route, the override scope is returned; otherwise `defaultScope` is used when supplied, or the scope is inferred from `kind` (`"page"` → `"docs"`, `"api"` → `"api"`, `"post"` → `"blog"`). Used internally by **`buildSearchIndex`** and available for custom index pipelines.

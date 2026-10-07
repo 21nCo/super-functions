@@ -1,7 +1,13 @@
 import { error } from "@sveltejs/kit";
 import { flattenSidebarLinks } from "@docsfn/core";
-import { resolveDocsPageSurface, resolveDocsRouteDataOrThrow } from "@docsfn/sveltekit";
+import { generateStaticParams, resolveDocsPageSurface, resolveDocsRouteDataOrThrow } from "@docsfn/sveltekit";
+import { loadHybridSiteSource } from "../../../lib/server/site-source";
 import type { PageServerLoad } from "./$types";
+
+export const entries = async () => {
+  const { papers } = await loadHybridSiteSource();
+  return generateStaticParams(papers.manifest, { basePath: papers.basePath, includeApiRoutes: false }).map(({ slug }) => ({ slug: slug ?? "" }));
+};
 
 function isRouteNotFoundError(input: unknown): input is { message: string } {
   return (

@@ -12,7 +12,7 @@ description: Filesystem DocsContentProvider for docsfn.
 ```ts
 new FsContentProvider({
   root: string;
-  docsDir?: string;
+  docsDir?: string | string[];
   pagesDir?: string;
   blogDir?: string;
   apiDir?: string;

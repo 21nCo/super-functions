@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { sourceAliases } from "./source-aliases.mjs";
 import { fileURLToPath } from "node:url";
 import { svelte, vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vitest/config";
@@ -14,15 +15,10 @@ export default defineConfig({
   resolve: {
     conditions: ["browser"],
     alias: [
-      { find: "@docsfn/svelte/ApiReferenceRenderer.svelte", replacement: resolve(root, "../../svelte/src/ApiReferenceRenderer.svelte") },
-      { find: "@docsfn/svelte/DocsContent.svelte", replacement: resolve(root, "../../svelte/src/DocsContent.svelte") },
-      { find: "@docsfn/svelte/EmbeddedPage.svelte", replacement: resolve(root, "../../svelte/src/EmbeddedPage.svelte") },
+      ...sourceAliases.filter((alias) => alias.find !== "@uifn/svelte"),
+      // Render unit tests use a minimal UI adapter; the app and the dedicated
+      // DocsFn integration suite exercise the real UiFn components.
       { find: "@uifn/svelte", replacement: resolve(root, "../../svelte/src/test-utils/uifn-svelte-stub.ts") },
-      { find: "@searchfn/client", replacement: resolve(root, "../../../searchfn/client/src/index.ts") },
-      { find: "@searchfn/core", replacement: resolve(root, "../../../searchfn/core/src/index.ts") },
-      { find: "@searchfn/adapter-contracts", replacement: resolve(root, "../../../searchfn/adapter-contracts/src/index.ts") },
-      { find: "@searchfn/adapter-memory", replacement: resolve(root, "../../../searchfn/adapter-memory/src/index.ts") },
-      { find: "@searchfn/adapter-indexeddb", replacement: resolve(root, "../../../searchfn/adapter-indexeddb/src/index.ts") },
     ],
   },
   test: {

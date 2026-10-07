@@ -6,9 +6,48 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { loadDocsConfig } from "@docsfn/core";
 
 const execute = promisify(execFile);
 const cli = fileURLToPath(new URL("../dist/index.js", import.meta.url));
+test("migration publishes referenced media and leaves docs-local private files behind", async () => {
+  const root = await mkdtemp(join(tmpdir(), "docsfn-migration-assets-"));
+  try {
+    const source = join(root, "source"), target = join(root, "target");
+    await mkdir(join(source, "docs/guide"), { recursive: true });
+    await mkdir(join(source, "static"));
+    await writeFile(join(source, "docs/index.md"), '# Docs\n![Diagram](guide/diagram.png)\n[Data](secrets.json)\n');
+    await writeFile(join(source, "docs/guide/diagram.png"), "intended media");
+    await writeFile(join(source, "docs/secrets.json"), "private data");
+    await writeFile(join(source, "docs/.env"), "private settings");
+    await writeFile(join(source, "docs/unused.png"), "unreferenced media");
+    await writeFile(join(source, "static/public.json"), "explicit public asset");
+    await execute(process.execPath, [cli, "migrate", "docusaurus", source, "--out-dir", target]);
+    assert.equal(await readFile(join(target, "static/docs-assets/guide/diagram.png"), "utf8"), "intended media");
+    assert.match(await readFile(join(target, "content/docs/index.md"), "utf8"), /\/docs-assets\/guide\/diagram.png/);
+    for (const file of ["secrets.json", ".env", "unused.png"])
+      await assert.rejects(access(join(target, "static/docs-assets", file)));
+    assert.equal(await readFile(join(target, "static/public.json"), "utf8"), "explicit public asset");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("migration serializes accepted route bases as config data", async () => {
+  const root = await mkdtemp(join(tmpdir(), "docsfn-migration-config-"));
+  try {
+    const source = join(root, "source"), target = join(root, "target");
+    await mkdir(join(source, "docs"), { recursive: true });
+    await writeFile(join(source, "docs/index.md"), "# Docs");
+    const docs = '/docs"quote', changelog = '/changes"quote';
+    await execute(process.execPath, [cli, "migrate", "docusaurus", source, "--out-dir", target,
+      "--docs-base-path", docs, "--changelog-base-path", changelog]);
+    const config = await loadDocsConfig({ cwd: target, configPath: "docsfn.config.migration.ts" });
+    assert.equal(config.site.basePath, docs);
+    assert.equal(config.navigation.topNav[0].href, docs);
+    assert.equal(config.collections.changelog.routeBase, changelog);
+    assert.equal(config.collections.changelog.feedPath, changelog + "/rss.xml");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("migration rejects parent routes before creating output or overwriting outside files", async () => {
   const root = await mkdtemp(join(tmpdir(), "docsfn-migration-safety-"));
   try {

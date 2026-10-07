@@ -42,13 +42,14 @@ Runs pipeline and writes **`.docsfn/`** (or **`--out-dir`**).
 
 ## `docsfn dev [root]`
 
-Initial build + **chokidar** watch on config file + content directories (skips output dir).
+Initial build + **chokidar** watch on project/config and content directories. Only publisher-owned output files and staging files are excluded; content inside an output ancestor remains watched. Every build runs in a fresh worker.
 
 | Flag | Description |
 | --- | --- |
-| **`--root`** / **`--config`** / **`--out-dir`** | Same semantics as `build`. |
+| **`--root`** / **`--config`** / **`--out-dir`** / **`--out`** | Same semantics as `build`. |
+| **`--watch-root <dir>`** | Repeatable dev-only root for external or computed config dependencies. |
 
-**Exit code:** `1` if initial build has errors.
+Build errors keep the watcher alive for recovery. On shutdown, the exit code reflects the latest build diagnostics (`1` for errors, `0` for success).
 
 **Behavior:** Queued rebuilds on change; prints `dev:rebuild` summaries.
 

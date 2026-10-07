@@ -3,6 +3,7 @@ import { access, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
+import { configConditionsPlugin } from "./config-conditions";
 import { z } from "zod";
 import {
   createDiagnostic,
@@ -338,8 +339,7 @@ async function loadConfigModule(configPath: string): Promise<unknown> {
   let pending = configLoads.get(requested);
   if (!pending) {
     pending = (async () => {
-      // Native resolution applies realpath/symlink flags without interpreting
-      // command-line flags or emulating Node's resolver ourselves.
+      // Native resolution applies realpath/symlink flags to the config entry.
       const resolved = createRequire(requested).resolve(requested);
       configWatchPaths.set(requested, [requested, resolved, dirname(requested), dirname(resolved)]);
       const jiti = createJiti(pathToFileURL(resolved).href, {
@@ -354,7 +354,7 @@ async function loadConfigModule(configPath: string): Promise<unknown> {
             parser.plugins = parser.plugins.filter(plugin => plugin !== "importAssertions");
             parser.plugins.push("deprecatedImportAssert");
           },
-        })] } },
+        }), configConditionsPlugin] } },
       });
       const moduleValue = await jiti.import(resolved);
       const candidate = moduleValue && typeof moduleValue === "object" && "default" in moduleValue

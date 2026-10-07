@@ -11,7 +11,7 @@ export const load: PageServerLoad = async ({ params, parent }) => {
     throw error(404, "Post not found");
   }
 
-  const compiled = await getCompiledDocsPost(post.id);
+  const compiled = await getCompiledDocsPost(post.id, source);
 
   return {
     post,

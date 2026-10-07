@@ -36,6 +36,25 @@ function createConfig(root: string, overrides: Partial<DocsConfig> = {}): DocsCo
 }
 
 describe("FsContentProvider", () => {
+  it("includes configured dot-prefixed metadata without publishing hidden content", async () => {
+    const root = await createTempRoot();
+    await mkdir(join(root, "content/docs/guide"), { recursive: true });
+    await mkdir(join(root, "content/docs/.private"));
+    await writeFile(join(root, "content/docs/.meta.json"), '{"pages":["guide"]}');
+    await writeFile(join(root, "content/docs/guide/.meta.json"), '{"pages":["index"]}');
+    await writeFile(join(root, "content/docs/guide/index.md"), "# Guide");
+    await writeFile(join(root, "content/docs/.private/.meta.json"), '{}');
+    await writeFile(join(root, "content/docs/.draft.md"), "# Draft");
+    const provider = new FsContentProvider({ root });
+    const config = createConfig(root);
+    config.content.metaFileName = ".meta.json";
+    const entries = await provider.listEntries({ config, collections: ["docs"] });
+    expect(entries.map((entry) => entry.relativePath).sort()).toEqual([
+      ".meta.json", "guide/.meta.json", "guide/index.md"
+    ]);
+    expect(entries.filter((entry) => entry.entryType === "control")).toHaveLength(2);
+  });
+
   it("loads docs/pages/blog/api/assets and preserves meta.json as control entry", async () => {
     const root = await createTempRoot();
     await mkdir(join(root, "content/docs"), { recursive: true });

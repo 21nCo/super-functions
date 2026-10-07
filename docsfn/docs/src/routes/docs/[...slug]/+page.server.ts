@@ -56,7 +56,7 @@ export const load: PageServerLoad = async ({ params, parent, url }) => {
       route,
       title: api.title,
       description:
-        typeof api.frontmatter.description === "string" ? api.frontmatter.description : undefined,
+        typeof api.frontmatter.description === "string" ? api.frontmatter.description : api.spec.info?.description,
       canonicalPath: route,
       canonicalUrl: buildCanonicalUrl(source.canonicalUrl, route),
       sidebarId: "api",
@@ -99,7 +99,7 @@ export const load: PageServerLoad = async ({ params, parent, url }) => {
 
   const compiled =
     routeEntry.kind === "page"
-      ? await getCompiledDocsPage(routeEntry.page.id)
+      ? await getCompiledDocsPage(routeEntry.page.id, source)
       : undefined;
 
   return {

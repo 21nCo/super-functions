@@ -25,6 +25,9 @@
 {/if}
 {#if data.routeEntry.kind === "page" && data.compiled}
   <article class="docs-page-article">
+    {#if !data.compiled.headings.some((heading) => heading.level === 1)}
+      <h1>{data.surface.title}</h1>
+    {/if}
     <DocsContent compiled={data.compiled}>
       <PageActions slot="page-actions" editLink={data.surface.editLink} />
     </DocsContent>

@@ -39,7 +39,7 @@ Use the same dependency lines with `pnpm add` or `yarn add` as you prefer.
 
 ## Peer dependencies
 
-- **SvelteKit**: `@sveltejs/kit` ^2, `svelte` ^4 or ^5 (match versions required by your Kit release).
+- **SvelteKit**: `@sveltejs/kit` ^2, `svelte` >=5.20.0 <6.
 - **Next.js**: `next`, `react`, and `react-dom` versions supported by your `@docsfn/next` release.
 
 The CLI is usually a **devDependency**; runtime packages belong in `dependencies`.

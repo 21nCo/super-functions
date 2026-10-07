@@ -707,6 +707,52 @@ it.each([['--conditions=development'], ['-C', 'development']])("preserves active
   expect((await loadInFreshProcess({cwd}, [], {NODE_OPTIONS:'--conditions=development'})).site.title).toBe('development');
 });
 
+it.each([
+  { flags: ["--conditions=development"], env: {}, condition: "development" },
+  { flags: ["-C", "development"], env: {}, condition: "development" },
+  { flags: [], env: { NODE_OPTIONS: '--conditions="development space"' }, condition: "development space" },
+  { flags: ["--conditions=development"], env: { NODE_OPTIONS: "--conditions=other" }, condition: "development" },
+])("propagates active conditions through forced TypeScript imports and requires: $condition", async ({ flags, env, condition }) => {
+  const cwd = await createTempDir();
+  await mkdir(join(cwd, "node_modules/settings"), { recursive: true });
+  const branches = { [condition]: { import: "./dev.cjs", require: "./req.cjs" }, default: "./prod.cjs" };
+  await writeFile(join(cwd, "package.json"), JSON.stringify({ type: "module", imports: { "#theme": branches } }));
+  await writeFile(join(cwd, "node_modules/settings/package.json"), JSON.stringify({ name: "settings", exports: branches }));
+  for (const directory of [cwd, join(cwd, "node_modules/settings")]) {
+    await writeFile(join(directory, "dev.cjs"), "module.exports='development';");
+    await writeFile(join(directory, "prod.cjs"), "module.exports='production';");
+    await writeFile(join(directory, "req.cjs"), "module.exports='require';");
+  }
+  await writeFile(join(cwd, "theme.ts"), `import title from '#theme'; namespace Force { export const value=title; }
+    const packageName='settings'; const localName='#theme';
+    export const values=[Force.value,(await import(packageName)).default,require(localName),require('settings')];
+    export const resolved=[import.meta.resolve('#theme'),require.resolve('settings'),module.require('#theme')];`);
+  await writeFile(join(cwd, "docsfn.config.ts"), `import {values,resolved} from './theme.ts'; namespace Force { export const value=values; }
+    if(!resolved[0].endsWith('/dev.cjs') || !resolved[1].endsWith('/req.cjs') || resolved[2]!=='require') throw new Error('wrong resolver conditions');
+    export default {schemaVersion:1,site:{title:Force.value.join('|')},content:{root:'.'}};`);
+  expect((await loadInFreshProcess({ cwd }, flags, env)).site.title).toBe("development|development|require|require");
+});
+
+it.each([[], ["--no-addons"]])("matches native default conditions in transformed modules: %j", async (...args) => {
+  const flags = args.slice(0, -1) as string[];
+  const cwd = await createTempDir();
+  await mkdir(join(cwd, "node_modules/settings"), { recursive: true });
+  await writeFile(join(cwd, "package.json"), JSON.stringify({ type: "module" }));
+  await writeFile(join(cwd, "node_modules/settings/package.json"), JSON.stringify({
+    exports: { "node-addons": "./addons.cjs", "module-sync": "./sync.cjs", default: "./fallback.cjs" },
+  }));
+  for (const name of ["addons", "sync", "fallback"]) {
+    await writeFile(join(cwd, `node_modules/settings/${name}.cjs`), `module.exports=${JSON.stringify(name)};`);
+  }
+  await writeFile(join(cwd, "docsfn.config.ts"), `import selected from 'settings';
+    import {createRequire} from 'node:module'; namespace Force { export const value=selected; }
+    const nativeRequire=createRequire(import.meta.url); const expected=nativeRequire('settings');
+    if(Force.value!==expected) throw new Error('transformed resolution differs from native conditions');
+    export default {schemaVersion:1,site:{title:Force.value},content:{root:'.'}};`);
+  const config = await loadInFreshProcess({ cwd }, flags);
+  expect(config.site.title).toBe(flags.length ? (Reflect.get(process.features, "require_module") === true ? "sync" : "fallback") : "addons");
+});
+
 it.each(['mjs','cjs'])("preserves hashbangs and strict directives in %s configs", async extension => {
   const cwd = await createTempDir();
   await writeFile(join(cwd,'asset.json'), '{}');

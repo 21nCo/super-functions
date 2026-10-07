@@ -41,7 +41,7 @@ cript lang="ts">
 />
 ```
 
-Unknown component names render as a fallback **`data-docsfn-component`** container until you add a mapping.
+Unknown component names throw **`DOCS_COMPONENT_UNRESOLVED`**. Supply a mapping for every component used by the compiled artifact.
 
 ---
 

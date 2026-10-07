@@ -379,6 +379,18 @@ export class FsContentProvider implements DocsContentProvider {
       unique: true,
       suppressErrors: false,
     });
+    if (collection !== "api" && collection !== "assets" && metaFileName.startsWith(".")) {
+      // Include only the explicitly configured control filename. Enabling dot
+      // matching for the content glob would also expose hidden drafts/assets.
+      const controls = await fg(`**/${fg.escapePath(metaFileName)}`, {
+        cwd: absoluteDirectory, absolute: true, onlyFiles: true, dot: true,
+        followSymbolicLinks: false, caseSensitiveMatch: false,
+      });
+      filePaths.push(...controls.filter((file) =>
+        !normalizeProviderPath(file.slice(absoluteDirectory.length + 1))
+          .split("/").slice(0, -1).some((segment) => segment.startsWith("."))
+      ));
+    }
 
     const normalizedSortedPaths = filePaths.sort((left, right) =>
       normalizeProviderPath(left).localeCompare(normalizeProviderPath(right), "en", {

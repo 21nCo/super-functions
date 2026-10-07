@@ -174,6 +174,25 @@ describe("docsfn dogfood site source", () => {
     expect(html).toContain('href="/docs/core-concepts/configuration"');
     expect(html).not.toContain('href="./configuration"');
   });
+
+  it("reuses the parent manifest's compiled content in development", async () => {
+    const previousEnvironment = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      const source = await loadDocsSiteSource();
+      const compiled = await getCompiledDocsPage("docs:api/core/index.md", source);
+      const data = await loadDocsPage({
+        params: { slug: "api/core" },
+        url: new URL("https://docsfn.test/docs/api/core"),
+        parent: async () => ({ source }),
+      } as never);
+      expect(data.compiled).toBe(compiled);
+      expect(data.routeEntry.page).toBe(source.manifest.pages["docs:api/core/index.md"]);
+    } finally {
+      if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnvironment;
+    }
+  });
 });
 
 it('rejects changelog paths that are not mounted by the site', async () => {

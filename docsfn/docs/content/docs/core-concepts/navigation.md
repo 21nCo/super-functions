@@ -76,7 +76,7 @@ next:
 
 - **Object**: `path` or `href` (required), optional `title`.
 
-When either override is set, **both** prev and next come from frontmatter only (missing side means `undefined`).
+Each direction is overridden independently. When only `prev` or `next` is set, the other direction retains its sidebar-derived value.
 
 ## Active page in the sidebar
 

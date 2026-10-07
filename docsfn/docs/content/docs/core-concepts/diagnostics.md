@@ -26,7 +26,7 @@ See also: [CLI](./cli), [Security](./security).
 - **`details`** — Machine-readable context (duplicate route ids, blocked HTML categories, etc.).
 - **`suggestion`** — Optional remediation text.
 
-## Error codes (19 codes)
+## Error codes
 
 | Code | Typical cause |
 | --- | --- |
@@ -41,6 +41,7 @@ See also: [CLI](./cli), [Security](./security).
 | `DOCS_COMPAT_UNSUPPORTED` | Fumadocs compat preset hit unsupported syntax. |
 | `DOCS_COMPONENT_UNRESOLVED` | A PascalCase component used in Markdown has no mapping in the `components` prop. |
 | `DOCS_MDX_COMPILE_FAILED` | MDX/compile pipeline error. |
+| `DOCS_MARKDOWN_DIAGNOSTIC` | MarkdownFn parser or renderer diagnostic. |
 | `DOCS_HTML_UNSAFE` | Blocked tag or pattern in Markdown (or unsafe HTML path). |
 | `DOCS_SEARCH_BUILD_FAILED` | Search artifact could not be built (size limit, internal error). |
 | `DOCS_SEARCH_SCOPE_INVALID` | A `routeScopeOverrides` pattern matched a route but the resolved scope is not in the configured `search.scopes`. |

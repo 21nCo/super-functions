@@ -140,10 +140,14 @@ node docsfn/scripts/release-gate.mjs
 node docsfn/scripts/migration-check.mjs
 ```
 
+The release gate builds the shared SearchFn, MarkdownFn, and UiFn workspace prerequisites
+before DocsFn packages, tests, and sites. No pre-existing `dist` output is required.
+
 ## Reference Examples
 
 - Next.js reference site: `docsfn/examples/next-docs-site`
 - SvelteKit reference site: `docsfn/examples/sveltekit-docs-site`
+- SvelteKit hybrid site: `docsfn/examples/sveltekit-hybrid-site`
 - Example runbook: `docsfn/examples/README.md`
 
 ## Release Checklist
@@ -160,3 +164,8 @@ does not synthesize content or compiler results.
 Sites and build records are isolated by the complete installation, workspace,
 project, and optional environment scope. Compiler error details remain in the
 owning store and are represented to operators only by `hasError`.
+
+Docusaurus migration copies the selected public static directory. From the docs
+directory, it publishes only referenced image, audio, video, and PDF assets;
+configuration, data files, and unreferenced media stay in the source tree. Move
+other intended public downloads into the source static directory before migration.

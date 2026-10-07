@@ -9,7 +9,7 @@ const fromExampleRoot = (...segments) => path.resolve(thisDirectory, ...segments
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-  preprocess: vitePreprocess(),
+  preprocess: vitePreprocess({ script: true }),
   kit: {
     adapter: adapter(),
     prerender: {

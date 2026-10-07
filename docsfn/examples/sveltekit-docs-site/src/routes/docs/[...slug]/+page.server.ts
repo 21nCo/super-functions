@@ -1,6 +1,7 @@
 import { error } from "@sveltejs/kit";
 import { compileSvelteContent, resolveMarkdownRelativeLinks, getTopNavigation, type SidebarItem } from "@docsfn/core";
 import {
+  generateStaticParams,
   resolveDocsPageSurface,
   resolveDocsRouteDataOrThrow,
   type SvelteDocsPageSurface,
@@ -16,6 +17,10 @@ interface FlattenedSidebarLink {
   path: string;
   depth: number;
 }
+
+export const entries = async () => generateStaticParams(
+  (await loadDocsSiteSource()).manifest, { basePath: "/docs" }
+).map(({ slug }) => ({ slug: slug ?? "" }));
 
 function flattenSidebarLinks(
   items: SidebarItem[],

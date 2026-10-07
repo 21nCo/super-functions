@@ -5,7 +5,7 @@ description: The customer-facing docs section with its own sidebar.
 
 # Product Overview
 
-`docsfn` keeps this route in the normal docs collection, so it behaves like a plain markdown page and automatically lands in the `product` sidebar.
+`docsfn` keeps this route in the normal docs collection, so it behaves like a plain markdown page and appears in the default sidebar under the product section.
 
 ## What this section shows
 

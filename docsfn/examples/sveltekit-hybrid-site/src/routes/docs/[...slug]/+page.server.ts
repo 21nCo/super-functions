@@ -1,6 +1,12 @@
 import { error } from "@sveltejs/kit";
-import { resolveDocsPageSurface, resolveDocsRouteDataOrThrow } from "@docsfn/sveltekit";
+import { generateStaticParams, resolveDocsPageSurface, resolveDocsRouteDataOrThrow } from "@docsfn/sveltekit";
+import { loadHybridSiteSource } from "../../../lib/server/site-source";
 import type { PageServerLoad } from "./$types";
+
+export const entries = async () => {
+  const { docs } = await loadHybridSiteSource();
+  return generateStaticParams(docs.manifest, { basePath: docs.basePath, includeApiRoutes: false }).map(({ slug }) => ({ slug: slug ?? "" }));
+};
 
 function isRouteNotFoundError(input: unknown): input is { message: string } {
   return (

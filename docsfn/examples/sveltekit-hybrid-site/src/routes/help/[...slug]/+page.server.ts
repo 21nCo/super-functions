@@ -1,6 +1,10 @@
 import { error } from "@sveltejs/kit";
-import { getStandalonePageByPath } from "../../../lib/server/site-source";
+import { getStandalonePageByPath, loadHybridSiteSource } from "../../../lib/server/site-source";
 import type { PageServerLoad } from "./$types";
+
+export const entries = async () => Object.values((await loadHybridSiteSource()).docs.manifest.pages)
+  .filter((page) => page.path === "/help" || page.path.startsWith("/help/"))
+  .map((page) => ({ slug: page.path.slice("/help".length).replace(/^\//, "") }));
 
 export const load: PageServerLoad = async ({ params, parent }) => {
   const { source } = await parent();

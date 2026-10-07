@@ -11,7 +11,7 @@ description: OpenAPI parsing and CanonicalOpenApiReference in @docsfn/core.
 | --- | --- |
 | **`parseOpenApiSource`** | Detect JSON vs YAML, parse to object, validate top-level shape. |
 | **`normalizeOpenApiReference`** | Transform parsed spec → canonical reference (+ diagnostics for unsupported sections like webhooks). |
-| **`buildOpenApiReference`** | High-level builder used by **`buildManifest`** (`body` string in). |
+| **`buildOpenApiReference`** | Public convenience wrapper around parsing and normalization (`body` string in). `buildManifest` calls those stages directly. |
 | **`resolveOpenApiRoute(reference, route)`** | Classify a path against `reference.routes` (overview, tag, operation, schema). |
 
 ## `CanonicalOpenApiReference` (summary)

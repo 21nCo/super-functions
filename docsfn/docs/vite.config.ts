@@ -1,4 +1,5 @@
 import path from "node:path";
+import { sourceAliases } from "./source-aliases.mjs";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { sveltekit } from "@sveltejs/kit/vite";
@@ -6,24 +7,12 @@ import { defineConfig } from "vite";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const svelteSrc = path.resolve(dirname, "../svelte/src");
-const coreSrc = path.resolve(dirname, "../core/src");
-const uifnSvelteSrc = path.resolve(dirname, "../../uifn/svelte/lib/index.ts");
-const searchfnRoot = path.resolve(dirname, "../../searchfn");
 
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   resolve: {
     alias: [
-      { find: "@docsfn/core/search-runtime", replacement: path.join(coreSrc, "search-runtime.ts") },
-      { find: "@docsfn/core/search", replacement: path.join(coreSrc, "search.ts") },
-      { find: "@docsfn/core/analytics", replacement: path.join(coreSrc, "analytics.ts") },
-      { find: "@docsfn/core/browser", replacement: path.join(coreSrc, "browser.ts") },
-      { find: "@uifn/svelte", replacement: uifnSvelteSrc },
-      { find: "@searchfn/client", replacement: path.join(searchfnRoot, "client/src/index.ts") },
-      { find: "@searchfn/core", replacement: path.join(searchfnRoot, "core/src/index.ts") },
-      { find: "@searchfn/adapter-contracts", replacement: path.join(searchfnRoot, "adapter-contracts/src/index.ts") },
-      { find: "@searchfn/adapter-memory", replacement: path.join(searchfnRoot, "adapter-memory/src/index.ts") },
-      { find: "@searchfn/adapter-indexeddb", replacement: path.join(searchfnRoot, "adapter-indexeddb/src/index.ts") },
+      ...Object.entries(sourceAliases).map(([find, replacement]) => ({ find, replacement })),
       { find: "@site/docs-content", replacement: path.join(svelteSrc, "DocsContent.svelte") },
       { find: "@site/docs-layout", replacement: path.join(svelteSrc, "DocsLayout.svelte") },
       { find: "@site/docs-site-shell", replacement: path.join(svelteSrc, "DocsSiteShell.svelte") },

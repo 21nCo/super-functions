@@ -43,7 +43,7 @@ Only **`watchfn`** is defined as the provider enum today; your **`emit`** callba
 
 ## DNT respect
 
-**`maybeEmitAnalyticsEvent`** checks **`respectDnt`**. When true, it resolves **`navigator.doNotTrack`** / **`window.doNotTrack`** (string `"1"` / `"yes"` semantics) and **skips** emission if the user has DNT enabled.
+**`maybeEmitAnalyticsEvent`** checks **`respectDnt`**. When true, it resolves **`navigator.doNotTrack`** / **`window.doNotTrack`** (string `"1"` enables DNT) and **skips** emission if the user has DNT enabled.
 
 You may pass **`doNotTrackValue`** explicitly in tests or SSR stubs.
 

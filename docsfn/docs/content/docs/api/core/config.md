@@ -23,10 +23,10 @@ Readonly list of filenames tried under `cwd` when no explicit path is given:
 ## `loadDocsConfig(input)`
 
 - **Returns:** `Promise<DocsConfig>`
-- **Behavior:** Discovers a config module, imports it (TypeScript supported via optional `typescript` transpile when native import fails), validates with the internal Zod schema, and returns a typed **`DocsConfig`**. If no file exists, returns **`createDefaultDocsConfig({ cwd })`**.
+- **Behavior:** Discovers a config module, loads it through Jiti (including TypeScript), caches the live export or factory result for the host lifetime, validates with the internal Zod schema, and returns a typed **`DocsConfig`**. If no file exists, returns **`createDefaultDocsConfig({ cwd })`**.
 - **Throws:** **`DocsError`** with code **`DOCS_CONFIG_INVALID`** when the file is missing (explicit path), unloadable, or fails schema validation.
 
-There is **no separate public `validateConfig` export**; validation runs inside **`loadDocsConfig`**. Use **`isDocsConfigError`** to narrow caught errors.
+**`validateDocsConfig(loadedConfig, configPath?)`** validates an already-loaded value and returns **`DocsConfig`**. `validateConfig` is not an export. Use **`isDocsConfigError`** to narrow caught errors. Restart API/framework hosts after changing config dependencies or repairing evaluation errors; CLI dev builds run in fresh workers.
 
 ## `createDefaultDocsConfig({ cwd })`
 

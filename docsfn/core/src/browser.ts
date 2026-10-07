@@ -3,7 +3,7 @@
  *
  * Exports only modules that are safe to import in client-side (browser) code.
  * Does NOT export anything from config.ts, provider.ts, manifest.ts, routing.ts,
- * normalize.ts, rss.ts, blog.ts, openapi.ts, or compile/react.ts — those modules
+ * normalize.ts, rss.ts, blog.ts, or openapi.ts — those modules
  * import node:* APIs and must remain server-only.
  */
 

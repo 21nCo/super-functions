@@ -15,9 +15,11 @@ it("activates real UIFn request and response tabs before rendering payloads", as
   await fireEvent.click(request);
   await waitFor(() => expect(request.getAttribute("aria-selected")).toBe("true"));
   expect(view.getByRole("tabpanel").textContent).toContain("requestField");
+  expect(view.getByRole("tabpanel").textContent).not.toContain("responseField");
   const responses = view.getByRole("tab", { name: "Responses" });
   await fireEvent.click(responses);
   await waitFor(() => expect(responses.getAttribute("aria-selected")).toBe("true"));
   expect(request.getAttribute("aria-selected")).toBe("false");
   expect(view.getByRole("tabpanel").textContent).toContain("responseField");
+  expect(view.getByRole("tabpanel").textContent).not.toContain("requestField");
 });

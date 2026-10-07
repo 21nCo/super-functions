@@ -234,7 +234,7 @@ test("stopping dev terminates an active build process", () =>
     });
   }));
 
-test("declared symlink roots opt into physical package dependencies after retargeting", () =>
+test("declared symlink roots opt into physical package dependencies after settled retargeting", () =>
   fixture(async ({ base, root, start, title }) => {
     const first = join(base, "node_modules/first-settings");
     const second = join(base, "node_modules/second-settings");
@@ -247,9 +247,13 @@ test("declared symlink roots opt into physical package dependencies after retarg
     await fs.writeFile(join(root, "docsfn.config.mjs"), `import title from './shared/title.mjs'; export default ${config("title")};`);
     await start(["--watch-root", "shared"]);
     await title("First");
+    // Output-directory startup events must not accidentally trigger the build
+    // that observes the retargeted link.
+    await sleep(1500);
     await fs.unlink(shared);
     await fs.symlink(second, shared, "dir");
     await title("Second");
+    await sleep(500);
     await fs.writeFile(join(second, "title.mjs"), "export default 'Updated';");
     await title("Updated");
   })

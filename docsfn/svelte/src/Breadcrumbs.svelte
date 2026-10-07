@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Component } from "svelte";
   import type { DocsPageSurface } from "./DocsLayout.svelte";
 
   export interface BreadcrumbItem {
@@ -8,7 +9,7 @@
 
   export let surface: DocsPageSurface | undefined = undefined;
   export let items: BreadcrumbItem[] | undefined = undefined;
-  export let separator: any = undefined;
+  export let separator: Component | undefined = undefined;
 
   $: resolvedItems =
     Array.isArray(items) && items.length > 0

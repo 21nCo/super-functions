@@ -126,6 +126,7 @@ async function createApiProofSource(): Promise<{
 }
 
 afterEach(() => {
+  vi.doUnmock("@/source.config");
   delete process.env.DOCSFN_FIXTURE_ROOT;
   vi.resetModules();
   vi.clearAllMocks();
@@ -181,6 +182,43 @@ describe("Next proof routes", () => {
     expect(html).toContain('data-docsfn-proof-surface="blog"');
     expect(html).toContain('class="docsfn-content"');
     expect(html).not.toContain('class="docs-example-content"');
+  });
+
+  it("resolves blog links and preserves normalized source paths", async () => {
+    const source = await createApiProofSource();
+    source.manifest.posts["blog:entry.md"] = {
+      kind: "post", id: "blog:entry.md", slug: "entry", path: "/blog/entry",
+      title: "Entry", date: "2026-10-01", tags: [], draft: false,
+      body: "[Related](related.md)\n\n```mermaid\ngraph TD; A-->B;\n```", frontmatter: {},
+    };
+    vi.resetModules();
+    vi.doMock("@/source.config", () => ({ loadDocsSiteSource: async () => source }));
+    const module = await import("./app/blog/[...slug]/page.tsx");
+    const html = renderToStaticMarkup(await module.default({ params: Promise.resolve({ slug: ["entry"] }) }));
+    expect(html).toContain('href="/blog/related"');
+    expect(html).toContain('mermaid-entry-md-01');
+  });
+
+  it("generates the optional embedded root from the actual page slug", async () => {
+    const source = await createApiProofSource();
+    source.manifest.pages["docs:index.md"] = {
+      kind: "page", id: "docs:index.md", slug: "", path: "/docs", title: "Home",
+      body: "Root page", frontmatter: {}, headings: [],
+    };
+    source.manifest.embedded = {
+      pageRoutePrefix: "/docs/embedded/page", surfaceRoutePrefix: "/docs/embedded/surface",
+      hasSidebar: false, hasSearchTrigger: false, hasTopNavSlot: false,
+      pages: { root: {
+        pageId: "docs:index.md", sourcePath: "index.md", title: "Home", tocCount: 0,
+        pageRoute: "/docs/embedded/page/index", surfaceRoute: "/docs/embedded/surface/index",
+      } },
+    };
+    vi.resetModules();
+    vi.doMock("@/source.config", () => ({ loadDocsSiteSource: async () => source }));
+    const module = await import("./app/embedded/[[...slug]]/page.tsx");
+    expect(await module.generateStaticParams()).toEqual([{ slug: undefined }]);
+    const html = renderToStaticMarkup(await module.default({ params: Promise.resolve({}) }));
+    expect(html).toContain("Root page");
   });
 
   it("renders embedded proof routes through EmbeddedPage for the datafn fixture", async () => {

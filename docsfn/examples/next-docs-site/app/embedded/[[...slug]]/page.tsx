@@ -10,15 +10,13 @@ export async function generateStaticParams() {
   const source = await loadDocsSiteSource();
   return Object.values(source.manifest.embedded?.pages ?? {})
     .map((entry) => {
-      const suffix = entry.pageRoute
-        .replace(source.manifest.embedded?.pageRoutePrefix ?? "/docs/embedded/page", "")
-        .replace(/^\/+/, "");
+      const suffix = source.manifest.pages[entry.pageId]?.slug ?? "";
       const segments = suffix.length > 0 ? suffix.split("/") : [];
       return {
-        slug: segments,
+        slug: segments.length ? segments : undefined,
       };
     })
-    .sort((left, right) => left.slug.join("/").localeCompare(right.slug.join("/")));
+    .sort((left, right) => (left.slug ?? []).join("/").localeCompare((right.slug ?? []).join("/")));
 }
 
 export default async function EmbeddedPage(props: {

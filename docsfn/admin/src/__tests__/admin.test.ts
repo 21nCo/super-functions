@@ -119,7 +119,7 @@ describe("@docsfn/admin", () => {
   });
 
   it("exposes named typed client methods and common capability methods", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
       ok: true,
       data: { items: [], nextCursor: null },
     }), { status: 200 }));

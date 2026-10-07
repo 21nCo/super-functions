@@ -80,13 +80,13 @@ Derives **`items`** from **`surface.topNav`** when omitted.
 
 ## VersionSwitcher
 
-**Props:** `surface?`, **`versions`**, **`currentVersion`**, **`onVersionChange`**.
+**Props:** `surface?`, **`versions`**, **`currentVersion`**, **`onVersionChange`**, `basePath?`, `versionMode?`.
 
-Default navigation uses **`surface.versionLinks`** or regex rewrite of the first version path segment.
+Default navigation uses **`surface.versionLinks`**, or rewrites the version after `basePath` in `path-prefix` mode and the trailing version in `path-segment` mode.
 
 ## EmbeddedPage
 
-**Props:** `title`, `description?`, `content`, `headings`, `compiled?`, **`compatPreset`**, **`components`**, **`showToc`**, **`tocLabel`**.
+**Props:** `title`, `description?`, `content`, `headings`, `compiled?`, **`compatPreset`**, **`components`**, **`showToc`**, **`tocLabel`**, `route?`, `sourcePath?`. Pass the hosting URL as `route` and the original source path as `sourcePath` when resolving raw Markdown links, especially for index pages.
 
 Delegates body rendering to **`DocsContent`**.
 

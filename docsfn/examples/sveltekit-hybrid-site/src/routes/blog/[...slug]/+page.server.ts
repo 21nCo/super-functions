@@ -1,6 +1,12 @@
 import { error } from "@sveltejs/kit";
-import { getPostDataOrThrow } from "@docsfn/sveltekit";
+import { compileSvelteContent, resolveMarkdownRelativeLinks } from "@docsfn/core";
+import { getDocsCollectionPosts, getPostDataOrThrow } from "@docsfn/sveltekit";
+import { loadHybridSiteSource } from "../../../lib/server/site-source";
 import type { PageServerLoad } from "./$types";
+
+export const entries = async () => getDocsCollectionPosts(
+  "blog", (await loadHybridSiteSource()).docs.manifest
+).map((post) => ({ slug: post.slug }));
 
 function isRouteNotFoundError(input: unknown): input is { message: string } {
   return (
@@ -15,8 +21,14 @@ export const load: PageServerLoad = async ({ params, parent }) => {
   const { source } = await parent();
 
   try {
+    const post = getPostDataOrThrow(params.slug, source.docs.manifest);
+    const sourcePath = post.id.replace(/^blog:/, "");
     return {
-      post: getPostDataOrThrow(params.slug, source.docs.manifest),
+      post,
+      compiled: resolveMarkdownRelativeLinks({
+        compiled: compileSvelteContent({ source: post.body, sourcePath, compatPreset: source.docs.compatPreset }),
+        route: post.path, sourcePath,
+      }),
       compatPreset: source.docs.compatPreset
     };
   } catch (routeError) {

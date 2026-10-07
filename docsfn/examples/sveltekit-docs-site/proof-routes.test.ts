@@ -206,6 +206,19 @@ describe("SvelteKit proof routes", () => {
     expect(document.querySelector(".docs-example-content")).toBeNull();
   });
 
+  it("rejects draft blog routes and compiles public relative links on the server", async () => {
+    const source = await loadFixtureSource("../../test-fixtures/repo/searchfn-docs");
+    const post = Object.values(source.manifest.posts).find((entry) => entry.slug === "alpha")!;
+    source.manifest.posts[post.id] = { ...post, draft: true };
+    const event = { params: { slug: "alpha" }, parent: async () => ({ source }) };
+    await expect(loadBlogPage(event as never)).rejects.toMatchObject({ status: 404 });
+    source.manifest.posts[post.id] = { ...post, body: "[Related](related.md)\n\n```mermaid\ngraph TD; A-->B;\n```" };
+    const data = await loadBlogPage(event as never);
+    expect(data.compiled.blocks.find((block) => block.type === "mermaid")?.id).toBe("mermaid-alpha-mdx-01");
+    render(BlogPage, { data: { ...data, source } });
+    expect(screen.getByRole("link", { name: "Related" }).getAttribute("href")).toBe("/docs/blog/related");
+  });
+
   it("renders embedded proof routes through EmbeddedPage for the datafn fixture", async () => {
     const source = await loadFixtureSource("../../test-fixtures/repo/datafn-docs");
     const data = await loadEmbeddedPage({

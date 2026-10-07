@@ -32,6 +32,19 @@ const sharedSearchRuntimeBuildMatrix = [
   { name: "@searchfn/client", prefix: resolve(repoRoot, "searchfn", "client") },
 ];
 
+// Build workspace exports before DocsFn's compiler and Svelte consumers.
+// React consumers install a released adapter rather than this workspace version.
+const sharedContentRuntimeBuildMatrix = [
+  { name: "@mdfn/core", prefix: resolve(repoRoot, "mdfn", "core") },
+  { name: "@mdfn/extensions", prefix: resolve(repoRoot, "mdfn", "extensions") },
+  { name: "@mdfn/markdown", prefix: resolve(repoRoot, "mdfn", "markdown") },
+  { name: "@mdfn/render", prefix: resolve(repoRoot, "mdfn", "render") },
+  { name: "@uifn/core", prefix: resolve(repoRoot, "uifn", "core") },
+  { name: "@uifn/dom", prefix: resolve(repoRoot, "uifn", "dom") },
+  { name: "@uifn/adapter-kit", prefix: resolve(repoRoot, "uifn", "adapter-kit") },
+  { name: "@uifn/svelte", prefix: resolve(repoRoot, "uifn", "svelte") },
+];
+
 const docsfnPackageBuildMatrix = [
   { name: "@mcpfn/core", prefix: resolve(repoRoot, "mcpfn", "core") },
   { name: "@superfunctions/admin", prefix: resolve(repoRoot, "packages", "admin") },
@@ -49,6 +62,7 @@ const stepOrder = [
   "preflight",
   "docs-contract",
   "shared-search-runtime-builds",
+  "shared-content-runtime-builds",
   "package-builds",
   "package-metadata",
   "tests",
@@ -168,6 +182,7 @@ function createSummary() {
       preflight: null,
       docsContract: null,
       sharedSearchRuntimeBuilds: [],
+      sharedContentRuntimeBuilds: [],
       packageBuilds: [],
       packageMetadata: null,
       tests: [],
@@ -373,6 +388,20 @@ async function runDocsfnPackageBuilds() {
   return builds;
 }
 
+async function runSharedContentRuntimeBuilds() {
+  const builds = [];
+  for (const item of sharedContentRuntimeBuildMatrix) {
+    const args = ["--prefix", item.prefix, "run", "build"];
+    await run("npm", args, { cwd: repoRoot });
+    builds.push({
+      name: item.name,
+      prefix: toRepoRelativePath(item.prefix),
+      command: commandToString("npm", args),
+    });
+  }
+  return builds;
+}
+
 async function runNamedCommands(commands) {
   const results = [];
   for (const item of commands) {
@@ -404,6 +433,11 @@ async function runTestMatrix() {
       id: "admin",
       command: "npm",
       args: ["--prefix", resolve(docsfnRoot, "admin"), "run", "test", "--", "--run"],
+    },
+    {
+      id: "admin-types",
+      command: "npm",
+      args: ["--prefix", resolve(docsfnRoot, "admin"), "run", "typecheck"],
     },
     {
       id: "react-parity",
@@ -570,6 +604,11 @@ async function runExampleBuilds() {
 
   return await runNamedCommands([
     {
+      id: "sveltekit-hybrid",
+      command: "npm",
+      args: ["--prefix", resolve(docsfnRoot, "examples", "sveltekit-hybrid-site"), "run", "build"],
+    },
+    {
       id: "next-searchfn",
       command: "npm",
       args: ["--prefix", nextExamplePrefix, "run", "build"],
@@ -663,6 +702,15 @@ async function main() {
       status: "PASS",
       detail: `built ${sharedSearchRuntimeBuilds.length} shared search runtime packages`,
       commands: sharedSearchRuntimeBuilds.map((build) => build.command),
+    });
+    await writeSummary(summary);
+
+    const sharedContentRuntimeBuilds = await runSharedContentRuntimeBuilds();
+    summary.checks.sharedContentRuntimeBuilds = sharedContentRuntimeBuilds;
+    updateStep(summary, "shared-content-runtime-builds", {
+      status: "PASS",
+      detail: `built ${sharedContentRuntimeBuilds.length} shared content runtime packages`,
+      commands: sharedContentRuntimeBuilds.map((build) => build.command),
     });
     await writeSummary(summary);
 

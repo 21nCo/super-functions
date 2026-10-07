@@ -54,7 +54,7 @@ Tabs blocks use **`DocsTabs`** / **`DocsTab`** (or **`Tabs`** / **`Tab`** with *
 Illustrative structure (place in Markdown as raw HTML-like tags—see compat note below):
 
 ```text
-DocsTabs items="npm,pnpm,yarn"
+DocsTabs items={["npm", "pnpm", "yarn"]}
   DocsTab value="npm"
   npm install @docsfn/core
   /DocsTab

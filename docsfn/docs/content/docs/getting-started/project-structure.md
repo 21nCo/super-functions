@@ -5,13 +5,13 @@ description: Typical directories for a docsfn-powered app and how they map to UR
 
 # Project Structure
 
-Below is a **typical** layout for a SvelteKit (or similar) app using native docsfn content. Names match common `docsfn.config.ts` defaults; yours may differ if you override `content.*` paths.
+Below is a **typical** layout for a SvelteKit (or similar) app using native docsfn content. This layout uses the explicit `content.*` overrides from [Quick Start](./quick-start). Core defaults instead use root-level `blog/`, `pages/`, `api/`, and `public/`, alongside `content/docs/`. A config file is optional when those defaults suffice.
 
 ## Annotated tree
 
 ```text
 my-docs-site/
-├── docsfn.config.ts          # Main docsfn configuration (required)
+├── docsfn.config.ts          # Explicit docsfn configuration
 ├── package.json
 ├── content/
 │   ├── docs/                 # Docs collection → routes under site.basePath (e.g. /docs/...)

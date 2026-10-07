@@ -553,19 +553,23 @@ async function runFreshPipeline(
       killSignal: "SIGKILL"
     });
     let report: DevPipelineReport | undefined;
+    let workerError: Error | undefined;
     child.on("message", (message: any) => {
       if (message?.type === "docsfn.dev.result") report = message.report;
     });
-    child.once("error", reject);
+    // Abort emits an error before close. Settle only after Node has reaped the
+    // worker so dev shutdown cannot leave a live child or an orphan zombie.
+    child.once("error", (error) => { workerError = error; });
     child.once("close", (code, exitSignal) => {
-      if (code === 0 && report) resolve(report);
+      if (workerError) reject(workerError);
+      else if (code === 0 && report) resolve(report);
       else
         reject(new Error(`docsfn build process exited ${code ?? exitSignal} without completing`));
     });
     child.send({ type: "docsfn.dev.build", input }, (error) => {
       if (error) {
+        workerError = error;
         child.kill("SIGKILL");
-        reject(error);
       }
     });
   });
@@ -635,7 +639,14 @@ async function runDevCommand(
   };
   console.log(pc.blue("ℹ Starting docsfn dev..."));
   let activeTargets = new Set(await bootstrapRoots());
-  const watcher = chokidar.watch([...activeTargets], { ignoreInitial: true, ignored });
+  // Watch lexical symlinks themselves, and subscribe to their physical targets
+  // separately. Following links hides replacement of an already-watched link.
+  // Initial enumeration on added roots queues a reconciliation build, covering
+  // edits between the previous build and installation of the new subscription.
+  const watcher = chokidar.watch([...activeTargets], {
+    ignoreInitial: false, followSymlinks: false, ignored
+  });
+  let watcherInitialized = false;
   const controller = new AbortController();
   const pendingPaths = new Set<string>();
   let ready = false,
@@ -649,7 +660,8 @@ async function runDevCommand(
     physicalOutDir = await physicalWatchPath(outDir);
     explicitRoots = await Promise.all(watchRoots.map((root) => physicalWatchPath(path.resolve(cwd, root))));
     if (report.hasConfig) providerDirectories = report.watchDirectories;
-    const nextTargets = new Set([...(await bootstrapRoots()), ...providerDirectories]);
+    const physicalDirectories = await Promise.all(providerDirectories.map(physicalWatchPath));
+    const nextTargets = new Set([...(await bootstrapRoots()), ...providerDirectories, ...physicalDirectories]);
     const removed = [...activeTargets].filter((target) => !nextTargets.has(target));
     const added = [...nextTargets].filter((target) => !activeTargets.has(target));
     if (removed.length) await watcher.unwatch(removed);
@@ -713,7 +725,7 @@ async function runDevCommand(
     }, 100);
   }
   watcher.on("all", (_event, changedPath) => {
-    if (stopped || ignored(changedPath)) return;
+    if (!watcherInitialized || stopped || ignored(changedPath)) return;
     const absolute = path.resolve(changedPath);
     pendingPaths.add(absolute);
     console.log(pc.dim(`Change detected: ${absolute}`));
@@ -740,6 +752,7 @@ async function runDevCommand(
       watcher.once("ready", resolve);
       watcher.once("error", reject);
     });
+    watcherInitialized = true;
     activeBuild = execute("dev:initial", []);
     await activeBuild;
     if (stopped) return;

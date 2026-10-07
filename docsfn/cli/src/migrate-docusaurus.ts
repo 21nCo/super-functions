@@ -90,6 +90,12 @@ interface RedirectRecord {
 }
 
 const MARKDOWN_EXTENSIONS = new Set([".md", ".mdx"]);
+// Docs directories also contain config, credentials and arbitrary private data.
+// Only media explicitly referenced by migrated docs belongs in public assets.
+const DOC_ASSET_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".ico",
+  ".mp3", ".mp4", ".webm", ".ogg", ".wav", ".pdf",
+]);
 const CHANGELOG_DATE_LINE_REGEX =
   /^\s*<div\s+align=["']right["']>\s*\*([^*]+)\*\s*<\/div>\s*$/im;
 const IFRAME_REGEX = /<iframe\b([\s\S]*?)>\s*<\/iframe>/gi;
@@ -954,7 +960,7 @@ const config: DocsConfig = {
   site: {
     title: "Migrated docs",
     description: "Migrated from Docusaurus to docsfn",
-    basePath: "${input.docsBasePath}",
+    basePath: ${JSON.stringify(input.docsBasePath)},
   },
   compat: { preset: "none" },
   content: {
@@ -968,8 +974,8 @@ const config: DocsConfig = {
   },
   navigation: {
     topNav: [
-      { label: "Docs", href: "${input.docsBasePath}" },
-      { label: "Changelog", href: "${input.changelogBasePath}" },
+      { label: "Docs", href: ${JSON.stringify(input.docsBasePath)} },
+      { label: "Changelog", href: ${JSON.stringify(input.changelogBasePath)} },
     ],
     sidebars: {
       docs: { title: "Docs", root: true, include: ["docs/**"] },
@@ -978,8 +984,8 @@ const config: DocsConfig = {
   collections: {
     changelog: {
       dir: "content/changelog",
-      routeBase: "${input.changelogBasePath}",
-      feedPath: "${input.changelogBasePath}/rss.xml",
+      routeBase: ${JSON.stringify(input.changelogBasePath)},
+      feedPath: ${JSON.stringify(joinRoute(input.changelogBasePath, "rss.xml"))},
       label: "Changelog",
       scope: "changelog",
     },
@@ -1068,7 +1074,7 @@ ${warnings}
 `;
 }
 
-function rewriteColocatedAssets(source: string, record: ContentRecord): string {
+function rewriteColocatedAssets(source: string, record: ContentRecord, assets: Set<string>): string {
   if (record.kind !== "doc") return source;
   const docsRoot = path.resolve(
     path.dirname(record.sourcePath),
@@ -1084,7 +1090,7 @@ function rewriteColocatedAssets(source: string, record: ContentRecord): string {
     if (
       relative.startsWith("..") ||
       path.isAbsolute(relative) ||
-      MARKDOWN_EXTENSIONS.has(path.extname(target))
+      !DOC_ASSET_EXTENSIONS.has(path.extname(target).toLowerCase())
     )
       return href;
     try {
@@ -1097,6 +1103,7 @@ function rewriteColocatedAssets(source: string, record: ContentRecord): string {
     } catch {
       return href;
     }
+    assets.add(target);
     return `/docs-assets/${normalizePath(relative).split("/").map(encodeURIComponent).join("/")}${suffix}`;
   };
   return source
@@ -1114,13 +1121,14 @@ async function copyContentRecords(input: {
   output: MigrationOutput;
   records: ContentRecord[];
   warnings?: string[];
+  assets: Set<string>;
   dryRun?: boolean;
 }): Promise<number> {
   let copied = 0;
   for (const record of input.records) {
     const source = await fs.readFile(record.sourcePath, "utf8");
     const transformed = transformYouTubeIframes({
-      source: rewriteColocatedAssets(source, record),
+      source: rewriteColocatedAssets(source, record, input.assets),
       relativePath: record.relativePath,
       warnings: input.warnings,
     });
@@ -1320,19 +1328,23 @@ export async function migrateDocusaurus(input: DocusaurusMigrateOptions): Promis
     }
   }
 
+  const docAssets = new Set<string>();
   const docsCopied = await copyContentRecords({
+    assets: docAssets,
     output,
     records: docRecords,
     warnings,
     dryRun: input.dryRun,
   });
   const pagesCopied = await copyContentRecords({
+    assets: docAssets,
     output,
     records: pageRecords,
     warnings,
     dryRun: input.dryRun,
   });
   const changelogCopied = await copyContentRecords({
+    assets: docAssets,
     output,
     records: changelogRecords,
     warnings,
@@ -1348,7 +1360,7 @@ export async function migrateDocusaurus(input: DocusaurusMigrateOptions): Promis
     output,
     sourceDir: docsDir,
     targetDir: path.join(targetStaticDir, "docs-assets"),
-    filter: (file) => !MARKDOWN_EXTENSIONS.has(path.extname(file)),
+    filter: (file) => docAssets.has(file),
     dryRun: input.dryRun,
   });
 

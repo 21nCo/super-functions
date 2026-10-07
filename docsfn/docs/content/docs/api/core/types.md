@@ -45,7 +45,7 @@ description: Primary TypeScript types exported from @docsfn/core.
 
 ## Errors
 
-**`DocsErrorCode`** — string union of all 17 **`DOCS_*`** codes (see **[Diagnostics](./diagnostics)**).
+**`DocsErrorCode`** — string union of canonical **`DOCS_*`** codes (see **[Diagnostics](./diagnostics)**).
 
 **`DocsDiagnostic`** — `code`, `severity`, `message`, optional `location`, `details`, `suggestion`.
 

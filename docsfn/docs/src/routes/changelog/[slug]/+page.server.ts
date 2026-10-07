@@ -11,7 +11,7 @@ export const load: PageServerLoad = async ({ params, parent, url }) => {
     throw error(404, "Changelog entry not found");
   }
 
-  const compiled = await getCompiledDocsPost(post.id);
+  const compiled = await getCompiledDocsPost(post.id, source);
 
   return {
     embed: resolveEmbedMode(url),

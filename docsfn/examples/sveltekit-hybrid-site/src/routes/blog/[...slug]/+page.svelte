@@ -14,9 +14,7 @@
   {/if}
 
   <DocsContent
-    content={data.post.body}
-    sourcePath={data.post.id}
-    compatPreset={data.compatPreset}
+    compiled={data.compiled}
   />
 </article>
 

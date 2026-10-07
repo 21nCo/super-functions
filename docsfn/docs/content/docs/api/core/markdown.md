@@ -40,14 +40,14 @@ Parses raw Markdown and returns an array of **`DocHeading`** objects (`{ level, 
 
 | `type` | Payload |
 | --- | --- |
-| `heading` | `level`, `text`, `slug`. |
-| `paragraph` | `text`. |
+| `heading` | `level`, `text`, `slug`, `html`. |
+| `paragraph` | `text`, `html`. |
 | `list` | `ordered`, `items[]` (each `{ text }`), `html`. |
 | `code` | `lang?`, `code`. |
-| `mermaid` | `code` (diagram source). |
-| `tabs` | `items`, `tabs[]` with `value` + `content`. |
-| `callout` | `kind`: note \| tip \| warning \| info \| caution; `text`. |
+| `mermaid` | `id` (anchor), `code` (diagram source). |
+| `tabs` | `items`, `tabs[]` with `value`, `label`, `content`, and compiled `nodes`. |
+| `callout` | `kind`: note \| tip \| warning \| info \| caution; `text`, `html`. |
 | `table` | `html` (rendered HTML table). |
-| `component` | `name`, optional `body`, `selfClosing`. |
+| `component` | `name`, `props`, `source`, `children`, optional `body`, `selfClosing`. |
 
 Fumadocs preset may rewrite `Tabs`/`Tab` imports to docsfn component names before parsing.

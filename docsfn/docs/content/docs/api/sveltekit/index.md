@@ -60,7 +60,7 @@ Supporting types: **`DocsPageLink`**, **`DocsPageBreadcrumbItem`**, **`DocsPageP
 
 ## Loader wrappers (`load*`)
 
-Thin wrappers mapping errors to SvelteKit **`error(404, ...)`**:
+Thin delegates to the corresponding `*OrThrow` getter; a miss throws **`DOCS_ROUTE_NOT_FOUND`** unchanged. Use the load factories below for SvelteKit HTTP 404 mapping:
 
 - **`loadPageData`**, **`loadVersionedPageData`**, **`loadPostData`**, **`loadCollectionPostData`**, **`loadApiData`**
 

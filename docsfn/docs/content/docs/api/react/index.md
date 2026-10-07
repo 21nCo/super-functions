@@ -14,8 +14,10 @@ npm install @docsfn/react
 ## Peer dependencies
 
 - **`react`** — UI components are React function components.
-- **`@docsfn/core`** — types and runtime (`DocPage`, `Sidebar`, `ApiReference`, search runtime, markdown compile helpers, etc.).
-- **`@uifn/react`** — primitives used by search, sidebar collapsibles, scroll areas, and menus.
+- **`react-dom`** — React DOM rendering.
+- **`@searchfn/client`** — optional peer for the default search adapter.
+
+**`@docsfn/core`** and **`@uifn/react`** are regular dependencies, installed with the package.
 
 Ensure your bundler resolves **`@uifn/react`** and applies the same React instance as your app.
 
