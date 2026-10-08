@@ -1,0 +1,30 @@
+devfn/cli/SECURITY.md
+  h_bdc5b81c173ee9 12
+devfn/config/src/schema.ts
+  h_bdc5b81c173ee9 249,251,383-384
+devfn/config/test/config.test.ts
+  h_bdc5b81c173ee9 133-135
+devfn/config/test/domain-routes.test.ts
+  h_bdc5b81c173ee9 28-29
+devfn/core/src/identity.ts
+  h_bdc5b81c173ee9 29-32,49-50
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 386-389
+devfn/core/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 1,15-47,99
+devfn/core/test/identity.test.ts
+  h_bdc5b81c173ee9 2,8,24,27-38,53-61
+devfn/docs/configuration.md
+  h_bdc5b81c173ee9 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3533737184c9b626aacaf800b991b6c73b29d39c",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
