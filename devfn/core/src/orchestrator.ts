@@ -4,7 +4,7 @@ import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, type ManagedComposeService } from "@devfn/compose";
+import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, selectedComposeEndpointReferences, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, isCredentialKey, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
@@ -54,11 +54,23 @@ function provisionalComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, ow
     [node.name, [`${composeProjectName(config.services![node.name].projectName ?? "devfn", ownerId)}_default`]]));
 }
 
-function needsNetworkPreflight(config: DevFnConfig): boolean {
+async function needsNetworkPreflight(config: DevFnConfig, plan: LifecyclePlan, root: string, ownerId: string,
+  ports: Record<string, number>, hostnameSuffix?: string): Promise<boolean> {
   // A selected sibling URL reference must fail before creating lifecycle state.
   // Without one, pure template validation is enough here; the locked pass
   // below still reads effective Compose networks before startup or publication.
-  return JSON.stringify(config).includes("{{env.DEVFN_URL_");
+  if (JSON.stringify(config).includes("{{env.DEVFN_URL_")) return true;
+  const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix,
+    composeNetworks: provisionalComposeNetworks(config, plan, ownerId) });
+  const deadline = Date.now() + 20_000;
+  for (const node of plan.nodes) {
+    if (node.kind !== "service") continue;
+    const spec = config.services![node.name];
+    const selected = provisional.nodes[node.name].environment;
+    const environment = createComposeEnvironment({ ...spec, env: selected }, selected);
+    if ((await selectedComposeEndpointReferences(spec, root, environment, deadline)).size) return true;
+  }
+  return false;
 }
 
 async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, root: string, ownerId: string, ports: Record<string, number>, hostnameSuffix?: string): Promise<ReturnType<typeof resolveEndpointTemplates>> {
@@ -67,14 +79,17 @@ async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePl
   const provisionalNetworks = provisionalComposeNetworks(config, plan, ownerId);
   const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks: provisionalNetworks });
   const composeNetworks: Record<string, string[]> = {};
+  const composeReferences: Record<string, Set<string>> = {};
   const deadline = Date.now() + 20_000;
   for (const node of plan.nodes) {
     if (node.kind !== "service") continue;
     const spec = config.services![node.name];
     const environment = createComposeEnvironment({ ...spec, env: provisional.nodes[node.name].environment }, provisional.nodes[node.name].environment);
-    composeNetworks[node.name] = await effectiveComposeServiceNetworks({ ...spec, env: provisional.nodes[node.name].environment }, root, ownerId, environment, deadline);
+    const references = new Set<string>();
+    composeNetworks[node.name] = await effectiveComposeServiceNetworks({ ...spec, env: provisional.nodes[node.name].environment }, root, ownerId, environment, deadline, references);
+    composeReferences[node.name] = references;
   }
-  return resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks });
+  return resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks, composeReferences });
 }
 
 function compareCodepoint(left: string, right: string): number {
@@ -293,7 +308,7 @@ export class DevFnOrchestrator {
     // before state creation. Re-read it under the lifecycle lock after ports
     // are reserved because the Compose source can change between these steps.
     const preflightPorts = Object.fromEntries(plan.portNames.map((name) => [name, 1]));
-    if (needsNetworkPreflight(options.config)) {
+    if (await needsNetworkPreflight(options.config, plan, options.root, identity.instanceId, preflightPorts, loadedPolicy?.policy.hostnameSuffix)) {
       await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, preflightPorts, loadedPolicy?.policy.hostnameSuffix);
     } else {
       resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports: preflightPorts,

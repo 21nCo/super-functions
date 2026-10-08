@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -271,6 +271,41 @@ describe("endpoint and template contract", () => {
     expect(shared.nodes.consumer.environment.UPSTREAM).toBe("http://web:8080");
     expect(shared.ownerId).toBe("opaque/owner");
   });
+
+  it("rejects selected raw Compose references to unreachable generated URLs", () => {
+    const config = fixture();
+    config.profiles.default.environment = {};
+    config.services = {
+      web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } },
+      consumer: { adapter: "compose", service: "consumer", dependsOn: ["web"] },
+    };
+    config.ports!.web = {};
+    config.profiles.default.services = ["consumer"];
+    const base = { config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102, web: 4103 } };
+    const references = { consumer: new Set(["DEVFN_URL_WEB"]) };
+    expect(() => resolveEndpointTemplates({ ...base, composeReferences: references,
+      composeNetworks: { web: ["blue"], consumer: ["green"] } })).toThrow(/no shared effective Compose network/);
+    const shared = resolveEndpointTemplates({ ...base, composeReferences: references,
+      composeNetworks: { web: ["shared"], consumer: ["shared"] } });
+    expect(shared.nodes.consumer.environment.DEVFN_URL_WEB).toBe("http://web:8080");
+    expect(() => resolveEndpointTemplates({ ...base, composeReferences: { consumer: new Set(["DEVFN_URL_API"]) },
+      composeNetworks: { web: ["shared"], consumer: ["shared"] } })).toThrow(/native loopback process unreachable from Compose/);
+  });
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("rejects raw Compose endpoint references before lifecycle state", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-raw-compose-url-"));
+    const stateDir = path.join(root, "state");
+    const config = fixture();
+    config.profiles.default.environment = {};
+    config.services = { consumer: { adapter: "compose", service: "consumer", dependsOn: ["api"] } };
+    config.profiles.default.services = ["consumer"];
+    try {
+      await writeFile(path.join(root, "compose.yaml"),
+        "services:\n  consumer:\n    image: busybox\n    environment:\n      UPSTREAM: ${DEVFN_URL_API}\n");
+      await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toThrow(/native loopback process unreachable from Compose/);
+      await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
 
   it("rejects a native loopback URL consumed by Compose before creating state", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-native-compose-reference-"));

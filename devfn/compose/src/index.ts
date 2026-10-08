@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 
 import { assertEnvironmentKeyCasing, isCredentialKey, resolveContainedPath, type ComposeServiceSpec } from "@devfn/config";
 import { waitForReadiness } from "@devfn/processes";
-import { createScopedPathInterpolator, readComposeEnvDefinitions } from "./path-interpolation.js";
+import { createScopedPathInterpolator, readComposeEnvDefinitions, simpleInterpolation } from "./path-interpolation.js";
 import { assertComposeSourceGraphBounded, composeInterpolationEnvFiles, normalizeComposeRawService, pathInterpolationNames, reconcileComposeUniqueResources, type ComposeSourceInventory } from "./source-files.js";
 
 const execFileAsync = promisify(execFile);
@@ -262,33 +262,73 @@ async function boundedConfigFileBytes(file: string, remaining: number): Promise<
   return bytes;
 }
 
+/** Dependencies of the branch Compose selects, rather than every textual reference. */
+function selectedEnvTokenDependencies(source: string, name: string, values: NodeJS.ProcessEnv): Iterable<string> {
+  const match = /^\$\{[A-Za-z_]\w*(?:(:-|-|:\+|\+|:\?|\?)([^{}]*))?\}$/.exec(source);
+  if (!match && source.startsWith("${")) return pathInterpolationNames(source);
+  const operator = match?.[1];
+  const fallback = match?.[2] ?? "";
+  const value = Object.hasOwn(values, name) ? values[name] : undefined;
+  const unset = value === undefined || (operator?.startsWith(":") && value === "");
+  if (operator?.endsWith("-")) return unset ? pathInterpolationNames(fallback) : [name];
+  if (operator?.endsWith("+")) return unset ? [] : pathInterpolationNames(fallback);
+  return !operator || !unset ? [name] : [];
+}
+
+function selectedEnvDependencies(expression: string, values: NodeJS.ProcessEnv): Set<string> {
+  const dependencies = new Set<string>();
+  if (expression.startsWith("'") && expression.endsWith("'")) return dependencies;
+  for (const token of interpolationTokens(expression)) {
+    for (const name of selectedEnvTokenDependencies(expression.slice(token.start, token.end), token.name, values)) {
+      dependencies.add(name);
+    }
+  }
+  return dependencies;
+}
+
+interface ConfigEnvProvenance { value?: string; secretDerived: boolean }
+
+function appendConfigDeclaration(name: string, expression: string, knownValues: NodeJS.ProcessEnv,
+  local: Map<string, ConfigEnvProvenance>, prior: Map<string, ConfigEnvProvenance>, secretNames: ReadonlySet<string>): void {
+  const dependencies = selectedEnvDependencies(expression, knownValues);
+  const secretDerived = secretNames.has(name) || isCredentialKey(name) || [...dependencies].some((key) =>
+    secretNames.has(key) || isCredentialKey(key) || local.get(key)?.secretDerived || prior.get(key)?.secretDerived);
+  const unquoted = expression.startsWith('"') && expression.endsWith('"') ? expression.slice(1, -1) : expression;
+  let value: string | undefined;
+  if (expression.startsWith("'") && expression.endsWith("'")) value = expression.slice(1, -1);
+  else value = simpleInterpolation(unquoted, knownValues);
+  local.set(name, { value, secretDerived });
+  if (value === undefined) delete knownValues[name];
+  else knownValues[name] = value;
+}
+
+async function configScopeProvenance(scope: ComposeSourceInventory["interpolationScopes"][number], environment: NodeJS.ProcessEnv,
+  prior: Map<string, ConfigEnvProvenance>, secretNames: ReadonlySet<string>): Promise<Map<string, ConfigEnvProvenance>> {
+  const local = new Map<string, ConfigEnvProvenance>();
+  const knownValues: NodeJS.ProcessEnv = Object.assign(Object.create(null), environment);
+  for (const [name, entry] of prior) if (entry.value !== undefined) knownValues[name] = entry.value;
+  for (const file of await composeInterpolationEnvFiles([scope])) {
+    for (const [name, expression] of (await readComposeEnvDefinitions(file)).declarations) {
+      if (Object.hasOwn(environment, name) || prior.has(name)) continue;
+      appendConfigDeclaration(name, expression, knownValues, local, prior, secretNames);
+    }
+  }
+  return local;
+}
+
 async function selectedConfigEnvironmentContent(variable: string, environment: NodeJS.ProcessEnv,
   inventory: ComposeSourceInventory, deadline: number, secretNames: ReadonlySet<string>): Promise<{ content?: string; secretDerived: boolean }> {
-  if (Object.hasOwn(environment, variable)) return { content: environment[variable], secretDerived: false };
+  if (Object.hasOwn(environment, variable)) return { content: environment[variable], secretDerived: secretNames.has(variable) };
   const scopes = inventory.interpolationScopes;
-  const definitions = new Map<string, string>();
+  const definitions = new Map<string, ConfigEnvProvenance>();
   for (const scope of scopes) {
-    const local = new Map<string, string>();
-    for (const file of await composeInterpolationEnvFiles([scope])) {
-      for (const [name, value] of await readComposeEnvDefinitions(file)) local.set(name, value);
-    }
-    for (const [name, value] of local) if (!definitions.has(name)) definitions.set(name, value);
+    const local = await configScopeProvenance(scope, environment, definitions, secretNames);
+    for (const [name, entry] of local) if (!definitions.has(name)) definitions.set(name, entry);
   }
   if (!definitions.has(variable)) return { secretDerived: false };
-  const isSecretDerived = (name: string, seen = new Set<string>()): boolean => {
-    if (secretNames.has(name) || isCredentialKey(name)) return true;
-    if (Object.hasOwn(environment, name) || seen.has(name)) return false;
-    const expression = definitions.get(name);
-    if (!expression || (expression.startsWith("'") && expression.endsWith("'"))) return false;
-    seen.add(name);
-    for (const dependency of pathInterpolationNames(expression)) {
-      if (isSecretDerived(dependency, seen)) return true;
-    }
-    return false;
-  };
-  const interpolate = createScopedPathInterpolator(environment, deadline, new Set());
+  const interpolate = createScopedPathInterpolator(environment, deadline, new Set(), true);
   const content = (await interpolate([`\${${variable}}`], inventory.serviceDirectory, [], scopes))[0];
-  return { content, secretDerived: isSecretDerived(variable) };
+  return { content, secretDerived: definitions.get(variable)!.secretDerived };
 }
 
 function credentialSafeContentState(content: string | undefined): string {
@@ -490,6 +530,34 @@ async function rawEnvFileValues(inventory: ComposeSourceInventory, service: stri
   }
 }
 
+function assertSelectedEnvFileReferences(inventory: ComposeSourceInventory, spec: ComposeServiceSpec): void {
+  const references = new Set<string>();
+  assertSelectedInterpolation(inventory.service?.env_file, implicitInterpolationKeys(spec), references);
+  if ([...references].some((name) => isCredentialKey(name) || spec.secretEnv?.includes(name))) {
+    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Selected Compose env_file path interpolates a secret value.");
+  }
+}
+
+/** Read selected raw references without a Compose config subprocess. */
+export async function selectedComposeEndpointReferences(spec: ComposeServiceSpec, root: string,
+  environment: NodeJS.ProcessEnv, deadline = Date.now() + COMPOSE_SOURCE_BUDGET_MS): Promise<Set<string>> {
+  try {
+    const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
+    const scopedPaths = createScopedPathInterpolator(environment, deadline, implicitInterpolationKeys(spec));
+    const inventory = await assertComposeSourceGraphBounded(sourceFile, spec.service, scopedPaths,
+      implicitInterpolationKeys(spec), new Set(spec.secretEnv ?? []));
+    const references = new Set<string>();
+    assertSelectedInterpolation(inventory.service, implicitInterpolationKeys(spec), references);
+    if (inventory.service?.env_file !== undefined) {
+      assertSelectedEnvFileReferences(inventory, spec);
+      assertSelectedInterpolation(await rawEnvFileValues(inventory, spec.service, scopedPaths), implicitInterpolationKeys(spec), references);
+    }
+    return new Set([...references].filter((name) => name.startsWith("DEVFN_URL_")));
+  } catch {
+    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to inspect selected Compose endpoint references for ${spec.service}.`);
+  }
+}
+
 /** Ask Compose about selected-scope presence without rendering credential bytes. */
 async function probeComposeInterpolationPresence(
   names: readonly string[], projectDirectory: string, envFiles: readonly string[], environment: NodeJS.ProcessEnv, deadline: number,
@@ -623,6 +691,9 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   } catch {
     throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to inventory Compose sources for ${spec.service}.`);
   }
+  if (inventory.service?.env_file !== undefined) assertSelectedEnvFileReferences(inventory, spec);
+  const sourceEnvValues = inventory.service?.env_file !== undefined
+    ? await rawEnvFileValues(inventory, spec.service, scopedPaths) : {};
   let effective: string;
   const args = ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId),
     "-f", sourceFile, "config", "--format", "json"];
@@ -652,17 +723,16 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   assertSelectedInterpolation(rawSelectedResources, implicitInterpolationKeys(spec), referencedInterpolation);
   const effectiveEnvironment = service.environment && typeof service.environment === "object" && !Array.isArray(service.environment)
     ? service.environment as Record<string, unknown> : {};
-  const secretNames = new Set([...(spec.secretEnv ?? []), ...Object.keys(environment).filter(isCredentialKey),
-    ...Object.keys(effectiveEnvironment).filter(isCredentialKey), ...[...referencedInterpolation].filter(isCredentialKey)]);
-  assertSelectedInterpolation(inventory.service?.env_file, new Set([...implicitInterpolationKeys(spec), ...secretNames]), referencedInterpolation);
   const rawDeclaredEnvironment = inventory.service?.environment;
   const rawEnvironment = {
-    ...(inventory.service?.env_file !== undefined
-      ? await rawEnvFileValues(inventory, spec.service, scopedPaths) : {}),
+    ...sourceEnvValues,
     ...(rawDeclaredEnvironment && typeof rawDeclaredEnvironment === "object" && !Array.isArray(rawDeclaredEnvironment)
       ? rawDeclaredEnvironment as Record<string, unknown> : {}),
   };
   assertSelectedInterpolation(rawEnvironment, implicitInterpolationKeys(spec), referencedInterpolation);
+  const secretNames = new Set([...(spec.secretEnv ?? []), ...Object.keys(environment).filter(isCredentialKey),
+    ...Object.keys(effectiveEnvironment).filter(isCredentialKey), ...[...referencedInterpolation].filter(isCredentialKey)]);
+  assertSelectedInterpolation(inventory.service?.env_file, new Set([...implicitInterpolationKeys(spec), ...secretNames]), referencedInterpolation);
   const safeConfiguration = secretNames.size > 0
     ? await credentialSafeComposeConfiguration({ args, root, environment, sourceFile, inventory, rawService, rawSelectedResources, secretNames, service: spec.service, deadline })
     : configuration;
@@ -672,11 +742,12 @@ export async function fingerprintComposeSource(spec: ComposeServiceSpec, root: s
   const safeService = canonicalComposeValue(safeEffectiveService, secretNames);
   const safeResources = canonicalComposeValue(selectedComposeResources(safeConfiguration, safeSelected), secretNames);
   const configFiles = await selectedConfigFileState(selectedResources, environment, secretNames, inventory, deadline);
+  const declared = safeSelected.environment;
+  const declaredEnvironment = declared && typeof declared === "object" && !Array.isArray(declared)
+    ? declared as Record<string, unknown> : {};
   return createHash("sha256")
     .update(JSON.stringify(safeService))
-    .update("\0").update(JSON.stringify(canonicalDeclaredEnvironment(
-      safeSelected.environment && typeof safeSelected.environment === "object" && !Array.isArray(safeSelected.environment)
-        ? safeSelected.environment as Record<string, unknown> : {}, secretNames)))
+    .update("\0").update(JSON.stringify(canonicalDeclaredEnvironment(declaredEnvironment, secretNames)))
     .update("\0").update(JSON.stringify(safeResources))
     .update("\0").update(JSON.stringify(configFiles)).digest("hex");
 }
@@ -721,11 +792,17 @@ async function uninterpolatedComposeConfiguration(args: string[], root: string, 
 
 /** Read Compose's effective service networks before publishing sibling DNS URLs. */
 export async function effectiveComposeServiceNetworks(spec: ComposeServiceSpec, root: string, instanceId: string, environment: NodeJS.ProcessEnv,
-  deadline = Date.now() + COMPOSE_SOURCE_BUDGET_MS): Promise<string[]> {
+  deadline = Date.now() + COMPOSE_SOURCE_BUDGET_MS, selectedReferences?: Set<string>): Promise<string[]> {
   const sourceFile = await resolveContainedPath(root, spec.file ?? "compose.yaml", `services.${spec.service}.file`);
   try {
+    const scopedPaths = createScopedPathInterpolator(environment, deadline, implicitInterpolationKeys(spec));
     const inventory = await assertComposeSourceGraphBounded(sourceFile, spec.service,
-      createScopedPathInterpolator(environment, deadline, implicitInterpolationKeys(spec)), implicitInterpolationKeys(spec), new Set(spec.secretEnv ?? []));
+      scopedPaths, implicitInterpolationKeys(spec), new Set(spec.secretEnv ?? []));
+    let rawEnvValues: Record<string, string> = {};
+    if (inventory.service?.env_file !== undefined) {
+      assertSelectedEnvFileReferences(inventory, spec);
+      rawEnvValues = await rawEnvFileValues(inventory, spec.service, scopedPaths);
+    }
     const args = ["compose", "-p", composeProjectName(spec.projectName ?? "devfn", instanceId), "-f", sourceFile, "config", "--format", "json"];
     const output = (await execFileAsync("docker", args, { cwd: root, env: environment, timeout: remainingComposeTime(deadline), maxBuffer: 10 * 1024 * 1024 })).stdout;
     const configuration = JSON.parse(output) as { services?: Record<string, { networks?: Record<string, unknown> | string[]; network_mode?: string }>; networks?: Record<string, { name?: string }> };
@@ -735,8 +812,18 @@ export async function effectiveComposeServiceNetworks(spec: ComposeServiceSpec, 
     const rawFound = rawConfig.services?.[spec.service];
     const rawService = rawFound ? normalizeComposeRawService(rawFound) : undefined;
     if (!rawService) throw new Error("missing service");
-    assertSelectedInterpolation(rawService, implicitInterpolationKeys(spec), new Set());
-    assertSelectedInterpolation(selectedComposeResources(rawConfig, service), implicitInterpolationKeys(spec), new Set());
+    const references = new Set<string>();
+    // Older Compose versions resolve env_file values even with
+    // --no-interpolate. Inspect the selected source expressions instead so an
+    // escaped literal dollar cannot look like an inherited host reference.
+    const { environment: _resolvedEnvironment, ...rawWithoutEnvironment } = rawService;
+    assertSelectedInterpolation(rawWithoutEnvironment, implicitInterpolationKeys(spec), references);
+    const sourceEnvironment = inventory.service?.environment;
+    const selectedSourceEnvironment = sourceEnvironment && typeof sourceEnvironment === "object" && !Array.isArray(sourceEnvironment)
+      ? sourceEnvironment as Record<string, unknown> : {};
+    assertSelectedInterpolation({ ...rawEnvValues, ...selectedSourceEnvironment }, implicitInterpolationKeys(spec), references);
+    assertSelectedInterpolation(selectedComposeResources(rawConfig, service), implicitInterpolationKeys(spec), references);
+    for (const name of references) selectedReferences?.add(name);
     // Host/none/container namespace modes have no Compose DNS network. A
     // standalone service may still start; sibling URL wiring will be omitted.
     if (service.network_mode) return [];

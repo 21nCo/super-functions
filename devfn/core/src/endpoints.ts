@@ -16,6 +16,8 @@ export interface EndpointResolutionInput {
   hostnameSuffix?: string;
   /** Effective Compose network names for each selected service. Required for sibling DNS wiring. */
   composeNetworks?: Readonly<Record<string, readonly string[]>>;
+  /** Selected raw Compose interpolation references, before Compose substitutes missing values. */
+  composeReferences?: Readonly<Record<string, ReadonlySet<string>>>;
 }
 
 export interface ResolvedNodeStartup {
@@ -865,6 +867,11 @@ function rejectUnreachableReferences(node: LifecyclePlan["nodes"][number], conte
   const { input, config } = context;
   const profile = config.profiles[input.plan.profile];
   const spec = config.services![node.name];
+  for (const name of input.composeReferences?.[node.name] ?? []) {
+    if (unreachable.has(name)) invalid(field, producerIsNative(input.plan, config, name) ?
+      `reference ${name} points to a native loopback process unreachable from Compose.` :
+      `reference ${name} has no shared effective Compose network.`);
+  }
   for (const value of [...Object.values(profile.environment ?? {}), ...Object.values(spec.env ?? {})]) {
     for (const match of value.matchAll(REFERENCE)) if (unreachable.has(match[1])) {
       invalid(field, producerIsNative(input.plan, config, match[1]) ?

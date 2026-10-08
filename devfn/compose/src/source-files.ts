@@ -324,35 +324,39 @@ export async function assertComposeSourceGraphBounded(
     serviceCache.set(key, service);
   }
 
-  async function visitService(file: string, name: string, directory: string, envFiles: string[], scopes: ComposeSourceInventory["interpolationScopes"]): Promise<Record<string, unknown> | null> {
-    const key = `service\0${file}\0${name}\0${directory}\0${JSON.stringify(scopes)}`;
-    if (activeServices.has(key)) throw new Error("cyclic Compose extends declaration");
-    if (serviceCache.has(key)) return serviceCache.get(key)!;
-    mark(key);
-    activeServices.add(key);
-    const loaded = await load(file);
-    const rawService = record(record(loaded.data.services)?.[name]);
-    const service = rawService ? normalizeComposeRawService(rawService) : null;
-    if (service?.env_file !== undefined) service.env_file = absoluteEnvFiles(service.env_file, directory, scopes);
-    if (!service?.extends) {
-      if (service) deviceCandidates.set(service, Array.isArray(service.devices) ? service.devices : []);
-      cacheService(key, service);
-      activeServices.delete(key);
-      return service;
-    }
+  async function resolveExtendedService(file: string, service: Record<string, unknown>,
+    directory: string, envFiles: string[], scopes: ComposeSourceInventory["interpolationScopes"],
+    replace: ReadonlySet<string>): Promise<Record<string, unknown>> {
     const reference = typeof service.extends === "string" ? { service: service.extends } : record(service.extends);
     if (!reference || typeof reference.service !== "string") throw new Error("invalid Compose extends declaration");
     if (typeof reference.file === "string") await checkPathExpressions([reference.file], directory, envFiles);
     const baseFile = typeof reference.file === "string"
       ? path.resolve(directory, (await interpolateBounded([reference.file], directory, envFiles, scopes))[0]) : file;
     const base = await visitService(baseFile, reference.service, baseFile === file ? directory : path.dirname(baseFile), envFiles, scopes);
-    const merged = mergeService(base ?? {}, service, loaded.tags.get(name) ?? new Set());
-    const inherited = loaded.tags.get(name)?.has("devices") ? [] : base ? deviceCandidates.get(base) ?? [] : [];
+    const merged = mergeService(base ?? {}, service, replace);
+    let inherited: unknown[] = [];
+    if (!replace.has("devices") && base) inherited = deviceCandidates.get(base) ?? [];
     const own = Array.isArray(service.devices) ? service.devices : [];
     deviceCandidates.set(merged, [...inherited, ...own]);
-    cacheService(key, merged);
-    activeServices.delete(key);
     return merged;
+  }
+
+  async function visitService(file: string, name: string, directory: string, envFiles: string[], scopes: ComposeSourceInventory["interpolationScopes"]): Promise<Record<string, unknown> | null> {
+    const key = `service\0${file}\0${name}\0${directory}\0${JSON.stringify(scopes)}`;
+    if (activeServices.has(key)) throw new Error("cyclic Compose extends declaration");
+    if (serviceCache.has(key)) return serviceCache.get(key)!;
+    mark(key);
+    activeServices.add(key);
+    try {
+      const loaded = await load(file);
+      const rawService = record(record(loaded.data.services)?.[name]);
+      let service = rawService ? normalizeComposeRawService(rawService) : null;
+      if (service?.env_file !== undefined) service.env_file = absoluteEnvFiles(service.env_file, directory, scopes);
+      if (service?.extends) service = await resolveExtendedService(file, service, directory, envFiles, scopes, loaded.tags.get(name) ?? new Set());
+      else if (service) deviceCandidates.set(service, Array.isArray(service.devices) ? service.devices : []);
+      cacheService(key, service);
+      return service;
+    } finally { activeServices.delete(key); }
   }
 
   async function resolveInclude(file: string, include: unknown, scopes: ComposeSourceInventory["interpolationScopes"]): Promise<{
