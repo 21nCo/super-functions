@@ -1,0 +1,28 @@
+devfn/compose/src/index.ts
+  h_bdc5b81c173ee9 10,14,17-22,194,318-319,322,367,369,378,397,400,415,425,436,438,448,466,476-499,503,514-528,530,541,549-550,555,564,574,593,599,619,622,636-637,640,642,646,715-720
+devfn/compose/src/source-files.ts
+  h_bdc5b81c173ee9 19-33,73-88,275,284-286,289-292,314,325,328
+devfn/compose/test/fingerprint-contract.test.ts
+  h_bdc5b81c173ee9 1,4,9-10,13-151
+devfn/compose/test/override.test.ts
+  h_bdc5b81c173ee9 15-25
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 99-100,308-310,314,317,322,725-727,733,741-742,744,749-750,752-753,755,978-988,1004-1005
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 70,75,88,112,367,422-432
+devfn/core/test/startup-fixture.test.ts
+  h_bdc5b81c173ee9 97-144
+devfn/ports/src/listeners.ts
+  h_bdc5b81c173ee9 118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7c389a4e8853fae2fc86437d9244f3075883d8b7",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
