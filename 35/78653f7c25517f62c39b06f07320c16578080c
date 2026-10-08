@@ -1,0 +1,20 @@
+devfn/compose/src/index.ts
+  h_bdc5b81c173ee9 270,359,361-371,374,377-386,459-461,562,565-567,573-575,577-578,731,755-756
+devfn/compose/test/fingerprint-contract.test.ts
+  h_bdc5b81c173ee9 77-91,576
+devfn/compose/test/preview-budget.fixture.mts
+  h_bdc5b81c173ee9 21-24,31-36
+devfn/core/test/startup-fixture.test.ts
+  h_bdc5b81c173ee9 799,812,834,858,864-871
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3578653f7c25517f62c39b06f07320c16578080c",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
