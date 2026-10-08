@@ -67,6 +67,17 @@ describe("Caddy route rendering", () => {
       await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [retained] }));
       expect(await controller.routes()).toEqual([retained]);
       await expect(controller.upsert([retained])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_UNREGISTERED" });
+      await controller.upsert([removed]);
+      await writeFile(path.join(stateDir, "domains.json"), JSON.stringify({ version: 1, domains: [
+        { domain: "invalid.test", projectId: "fixture", repositoryIdentity: stateDir, tls: "internal" },
+      ] }));
+      const failedActivation = { ...retained, id: "new-domain", instanceId: "new", hostname: "new.invalid.test" };
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [retained, removed, failedActivation] }));
+      await controller.removeInstance("b");
+      expect(await controller.routes()).toEqual([retained]);
+      await expect(access(path.join(stateDir, "proxy-routes.pending.json"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(controller.upsert([failedActivation])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
+      expect(await controller.routes()).toEqual([retained]);
     } finally {
       if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
       await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });

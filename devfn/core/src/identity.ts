@@ -13,10 +13,14 @@ async function git(root: string, args: string[]): Promise<string | undefined> {
 }
 
 export async function resolveInstanceIdentity(projectId: string, root: string): Promise<RoutingIdentity> {
-  const worktreePath = await realpath(root);
+  const manifestPath = await realpath(root);
+  const topLevel = await git(root, ["rev-parse", "--show-toplevel"]);
+  const worktreePath = topLevel ? await realpath(topLevel) : manifestPath;
   const commonDirectory = await git(root, ["rev-parse", "--git-common-dir"]);
-  const repositoryIdentity = commonDirectory ? await realpath(path.resolve(root, commonDirectory)) : worktreePath;
-  const instanceId = createHash("sha256").update(`${repositoryIdentity}\0${worktreePath}\0${projectId}`).digest("hex").slice(0, 12);
+  const repositoryIdentity = commonDirectory ? await realpath(path.resolve(root, commonDirectory)) : manifestPath;
+  // Instance IDs predate readable domain aliases and remain tied to the
+  // manifest root. Routing names instead describe the Git worktree itself.
+  const instanceId = createHash("sha256").update(`${repositoryIdentity}\0${manifestPath}\0${projectId}`).digest("hex").slice(0, 12);
   const worktrees = await git(root, ["worktree", "list", "--porcelain"]);
   const primaryPath = worktrees?.match(/^worktree (.+)$/m)?.[1];
   // A failed or incomplete Git inventory cannot authorize the canonical alias.

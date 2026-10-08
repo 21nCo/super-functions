@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -40,6 +40,15 @@ describe("instance identity", () => {
       expect(new Set(names.flat()).size).toBe(4);
       expect(names[1][0]).toMatch(/^app-feature-[a-f0-9]{6}\.dev\.example\.test$/);
       expect(domainAliases("app", "dev.example.test", identities[1])).toEqual(names[1]);
+      const nested = path.join(root, "config", "devfn");
+      await mkdir(nested, { recursive: true });
+      const nestedIdentity = await resolveInstanceIdentity("fixture", nested);
+      expect(nestedIdentity.worktreePath).toBe(await realpath(root));
+      expect(nestedIdentity.repositoryRoot).toBe(nested);
+      expect(nestedIdentity.repositoryIdentity).toBe(identities[0].repositoryIdentity);
+      expect(nestedIdentity.isPrimaryWorktree).toBe(true);
+      expect(nestedIdentity.readableWorktreeLabel).toBe(identities[0].readableWorktreeLabel);
+      expect(domainAliases("app", "dev.example.test", nestedIdentity)).toContain("app.dev.example.test");
     } finally { await rm(parent, { recursive: true, force: true }); }
   });
 

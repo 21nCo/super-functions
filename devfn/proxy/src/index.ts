@@ -74,6 +74,7 @@ export function renderCaddyfile(routes: readonly ProxyRoute[], ipv6Loopback = fa
     if (hostRoutes.length === 1 && (tls.path ?? "/") === "/" && (tls.match ?? "prefix") === "prefix") {
       const targetHost = tls.targetHost === "::1" ? "[::1]" : tls.targetHost;
       lines.push(`${tls.tls === "off" ? "http://" : ""}${hostname} {`, `  reverse_proxy ${targetHost}:${tls.targetPort}`, ...tlsLine, "}", "");
+      if (tls.tls !== "off") lines.push(`http://${hostname} {`, "  redir https://{host}{uri} 308", "}", "");
       continue;
     }
     lines.push(`${tls.tls === "off" ? "http://" : ""}${hostname} {`, ...tlsLine, "  route {");
@@ -85,6 +86,7 @@ export function renderCaddyfile(routes: readonly ProxyRoute[], ipv6Loopback = fa
       lines.push(`    @route${index} path ${matcher}`, `    handle @route${index} {`, ...(route.stripPrefix ? [`      uri strip_prefix ${routePath.replace(/\/$/, "")}`] : []), `      reverse_proxy ${targetHost}:${route.targetPort}`, "    }");
     });
     lines.push("    handle {", "      respond 404", "    }", "  }", "}", "");
+    if (tls.tls !== "off") lines.push(`http://${hostname} {`, "  redir https://{host}{uri} 308", "}", "");
   }
   if (hosts.size) lines.push("http:// {", "  respond 404", "}", "");
   return lines.join("\n");
@@ -143,8 +145,18 @@ export class CaddyProxyController {
     const pending = await this.readState(this.pendingPath);
     if (pending) {
       const previous = await this.readState(this.statePath);
-      await this.apply(pending, true, previous?.routes ?? []);
-      return pending;
+      try {
+        await this.apply(pending, true, previous?.routes ?? []);
+        return pending;
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        // A crashed activation must not hold every other owner hostage when
+        // its DNS or certificate has since become invalid. Restore the last
+        // committed configuration before accepting further updates.
+        const committed = previous ?? { version: 1, routes: [] };
+        await this.apply(committed, true, committed.routes);
+        return committed;
+      }
     }
     return await this.readState(this.statePath) ?? { version: 1, routes: [] };
   }

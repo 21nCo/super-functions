@@ -172,7 +172,7 @@ export function resolveAllocationUrls(allocations: readonly PortAllocation[], ro
   return urls;
 }
 
-async function selectedProxyRoutes(config: DevFnConfig, plan: LifecyclePlan, identity: RoutingIdentity, ports: Readonly<Record<string, number>>, suffix: string, stateDir: string): Promise<Array<Omit<ProxyRoute, "updatedAt">>> {
+async function selectedProxyRoutes(config: DevFnConfig, plan: LifecyclePlan, identity: RoutingIdentity, ports: Readonly<Record<string, number>>, suffix: string, stateDir: string, verifyActivation = true): Promise<Array<Omit<ProxyRoute, "updatedAt">>> {
   if (!plan.proxy) return [];
   const registrations = await readRegisteredDomains(stateDir);
   const routes: Array<Omit<ProxyRoute, "updatedAt">> = [];
@@ -190,8 +190,10 @@ async function selectedProxyRoutes(config: DevFnConfig, plan: LifecyclePlan, ide
     try { aliases = domainAliases(spec.host ?? name, spec.domain, identity); }
     catch (error) { throw new DevFnError("DEVFN_RUNTIME_INVALID", `Route ${name}: ${error instanceof Error ? error.message : String(error)}`); }
     for (const [index, hostname] of aliases.entries()) {
-      await verifyLocalDns(hostname);
-      if (registration.tls === "certificate") await verifyCertificate(hostname, registration.certificateFile, registration.keyFile);
+      if (verifyActivation) {
+        await verifyLocalDns(hostname);
+        if (registration.tls === "certificate") await verifyCertificate(hostname, registration.certificateFile, registration.keyFile);
+      }
       routes.push({ ...common, id: `${identity.instanceId}:${name}:${index}`, hostname, tls: registration.tls,
         registeredDomain: registration.domain, projectId: registration.projectId, repositoryIdentity: registration.repositoryIdentity,
         ...(registration.certificateFile ? { certificateFile: registration.certificateFile, keyFile: registration.keyFile } : {}) });
@@ -286,7 +288,7 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     const identity = await resolveInstanceIdentity(config.project.id, root);
     resolved = await resolveWithComposeNetworks(config, plan, root, identity, ports, loadedPolicy?.policy.hostnameSuffix);
     if (!receiptRoutesMatch(receipt, await selectedProxyRoutes(config, plan, identity, ports,
-      loadedPolicy?.policy.hostnameSuffix ?? ".localhost", receipt.stateDir ?? defaultStateDir()))) return false;
+      loadedPolicy?.policy.hostnameSuffix ?? ".localhost", receipt.stateDir ?? defaultStateDir(), false))) return false;
     if (receipt.startupFingerprints) {
       const current = await startupFingerprints(config, root, resolved);
       if (Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
@@ -43,12 +43,18 @@ async function request(port: number, host: string, requestPath: string, secure =
 
 it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("observes isolated Caddy exact, prefix, strip, denial and internal TLS requests", async () => {
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "devfn-caddy-contract-"));
+  const certificateFile = path.join(stateDir, "registered-cert.pem");
+  const keyFile = path.join(stateDir, "registered-key.pem");
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
+    "-days", "1", "-subj", "/CN=explicit.dev.example.test", "-addext", "subjectAltName=DNS:explicit.dev.example.test"], { stdio: "ignore" });
   const [exact, prefix, secure] = await Promise.all([upstream(), upstream(), upstream()]);
   const [httpPort, httpsPort, adminPort] = await Promise.all([freePort(), freePort(), freePort()]);
   const route = (id: string, hostname: string, targetPort: number, tls: "off" | "internal", routePath = "/", match: "exact" | "prefix" = "prefix", stripPrefix = false): ProxyRoute =>
     ({ id, instanceId: "fixture", hostname, targetHost: "127.0.0.1", targetPort, tls, updatedAt: "now", path: routePath, match, stripPrefix });
   const routes = [route("prefix", "app.localhost", prefix.port, "off", "/api", "prefix", true),
-    route("exact", "app.localhost", exact.port, "off", "/api", "exact"), route("tls", "secure.localhost", secure.port, "internal")];
+    route("exact", "app.localhost", exact.port, "off", "/api", "exact"), route("tls", "secure.localhost", secure.port, "internal"),
+    { ...route("registered", "explicit.dev.example.test", secure.port, "internal"), tls: "certificate" as const,
+      registeredDomain: "dev.example.test", certificateFile, keyFile }];
   const config = renderCaddyfile(routes).replace("admin 127.0.0.1:2019", `admin 127.0.0.1:${adminPort}\n  http_port ${httpPort}\n  https_port ${httpsPort}`);
   const configPath = path.join(stateDir, "Caddyfile");
   await writeFile(configPath, config);
@@ -72,7 +78,8 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("observes isolated Caddy exact, 
     expect(await request(httpPort, "app.localhost", "/apix")).toMatchObject({ status: 404 });
     expect(await request(httpPort, "app.localhost", "/api%2fx")).toMatchObject({ status: 400 });
     expect(await request(httpPort, "unselected.localhost", "/api")).toMatchObject({ status: 404 });
-    expect(await request(httpPort, "secure.localhost", "/")).toMatchObject({ status: 404 });
+    expect(await request(httpPort, "secure.localhost", "/")).toMatchObject({ status: 308 });
+    expect(await request(httpPort, "unselected.localhost", "/")).toMatchObject({ status: 404 });
     let tlsResponse: Awaited<ReturnType<typeof request>> | undefined;
     for (let attempt = 0; attempt < 30; attempt += 1) {
       tlsResponse = await request(httpsPort, "secure.localhost", "/", true).catch(() => undefined);
@@ -80,6 +87,10 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("observes isolated Caddy exact, 
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     expect(tlsResponse, log.slice(-3000)).toMatchObject({ status: 200, body: "/", certificate: expect.stringContaining("secure.localhost") });
+    expect(await request(httpPort, "explicit.dev.example.test", "/")).toMatchObject({ status: 308 });
+    expect(await request(httpsPort, "explicit.dev.example.test", "/", true)).toMatchObject({
+      status: 200, body: "/", certificate: expect.stringContaining("explicit.dev.example.test"),
+    });
   } finally {
     child.kill("SIGTERM");
     await Promise.race([new Promise((resolve) => child.once("exit", resolve)), new Promise((resolve) => setTimeout(resolve, 3000))]);

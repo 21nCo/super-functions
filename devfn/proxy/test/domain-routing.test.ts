@@ -56,6 +56,9 @@ describe("registered local domains", () => {
       await expect(verifyCertificate("app-fixture.dev.example.test", certificateFile, keyFile)).resolves.toBeUndefined();
       await expect(verifyCertificate("app.other.example.test", certificateFile, keyFile)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
       await expect(verifyCertificate("app-fixture.dev.example.test", certificateFile, certificateFile)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
+      execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
+        "-days", "1", "-subj", "/CN=app-fixture.dev.example.test"], { stdio: "ignore" });
+      await expect(verifyCertificate("app-fixture.dev.example.test", certificateFile, keyFile)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
     } finally { await rm(directory, { recursive: true, force: true }); }
   });
 });

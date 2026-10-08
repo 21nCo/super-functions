@@ -57,7 +57,10 @@ export async function verifyCertificate(hostname: string, certificateFile: strin
   try {
     const certificate = new X509Certificate(await readFile(certificateFile));
     const key = createPrivateKey(await readFile(keyFile));
-    if (!certificate.checkHost(hostname)) throw new Error("Certificate does not cover hostname.");
+    // checkHost accepts a legacy CN when no SAN exists. Explicit route
+    // certificates must cover the host through a DNS subjectAltName.
+    if (!certificate.subjectAltName?.split(/,\s*/).some((entry) => entry.startsWith("DNS:")) ||
+      !certificate.checkHost(hostname, { subject: "never" })) throw new Error("Certificate DNS SAN does not cover hostname.");
     if (!createPublicKey(key).export({ type: "spki", format: "der" }).equals(certificate.publicKey.export({ type: "spki", format: "der" }))) {
       throw new Error("Certificate and key do not match.");
     }
