@@ -10,6 +10,7 @@ const MAX_MATERIALIZED_BYTES = 10 * 1024 * 1024;
 
 export interface ComposeSourceInventory {
   service: Record<string, unknown> | null;
+  deviceCandidates: unknown[];
   resources: Record<string, unknown>;
   serviceDirectory: string;
   interpolationEnvFiles: string[];
@@ -79,29 +80,40 @@ function resourceScalar(value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : JSON.stringify(value) ?? "";
 }
 
-function uniqueResourceIdentity(key: string, entry: unknown): string {
-  if (typeof entry === "string") {
-    const fields = shortFields(entry);
-    if (key === "volumes" || key === "devices") return fields.length > 1 ? fields[1] : fields[0];
-    if (key === "configs") return `/${entry}`;
-    if (key === "secrets") return `/run/secrets/${entry}`;
-    if (key === "ports") {
-      const [target, protocol = "tcp"] = fields.at(-1)!.split("/");
-      const published = fields.at(-2) ?? "";
-      const hostIp = fields.length > 2 ? fields.slice(0, -2).join(":") : "";
-      return JSON.stringify([hostIp, target, published, protocol]);
-    }
-    return entry;
+function shortResourceIdentity(key: string, entry: string): string {
+  const fields = shortFields(entry);
+  if (key === "volumes" || key === "devices") return fields.length > 1 ? fields[1] : fields[0];
+  if (key === "configs") return `/${entry}`;
+  if (key === "secrets") return `/run/secrets/${entry}`;
+  if (key !== "ports") return entry;
+  const [target, protocol = "tcp"] = fields.at(-1)!.split("/");
+  const published = fields.at(-2) ?? "";
+  const hostIp = fields.length > 2 ? fields.slice(0, -2).join(":") : "";
+  return JSON.stringify([hostIp, target, published, protocol]);
+}
+
+function resourceTarget(key: string, item: Record<string, unknown>): unknown {
+  if (item.target !== undefined) return item.target;
+  if (key === "configs") return `/${resourceScalar(item.source)}`;
+  if (key === "secrets") return `/run/secrets/${resourceScalar(item.source)}`;
+  return item.source;
+}
+
+function mappedResourceIdentity(key: string, item: Record<string, unknown>): string {
+  if (key === "ports") {
+    return JSON.stringify([item.host_ip ?? "", item.target ?? "", item.published ?? "", item.protocol ?? "tcp"].map(resourceScalar));
   }
-  const item = record(entry);
-  if (!item) return JSON.stringify(entry);
-  if (key === "ports") return JSON.stringify([item.host_ip ?? "", item.target ?? "", item.published ?? "", item.protocol ?? "tcp"].map(resourceScalar));
   if (key === "volumes" || key === "devices" || key === "configs" || key === "secrets") {
-    const target = item.target ?? (key === "configs" ? `/${resourceScalar(item.source)}`
-      : key === "secrets" ? `/run/secrets/${resourceScalar(item.source)}` : item.source);
-    return typeof target === "string" ? target : JSON.stringify(entry);
+    const target = resourceTarget(key, item);
+    if (typeof target === "string") return target;
   }
-  return JSON.stringify(entry);
+  return JSON.stringify(item);
+}
+
+function uniqueResourceIdentity(key: string, entry: unknown): string {
+  if (typeof entry === "string") return shortResourceIdentity(key, entry);
+  const item = record(entry);
+  return item ? mappedResourceIdentity(key, item) : JSON.stringify(entry);
 }
 
 const UNIQUE_RESOURCE_FIELDS = new Set(["volumes", "ports", "secrets", "configs", "devices"]);
@@ -137,7 +149,8 @@ function mergeService(base: Record<string, unknown>, child: Record<string, unkno
 }
 
 /** A fallback inventory keeps raw expressions, but Compose compares their evaluated targets. */
-export async function reconcileComposeUniqueResources(service: Record<string, unknown>, interpolate: (values: string[]) => Promise<string[]>): Promise<Record<string, unknown>> {
+export async function reconcileComposeUniqueResources(service: Record<string, unknown>, interpolate: (values: string[]) => Promise<string[]>,
+  effective?: Record<string, unknown>): Promise<Record<string, unknown>> {
   const reconciled = { ...service };
   for (const key of UNIQUE_RESOURCE_FIELDS) {
     const entries = service[key];
@@ -150,7 +163,9 @@ export async function reconcileComposeUniqueResources(service: Record<string, un
     }
     const selected = new Map<string, unknown>();
     for (const [index, entry] of entries.entries()) selected.set(identities[index], entry);
-    reconciled[key] = [...selected.values()];
+    const effectiveEntries = effective?.[key];
+    reconciled[key] = key === "devices" && Array.isArray(effectiveEntries) && effectiveEntries.length > selected.size
+      ? entries : [...selected.values()];
   }
   return reconciled;
 }
@@ -216,6 +231,7 @@ export async function assertComposeSourceGraphBounded(
   const visited = new Set<string>();
   const activeServices = new Set<string>();
   const serviceCache = new Map<string, Record<string, unknown> | null>();
+  const deviceCandidates = new WeakMap<Record<string, unknown>, unknown[]>();
   let selectedService: Record<string, unknown> | null = null;
   let selectedDirectory = path.dirname(sourceFile);
   let selectedEnvFiles: string[] = [];
@@ -225,9 +241,12 @@ export async function assertComposeSourceGraphBounded(
   let interpolations = 0;
 
   async function interpolateBounded(names: string[], directory: string, envFiles: string[], scopes: ComposeSourceInventory["interpolationScopes"]): Promise<string[]> {
+    if (names.some((name) => !name)) throw new Error("Compose source path resolves to an empty value");
     if (!names.some((name) => name.includes("$"))) return names;
     if (++interpolations > MAX_INTERPOLATIONS) throw new Error("Compose source graph exceeds the interpolation limit");
-    return await interpolate(names, directory, envFiles, scopes);
+    const resolved = await interpolate(names, directory, envFiles, scopes);
+    if (resolved.some((name) => !name)) throw new Error("Compose source path resolves to an empty value");
+    return resolved;
   }
 
   async function checkInterpolationFiles(directory: string, envFiles: string[]): Promise<void> {
@@ -316,6 +335,7 @@ export async function assertComposeSourceGraphBounded(
     const service = rawService ? normalizeComposeRawService(rawService) : null;
     if (service?.env_file !== undefined) service.env_file = absoluteEnvFiles(service.env_file, directory, scopes);
     if (!service?.extends) {
+      if (service) deviceCandidates.set(service, Array.isArray(service.devices) ? service.devices : []);
       cacheService(key, service);
       activeServices.delete(key);
       return service;
@@ -327,6 +347,9 @@ export async function assertComposeSourceGraphBounded(
       ? path.resolve(directory, (await interpolateBounded([reference.file], directory, envFiles, scopes))[0]) : file;
     const base = await visitService(baseFile, reference.service, baseFile === file ? directory : path.dirname(baseFile), envFiles, scopes);
     const merged = mergeService(base ?? {}, service, loaded.tags.get(name) ?? new Set());
+    const inherited = loaded.tags.get(name)?.has("devices") ? [] : base ? deviceCandidates.get(base) ?? [] : [];
+    const own = Array.isArray(service.devices) ? service.devices : [];
+    deviceCandidates.set(merged, [...inherited, ...own]);
     cacheService(key, merged);
     activeServices.delete(key);
     return merged;
@@ -362,7 +385,13 @@ export async function assertComposeSourceGraphBounded(
       const loaded = await load(file);
       if (!record(record(loaded.data.services)?.[serviceName])) continue;
       const item = await visitService(file, serviceName, directory, envFiles, scopes);
-      if (item) merged = mergeService(merged ?? {}, item, loaded.tags.get(serviceName) ?? new Set());
+      if (item) {
+        const replaced = loaded.tags.get(serviceName)?.has("devices");
+        const next = mergeService(merged ?? {}, item, loaded.tags.get(serviceName) ?? new Set());
+        deviceCandidates.set(next, [...(replaced || !merged ? [] : deviceCandidates.get(merged) ?? []),
+          ...(deviceCandidates.get(item) ?? [])]);
+        merged = next;
+      }
     }
     return merged;
   }
@@ -402,6 +431,7 @@ export async function assertComposeSourceGraphBounded(
       resources[kind] = { ...record(resources[kind]), ...record(data[kind]) };
     }
   }
-  return { service: selectedService, resources, serviceDirectory: selectedDirectory, interpolationEnvFiles: selectedEnvFiles,
+  return { service: selectedService, deviceCandidates: selectedService ? deviceCandidates.get(selectedService) ?? [] : [],
+    resources, serviceDirectory: selectedDirectory, interpolationEnvFiles: selectedEnvFiles,
     interpolationScopes: selectedScopes };
 }

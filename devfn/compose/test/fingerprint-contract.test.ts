@@ -4,10 +4,19 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { createComposeEnvironment, fingerprintComposeSource } from "../src/index.js";
+import { readComposeEnvDefinitions } from "../src/path-interpolation.js";
 
 const live = process.env.DEVFN_REAL_COMPOSE === "1";
 const composeVersion = live ? execFileSync("docker", ["compose", "version", "--short"], { encoding: "utf8" }).trim() : "";
 const lacksBuildPrivileged = /^v?2\.24\.4$/.test(composeVersion);
+
+it("bounds malformed Compose dotenv assignments before source planning", async () => {
+  await withComposeSource({ ".env": `export ${" ".repeat(200_000)}9\n` }, async (root) => {
+    const started = Date.now();
+    expect((await readComposeEnvDefinitions(path.join(root, ".env"))).size).toBe(0);
+    expect(Date.now() - started).toBeLessThan(1_500);
+  });
+}, 5_000);
 
 async function withComposeSource(files: Record<string, string>, check: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-contract-"));
@@ -114,6 +123,39 @@ describe.skipIf(!live)("effective Compose startup fingerprint", () => {
     });
   }, 30_000);
 
+  it.each([
+    ["same-file default", "FILE_PATH=${DIR:-service}.env\nDIR=missing\n"],
+    ["prior duplicate declaration", "DIR=service\nFILE_PATH=${DIR}.env\nDIR=missing\n"],
+    ["trailing comment", "FILE_PATH=service.env # ${HOME} is only a comment\n"],
+    ["quoted trailing comment", "FILE_PATH='service.env' # ${HOME} is only a comment\n"],
+  ])("resolves $0 dotenv path provenance", async (_name, definitions) => {
+    await withComposeSource({
+      ".env": definitions,
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: ${FILE_PATH}\n",
+      "service.env": "MODE=one\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, "service.env"), "MODE=two\n");
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("keeps single-quoted dotenv dollars literal in source paths", async () => {
+    await withComposeSource({
+      ".env": "FILE_PATH='${HOME}.env'\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: ${FILE_PATH}\n",
+      "${HOME}.env": "MODE=one\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, "${HOME}.env"), "MODE=two\n");
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
   it("masks duration secrets and fingerprints selected environment-backed configs", async () => {
     await withComposeSource({
       "compose.yaml": "services:\n  api:\n    image: busybox\n    stop_grace_period: ${DELAY}\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
@@ -128,6 +170,32 @@ describe.skipIf(!live)("effective Compose startup fingerprint", () => {
     });
   }, 30_000);
 
+  it("masks an appended duration unit and tracks an ordinary dotenv-backed config", async () => {
+    await withComposeSource({
+      ".env": "APP_CONFIG=one\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    stop_grace_period: ${DELAY}s\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["DELAY"], secretEnv: ["DELAY"] };
+      const fingerprint = (delay: string) => fingerprintComposeSource(spec, root, "owner",
+        createComposeEnvironment(spec, {}, { ...process.env, DELAY: delay }));
+      const first = await fingerprint("10");
+      expect(await fingerprint("20")).toBe(first);
+      await writeFile(path.join(root, ".env"), "APP_CONFIG=two\n");
+      expect(await fingerprint("20")).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("does not digest an ordinary dotenv alias used only by a secret interpolation", async () => {
+    await withComposeSource({
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    environment:\n      API_TOKEN: ${PUBLIC_VALUE}\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["PUBLIC_VALUE"], secretEnv: ["API_TOKEN"] };
+      const fingerprint = (value: string) => fingerprintComposeSource(spec, root, "owner",
+        createComposeEnvironment(spec, {}, { ...process.env, PUBLIC_VALUE: value }));
+      expect(await fingerprint("private-one")).toBe(await fingerprint("private-two"));
+    });
+  }, 30_000);
+
   it("keeps secret-backed config content out of selected fingerprints", async () => {
     await withComposeSource({
       "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    environment: CONFIG_SECRET\n",
@@ -135,6 +203,18 @@ describe.skipIf(!live)("effective Compose startup fingerprint", () => {
       const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["CONFIG_SECRET"], secretEnv: ["CONFIG_SECRET"] };
       const fingerprint = (content: string) => fingerprintComposeSource(spec, root, "owner",
         createComposeEnvironment(spec, {}, { ...process.env, CONFIG_SECRET: content }));
+      expect(await fingerprint("private-one")).toBe(await fingerprint("private-two"));
+    });
+  }, 30_000);
+
+  it("masks a selected config whose dotenv value comes from a credential alias", async () => {
+    await withComposeSource({
+      ".env": "APP_CONFIG=${API_TOKEN}\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["API_TOKEN"], secretEnv: ["API_TOKEN"] };
+      const fingerprint = (token: string) => fingerprintComposeSource(spec, root, "owner",
+        createComposeEnvironment(spec, {}, { ...process.env, API_TOKEN: token }));
       expect(await fingerprint("private-one")).toBe(await fingerprint("private-two"));
     });
   }, 30_000);
@@ -177,7 +257,7 @@ describe.skipIf(!live)("effective Compose startup fingerprint", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
-  it("ignores overridden mounts, configs and devices in typed fallback provenance", async () => {
+  it("follows version-specific surviving mounts, configs and devices", async () => {
     await withComposeSource({
       "settings.txt": "one\n",
       "base.yaml": `services:
@@ -207,9 +287,24 @@ configs:
       const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["FLAG"], secretEnv: ["FLAG"] };
       const fingerprint = () => fingerprintComposeSource(spec, root, "owner",
         createComposeEnvironment(spec, {}, { ...process.env, FLAG: "false" }));
+      if (lacksBuildPrivileged) {
+        await expect(fingerprint()).rejects.toThrow(/inherited host value/);
+        return;
+      }
       const first = await fingerprint();
       await writeFile(path.join(root, "settings.txt"), "two\n");
       expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("validates an inherited device when the selected Compose version retains it", async () => {
+    await withComposeSource({
+      "compose.yaml": "services:\n  base:\n    image: busybox\n    devices: ['${HOME}:/dev/fixture:rwm']\n  api:\n    extends: base\n    devices: ['/dev/null:/dev/fixture:rwm']\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      if (lacksBuildPrivileged) await expect(fingerprint()).rejects.toThrow(/inherited host value/);
+      else await expect(fingerprint()).resolves.toMatch(/^[a-f0-9]{64}$/);
     });
   }, 30_000);
 
@@ -289,6 +384,26 @@ configs:
       await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
       expect(await readFile(log, "utf8").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error))).toBe("");
       expect(Date.now() - started).toBeLessThan(10_000);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("resolves distinct simple dotenv expressions without serial Compose probes", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-dynamic-depth-"));
+    try {
+      const { wrapperDirectory, log } = await installProbeLogger(root, "paths");
+      const spec = { adapter: "compose" as const, file: "scope0/compose.yaml", service: "api", env: { DEVFN_PROBE_LOG: log } };
+      for (let index = 0; index < 16; index += 1) {
+        const directory = path.join(root, `scope${index}`);
+        await mkdir(directory);
+        if (index < 15) await writeFile(path.join(directory, ".env"),
+          `DIR${index}=../scope${index + 1}\nNEXT${index}=\${DIR${index}?missing}/compose.yaml\n`);
+        await writeFile(path.join(directory, "compose.yaml"), index === 15
+          ? "services:\n  api:\n    image: busybox\n"
+          : `include: ['\${NEXT${index}}']\n`);
+      }
+      const environment = createComposeEnvironment(spec, {}, { ...process.env, PATH: `${wrapperDirectory}:${process.env.PATH}` });
+      await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
+      expect(await readFile(log, "utf8").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error))).toBe("");
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 

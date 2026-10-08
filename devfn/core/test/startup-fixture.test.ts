@@ -94,7 +94,7 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
 }, 60_000);
 
 describe("real local startup fixtures", () => {
-  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("replaces environment-backed config drift while retaining duration-secret rotation", async () => {
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("replaces dotenv-backed config drift while retaining duration-secret rotation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-config-lifecycle-"));
     const stateDir = path.join(root, "state");
     const previousDelay = process.env.DELAY;
@@ -102,8 +102,9 @@ describe("real local startup fixtures", () => {
     const source = `services:
   api:
     image: busybox
+    network_mode: bridge
     command: [sleep, '3600']
-    stop_grace_period: \${DELAY}
+    stop_grace_period: \${DELAY}s
     configs:
       - {source: settings, target: /app/settings.txt}
 configs:
@@ -116,18 +117,19 @@ configs:
     const containers = new Set<string>();
     let projectName: string | undefined;
     try {
-      process.env.DELAY = "10s";
-      process.env.APP_CONFIG = "one";
+      process.env.DELAY = "10";
+      delete process.env.APP_CONFIG;
+      await writeFile(path.join(root, ".env"), "APP_CONFIG=one\n");
       await writeFile(path.join(root, "compose.yaml"), source);
       const first = await orchestrator.up({ config, root, stateDir });
       projectName = first.services[0].projectName;
       containers.add(first.services[0].containerIds[0]);
       expect((await execFileAsync("docker", ["exec", first.services[0].containerIds[0], "cat", "/app/settings.txt"])).stdout).toBe("one");
-      process.env.DELAY = "20s";
+      process.env.DELAY = "20";
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(JSON.stringify(await readReceipt(config, root, first.instanceId))).not.toContain("20s");
-      process.env.APP_CONFIG = "two";
+      await writeFile(path.join(root, ".env"), "APP_CONFIG=two\n");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
       const second = await orchestrator.up({ config, root, stateDir });
       containers.add(second.services[0].containerIds[0]);
