@@ -50,7 +50,7 @@ describe("FilePortRegistry", () => {
       await writeFile(file, JSON.stringify(state));
       const routeFile = path.join(dir, "proxy-routes.json");
       await writeFile(routeFile, JSON.stringify({ version: 1, routes: [{ id: "r", instanceId: "proxy", hostname: "app.localhost",
-        targetHost: "127.0.0.1", targetPort: port + 1, tls: "off", updatedAt: "now" }] }));
+        targetHost: "127.0.0.1", targetPort: port + 1, tls: "off", updatedAt: new Date().toISOString() }] }));
       await registry.reconcile();
       await registry.gc();
       await expect(reserveSibling()).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "proxy" } });
@@ -61,7 +61,7 @@ describe("FilePortRegistry", () => {
       await rm(path.join(dir, "proxy-owner.json"));
       const pendingFile = path.join(dir, "proxy-routes.pending.json");
       await writeFile(pendingFile, JSON.stringify({ version: 1, routes: [{ id: "pending", instanceId: "proxy", hostname: "app.localhost",
-        targetHost: "127.0.0.1", targetPort: port + 1, tls: "off", updatedAt: "now" }] }));
+        targetHost: "127.0.0.1", targetPort: port + 1, tls: "off", updatedAt: new Date().toISOString() }] }));
       await registry.reconcile();
       expect((await registry.read()).invocations[0].state).toBe("ready");
       await writeFile(pendingFile, "{}");
@@ -71,6 +71,40 @@ describe("FilePortRegistry", () => {
       await registry.reconcile();
       await registry.gc();
       expect((await reserveSibling())[0].port).toBe(port);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("keeps an abandoned listener claim when route or owner evidence is malformed", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-claim-invalid-state-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => 18449, async () => true);
+    const port = 18448;
+    const sibling = (protocol: "tcp" | "udp") => registry.reserve({ projectId: "legacy", instanceId: "legacy", invocationId: `legacy-${protocol}`,
+      profile: "default", requests: [{ name: "listener", spec: { preferred: port, exact: true, protocol } }] });
+    try {
+      await registry.reserve({ projectId: "app", instanceId: "abandoned", invocationId: "old", profile: "default",
+        requests: [{ name: "api", spec: { preferred: port + 1 } }], proxyListenerPorts: [port] });
+      await registry.updateInvocation("old", { state: "starting" });
+      const state = JSON.parse(await readFile(registry.filePath, "utf8"));
+      state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
+      state.allocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
+      await writeFile(registry.filePath, JSON.stringify(state));
+      for (const name of ["proxy-routes.json", "proxy-routes.pending.json"]) {
+        await writeFile(path.join(dir, name), JSON.stringify({ version: 1, routes: [{ id: "", instanceId: "other", hostname: "other.localhost",
+          targetHost: "127.0.0.1", targetPort: port + 1, tls: "off", updatedAt: new Date().toISOString() }] }));
+        await registry.reconcile();
+        await registry.gc();
+        for (const protocol of ["tcp", "udp"] as const) {
+          await expect(sibling(protocol)).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "abandoned" } });
+        }
+        await rm(path.join(dir, name));
+      }
+      await writeFile(path.join(dir, "proxy-owner.json"), JSON.stringify({ pid: 999999, birthSignature: 42 }));
+      await registry.gc();
+      await expect(sibling("tcp")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "abandoned" } });
+      await rm(path.join(dir, "proxy-owner.json"));
+      await registry.reconcile();
+      await registry.gc();
+      expect((await sibling("udp"))[0].port).toBe(port);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
   it("claims proxy listeners atomically across TCP and UDP and releases failed claims", async () => {

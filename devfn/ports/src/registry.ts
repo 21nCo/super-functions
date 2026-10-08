@@ -9,6 +9,7 @@ import { matchesProcessIdentity, processExists } from "@devfn/processes";
 import { allocateEphemeralPort, isPortAvailable } from "./listeners.js";
 import { withFileLock } from "./lock.js";
 import { PortRegistryError, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput } from "./types.js";
+import { parsePersistedProxyRoutes } from "./proxy-state.js";
 
 const EMPTY: RegistryState = { version: 1, revision: 0, allocations: [], invocations: [] };
 const execFileAsync = promisify(execFile);
@@ -24,14 +25,10 @@ async function noOwnedProxyRoutes(stateDir: string, instanceId: string): Promise
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
       return false;
     }
-    if (!state || typeof state !== "object" || (state as { version?: unknown }).version !== 1 ||
-      !Array.isArray((state as { routes?: unknown }).routes)) return false;
-    for (const value of (state as { routes: unknown[] }).routes) {
-      if (!value || typeof value !== "object") return false;
-      const route = value as Record<string, unknown>;
-      if (typeof route.id !== "string" || typeof route.instanceId !== "string" || typeof route.hostname !== "string" ||
-        (route.targetHost !== "127.0.0.1" && route.targetHost !== "::1") || !Number.isInteger(route.targetPort) ||
-        !["off", "internal", "certificate"].includes(route.tls as string) || typeof route.updatedAt !== "string") return false;
+    let routes;
+    try { routes = parsePersistedProxyRoutes(state); }
+    catch { return false; }
+    for (const route of routes) {
       if (route.instanceId === instanceId) return false;
     }
   }
@@ -45,7 +42,8 @@ async function noLiveProxyOwner(stateDir: string): Promise<boolean> {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
   }
   if (owner !== undefined) {
-    if (!owner || typeof owner !== "object" || !Number.isInteger((owner as { pid?: unknown }).pid)) return false;
+    if (!owner || typeof owner !== "object" || !Number.isInteger((owner as { pid?: unknown }).pid) ||
+      ("birthSignature" in owner && (typeof owner.birthSignature !== "string" || owner.birthSignature.length === 0))) return false;
     const pid = (owner as { pid: number }).pid;
     if (pid <= 0 || processExists(pid)) return false;
   }

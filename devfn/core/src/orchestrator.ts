@@ -166,7 +166,14 @@ export function resolveAllocationUrls(allocations: readonly PortAllocation[], ro
   const urls: Record<string, string> = {};
   const listenerPorts = proxyListenerPorts();
   for (const allocation of allocations) {
-    const route = allocation.protocol === "tcp" ? routes.find((item) => item.targetPort === allocation.port) : undefined;
+    // A service can have several aliases and paths. Prefer a root URL, then
+    // choose by stable route ID instead of the persisted route order.
+    const route = allocation.protocol === "tcp" ? routes.filter((item) => item.targetPort === allocation.port)
+      .sort((a, b) => {
+        const rootA = (a.path ?? "/") === "/" ? 0 : 1;
+        const rootB = (b.path ?? "/") === "/" ? 0 : 1;
+        return rootA - rootB || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      })[0] : undefined;
     if (route) {
       const port = route.tls === "off" ? listenerPorts.httpPort : listenerPorts.httpsPort;
       urls[allocation.service] = `${route.tls === "off" ? "http" : "https"}://${route.hostname}${port === (route.tls === "off" ? 80 : 443) ? "" : `:${port}`}${route.path && route.path !== "/" ? route.path : ""}`;

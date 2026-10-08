@@ -6,7 +6,7 @@ import net from "node:net";
 import { lookup } from "node:dns/promises";
 import { promisify } from "node:util";
 
-import { withFileLock } from "@devfn/ports";
+import { parsePersistedProxyRoutes, withFileLock } from "@devfn/ports";
 import { matchesProcessIdentity, processBirthSignature, processExists } from "@devfn/processes";
 import { domainContains, DomainError, readRegisteredDomains, verifyCertificate, verifyLocalDns } from "./domains.js";
 export { DomainError, domainContains, normalizeDomain, readRegisteredDomains, registerDomain, unregisterDomain, verifyCertificate, verifyLocalDns, type RegisteredDomain } from "./domains.js";
@@ -31,7 +31,7 @@ interface ProxyOwner { pid: number; birthSignature?: string }
 
 function parseProxyOwner(value: string): ProxyOwner {
   const owner = JSON.parse(value) as Partial<ProxyOwner> | null;
-  if (!owner || !Number.isInteger(owner.pid) || owner.pid! <= 0 || (owner.birthSignature !== undefined && typeof owner.birthSignature !== "string")) throw new Error("Invalid proxy owner record.");
+  if (!owner || !Number.isInteger(owner.pid) || owner.pid! <= 0 || (owner.birthSignature !== undefined && (typeof owner.birthSignature !== "string" || owner.birthSignature.length === 0))) throw new Error("Invalid proxy owner record.");
   return owner as ProxyOwner;
 }
 
@@ -182,7 +182,7 @@ export class CaddyProxyController {
   private async readState(file: string): Promise<ProxyState | undefined> {
     try {
       const state = JSON.parse(await readFile(file, "utf8")) as ProxyState;
-      if (state.version !== 1 || !Array.isArray(state.routes)) throw new Error("Unsupported proxy route schema.");
+      parsePersistedProxyRoutes(state);
       renderCaddyfile(state.routes);
       return state;
     } catch (error) {

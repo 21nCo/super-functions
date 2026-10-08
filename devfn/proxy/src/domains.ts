@@ -1,10 +1,11 @@
 import { createPrivateKey, createPublicKey, X509Certificate } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import net from "node:net";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { withFileLock } from "@devfn/ports";
+import { parsePersistedProxyRoutes, withFileLock } from "@devfn/ports";
 
 const PROXY_LOCK_TIMEOUT_MS = 30_000;
 
@@ -38,9 +39,19 @@ export function domainContains(domain: string, hostname: string): boolean {
 }
 
 function loopback(address: string): boolean {
-  if (isIP(address) === 4) return address.split(".")[0] === "127";
-  if (isIP(address) === 6) return address === "::1" || address.toLowerCase() === "0:0:0:0:0:0:0:1" || /^::ffff:127\./i.test(address);
-  return false;
+  return address === "127.0.0.1" || (isIP(address) === 6 && (address === "::1" || address.toLowerCase() === "0:0:0:0:0:0:0:1"));
+}
+
+async function ipv6LoopbackAvailable(): Promise<boolean> {
+  const server = net.createServer();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "::1", resolve);
+    });
+    return true;
+  } catch { return false; }
+  finally { if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve())); }
 }
 
 export async function verifyLocalDns(hostname: string, resolve: typeof lookup = lookup, timeoutMs = 5_000): Promise<void> {
@@ -54,8 +65,9 @@ export async function verifyLocalDns(hostname: string, resolve: typeof lookup = 
   }
   catch { throw new DomainError("DEVFN_DOMAIN_DNS_INVALID", `DNS resolution failed for ${hostname}.`); }
   finally { if (timer) clearTimeout(timer); }
-  if (answers.length === 0 || answers.some((answer) => !loopback(answer.address))) {
-    throw new DomainError("DEVFN_DOMAIN_DNS_INVALID", `Every resolved address for ${hostname} must be loopback.`);
+  if (answers.length === 0 || answers.some((answer) => !loopback(answer.address)) ||
+    (answers.some((answer) => isIP(answer.address) === 6) && !await ipv6LoopbackAvailable())) {
+    throw new DomainError("DEVFN_DOMAIN_DNS_INVALID", `Every resolved address for ${hostname} must match an available Caddy loopback bind.`);
   }
 }
 
@@ -156,19 +168,10 @@ export async function unregisterDomain(stateDir: string, domain: string, project
         if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
         throw new DomainError("DEVFN_DOMAIN_INVALID", "Proxy route state is invalid.");
       }
-      if (!routes || typeof routes !== "object" || (routes as { version?: unknown }).version !== 1 ||
-        !Array.isArray((routes as { routes?: unknown }).routes) ||
-        !(routes as { routes: unknown[] }).routes.every((value) => {
-          if (!value || typeof value !== "object") return false;
-          const route = value as Record<string, unknown>;
-          return typeof route.id === "string" && typeof route.instanceId === "string" && typeof route.hostname === "string" &&
-            (route.targetHost === "127.0.0.1" || route.targetHost === "::1") && Number.isInteger(route.targetPort) &&
-            ["off", "internal", "certificate"].includes(route.tls as string) && typeof route.updatedAt === "string" &&
-            (route.registeredDomain === undefined || typeof route.registeredDomain === "string");
-        })) {
-        throw new DomainError("DEVFN_DOMAIN_INVALID", "Proxy route state is invalid.");
-      }
-      if ((routes as { routes: Array<{ registeredDomain?: string; hostname: string }> }).routes.some((route) =>
+      let persisted;
+      try { persisted = parsePersistedProxyRoutes(routes); }
+      catch { throw new DomainError("DEVFN_DOMAIN_INVALID", "Proxy route state is invalid."); }
+      if (persisted.some((route) =>
         route.registeredDomain === domain || domainContains(domain, route.hostname))) {
         throw new DomainError("DEVFN_DOMAIN_IN_USE", `Domain ${domain} still has active routes.`);
       }
