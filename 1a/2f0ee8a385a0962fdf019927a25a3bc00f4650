@@ -1,0 +1,26 @@
+devfn/cli/SECURITY.md
+  h_bdc5b81c173ee9 12
+devfn/config/src/schema.ts
+  h_bdc5b81c173ee9 256,277
+devfn/config/test/domain-routes.test.ts
+  h_bdc5b81c173ee9 12,14-16
+devfn/core/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 35,72-75
+devfn/ports/src/registry.ts
+  h_bdc5b81c173ee9 18-21,137-138,142,175-181,289-290
+devfn/ports/test/registry.test.ts
+  h_bdc5b81c173ee9 81-83
+devfn/proxy/README.md
+  h_bdc5b81c173ee9 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1a2f0ee8a385a0962fdf019927a25a3bc00f4650",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
