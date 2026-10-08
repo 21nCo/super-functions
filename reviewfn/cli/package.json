@@ -22,7 +22,7 @@
     "@superfunctions/reviewfn-harness-codex": "0.1.0",
     "@superfunctions/reviewfn-testing": "0.1.0"
   },
-  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.6.0", "vitest": "^3.2.4" },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.6.0", "vitest": "4.1.11" },
   "engines": { "node": ">=22" },
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "reviewfn/cli" },

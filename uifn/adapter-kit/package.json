@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
-    "test": "vitest run --config vitest.config.ts --pool=forks --maxWorkers=1 --minWorkers=1",
+    "test": "vitest run --config vitest.config.ts --pool=forks --maxWorkers=1",
     "lint": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepack": "npm run build"
@@ -26,7 +26,7 @@
   "devDependencies": {
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^1.0.0"
+    "vitest": "4.1.11"
   },
   "files": [
     "dist",

@@ -172,7 +172,7 @@ describe("timezone-less datetime parsing contract", () => {
     const require = createRequire(import.meta.url);
     const runner = join(dirname(require.resolve("vitest/package.json")), "vitest.mjs");
     const result = spawnSync(process.execPath, [
-      runner, "run", "__tests__/date.test.ts", "--maxWorkers=1", "--minWorkers=1",
+      runner, "run", "__tests__/date.test.ts", "--maxWorkers=1",
       `--testNamePattern=${instantTestName}`,
     ], {
       cwd: fileURLToPath(new URL("../", import.meta.url)),

@@ -28,7 +28,7 @@
     "prosemirror-tables": "^1.8.5",
     "prosemirror-view": "^1.42.2"
   },
-  "devDependencies": { "@mdfn/extensions": "0.1.0", "jsdom": "^26.0.0", "tsup": "^8.0.0", "typescript": "^5.3.0", "vitest": "3.2.4" },
+  "devDependencies": { "@mdfn/extensions": "0.1.0", "jsdom": "^26.0.0", "tsup": "^8.0.0", "typescript": "^5.3.0", "vitest": "4.1.11" },
   "files": ["dist", "README.md"],
   "license": "MIT",
   "engines": { "node": ">=20 <25" },

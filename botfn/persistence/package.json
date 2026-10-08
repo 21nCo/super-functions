@@ -38,7 +38,7 @@
   "devDependencies": {
     "typescript": "^5.0.0",
     "wrangler": "^3.0.0",
-    "vitest": "^3.2.4",
+    "vitest": "4.1.11",
     "@electric-sql/pglite": "^0.3.0",
     "@cloudflare/workers-types": "^4.0.0"
   },

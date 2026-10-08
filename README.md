@@ -224,6 +224,20 @@ There was no root semantic version tag in the inventory; choosing/pushing one
 and creating a Swift release are separate authorization steps, not part of the
 current workflow repair.
 
+## JavaScript test tooling
+
+Use Node 22.22 or newer in the supported Node 22/24 lines for the full
+workspace test harness, including Cloudflare workerd tests. Vitest and its
+coverage/UI packages are pinned together at 4.1.11; affected Vite/Svelte test
+plugins use compatible versions. These development-tool requirements are
+separate from each published package's runtime engine range. DocsFn's supported
+Node 20 runtime remains unchanged.
+
+Install with `npm ci --ignore-scripts`, then build the trusted esbuild binding
+with `npm rebuild esbuild`. Rebuild `better-sqlite3` before tests that use SQLite.
+Run package tests through their workspace scripts, and enable V8 coverage with
+`vitest run --coverage` from the package directory.
+
 ## Contributing
 
 Due to the current size of our team, we are not accepting external contributions at this time. We appreciate your interest and understanding.

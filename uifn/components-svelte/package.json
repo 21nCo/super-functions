@@ -20,7 +20,7 @@
   },
   "dependencies": { "@uifn/components": "0.0.1", "@uifn/svelte": "0.0.3", "@uifn/recipes": "0.0.1" },
   "peerDependencies": { "svelte": ">=5.20.0 <6" },
-  "devDependencies": { "@sveltejs/package": "^2.5.8", "svelte": "^5.46.4", "svelte-check": "^4.7.3", "typescript": "^5.0.0", "vitest": "^4.1.10" },
+  "devDependencies": { "@sveltejs/package": "^2.5.8", "svelte": "5.57.2", "svelte-check": "^4.7.3", "typescript": "^5.0.0", "vitest": "4.1.11" },
   "sideEffects": ["**/*.svelte"],
   "files": ["dist", "README.md"],
   "author": "21n",

@@ -1,0 +1,22 @@
+{
+  "title": "@docsfn/core",
+  "pages": [
+    "index",
+    "config",
+    "manifest",
+    "search",
+    "search-runtime",
+    "types",
+    "navigation",
+    "routing",
+    "blog",
+    "markdown",
+    "security",
+    "analytics",
+    "rss",
+    "openapi",
+    "diagnostics",
+    "theme",
+    "helpers"
+  ]
+}

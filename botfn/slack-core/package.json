@@ -21,7 +21,8 @@
   "devDependencies": {
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^1.0.0"
+    "@vitest/coverage-v8": "4.1.11",
+    "vitest": "4.1.11"
   },
   "author": "21n",
   "license": "MIT",
