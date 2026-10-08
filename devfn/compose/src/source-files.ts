@@ -16,6 +16,21 @@ export interface ComposeSourceInventory {
   interpolationScopes: Array<{ directory: string; envFiles: string[] }>;
 }
 
+/** Explicit interpolation inputs in Compose precedence order (lowest first). */
+export async function composeInterpolationEnvFiles(scopes: ComposeSourceInventory["interpolationScopes"]): Promise<string[]> {
+  const files: string[] = [];
+  for (const scope of [...scopes].reverse()) {
+    if (scope.envFiles.length) {
+      files.push(...scope.envFiles);
+      continue;
+    }
+    const candidate = path.join(scope.directory, ".env");
+    try { await stat(candidate); files.push(candidate); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  }
+  return files;
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -55,6 +70,22 @@ function mergeService(base: Record<string, unknown>, child: Record<string, unkno
       merged[key] = { ...(envMapping(parent) ?? {}), ...(envMapping(value) ?? {}) };
     } else if (key === "env_file" && !replace.has(key) && parent != null && value != null) {
       merged[key] = [...(Array.isArray(parent) ? parent : [parent]), ...(Array.isArray(value) ? value : [value])];
+    } else if (!replace.has(key) && Array.isArray(parent) && Array.isArray(value) &&
+      ["volumes", "ports", "secrets", "configs"].includes(key)) {
+      const identity = (entry: unknown): string => {
+        if (typeof entry === "string") return key === "volumes" ? entry.split(":")[1] ?? entry : entry;
+        const item = record(entry);
+        if (!item) return JSON.stringify(entry);
+        if (key === "volumes") return String(item.target ?? JSON.stringify(entry));
+        if (key === "ports") return JSON.stringify([item.ip, item.target, item.published, item.protocol]);
+        return String(item.target ?? item.source ?? JSON.stringify(entry));
+      };
+      const entries = new Map(parent.map((entry) => [identity(entry), entry]));
+      for (const entry of value) entries.set(identity(entry), entry);
+      merged[key] = [...entries.values()];
+    } else if (!replace.has(key) && Array.isArray(parent) && Array.isArray(value) &&
+      ["expose", "external_links", "dns", "dns_search", "tmpfs", "cap_add", "cap_drop", "device_cgroup_rules", "devices", "security_opt"].includes(key)) {
+      merged[key] = [...parent, ...value];
     } else if (!replace.has(key) && record(parent) && record(value)) {
       merged[key] = mergeService(record(parent)!, record(value)!, new Set());
     } else {
@@ -241,7 +272,7 @@ export async function assertComposeSourceGraphBounded(
     return merged;
   }
 
-  async function resolveInclude(file: string, include: unknown, envFiles: string[]): Promise<{
+  async function resolveInclude(file: string, include: unknown, scopes: ComposeSourceInventory["interpolationScopes"]): Promise<{
     includedFiles: string[]; projectDirectory: string; localEnvFiles: string[];
   }> {
     const descriptor = typeof include === "string" ? { path: include } : record(include);
@@ -250,11 +281,15 @@ export async function assertComposeSourceGraphBounded(
     const rawNames = paths(descriptor.path);
     const rawProject = typeof descriptor.project_directory === "string" ? [descriptor.project_directory] : [];
     const rawEnvFiles = descriptor.env_file === undefined ? [] : paths(descriptor.env_file, true);
-    await checkPathExpressions([...rawNames, ...rawProject, ...rawEnvFiles], origin, envFiles);
-    const resolved = await interpolateBounded([...rawNames, ...rawProject, ...rawEnvFiles], origin, envFiles);
+    const pathEnvFiles = await composeInterpolationEnvFiles(scopes);
+    await checkPathExpressions([...rawNames, ...rawProject, ...rawEnvFiles], origin, pathEnvFiles);
+    const resolved = await interpolateBounded([...rawNames, ...rawProject, ...rawEnvFiles], origin, pathEnvFiles);
     const includedFiles = resolved.slice(0, rawNames.length).map((name) => path.resolve(origin, name));
     const projectDirectory = rawProject.length ? path.resolve(origin, resolved[rawNames.length]) : path.dirname(includedFiles[0]);
-    const localEnvFiles = descriptor.env_file === undefined ? envFiles : resolved.slice(rawNames.length + rawProject.length)
+    // A short include starts a new project with its own default .env. The
+    // parent's explicit files remain in the ancestry for precedence, but are
+    // not the child's local defaults.
+    const localEnvFiles = descriptor.env_file === undefined ? [] : resolved.slice(rawNames.length + rawProject.length)
       .map((name) => path.resolve(origin, name));
     return { includedFiles, projectDirectory, localEnvFiles };
   }
@@ -276,7 +311,7 @@ export async function assertComposeSourceGraphBounded(
     if (!mark(`document\0${file}\0${directory}\0${envFiles.join("\0")}`)) return;
     await checkInterpolationFiles(directory, envFiles);
     const { data } = await load(file);
-    const candidate = await visitService(file, serviceName, directory, envFiles);
+    const candidate = await visitService(file, serviceName, directory, await composeInterpolationEnvFiles(scopes));
     if (candidate) {
       selectedService = candidate;
       selectedDirectory = directory;
@@ -287,10 +322,10 @@ export async function assertComposeSourceGraphBounded(
     if (Array.isArray(data.include)) includes = data.include;
     else if (data.include !== undefined) includes = [data.include];
     for (const include of includes) {
-      const { includedFiles, projectDirectory, localEnvFiles } = await resolveInclude(file, include, envFiles);
+      const { includedFiles, projectDirectory, localEnvFiles } = await resolveInclude(file, include, scopes);
       const childScopes = [...scopes, { directory: projectDirectory, envFiles: localEnvFiles }];
       for (const includedFile of includedFiles) await visitDocument(includedFile, projectDirectory, localEnvFiles, childScopes);
-      const merged = await mergedIncludedService(includedFiles, projectDirectory, localEnvFiles);
+      const merged = await mergedIncludedService(includedFiles, projectDirectory, await composeInterpolationEnvFiles(childScopes));
       if (merged) {
         selectedService = merged;
         selectedDirectory = projectDirectory;

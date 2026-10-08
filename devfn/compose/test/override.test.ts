@@ -12,6 +12,17 @@ const execFileAsync = promisify(execFile);
 const MOCK_COMPOSE_HASH = "a".repeat(64);
 
 describe("ComposeController", () => {
+  it("retains inherited unique mounts in bounded source inventory", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-inherited-mounts-"));
+    try {
+      await writeFile(path.join(root, "base.yaml"), "services:\n  base:\n    image: busybox\n    volumes: ['${HOME}:/data', './logs:/logs']\n");
+      const source = path.join(root, "compose.yaml");
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    volumes: ['./safe:/extra', './other:/logs']\n");
+      const inventory = await assertComposeSourceGraphBounded(source, "api", async (names) => names);
+      expect(inventory.service?.volumes).toEqual(["${HOME}:/data", "./other:/logs", "./safe:/extra"]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("bounds expanded extends ancestors without Docker", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-expanded-"));
     const source = path.join(root, "compose.yaml");

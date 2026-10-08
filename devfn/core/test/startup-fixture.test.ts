@@ -94,6 +94,54 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
 }, 60_000);
 
 describe("real local startup fixtures", () => {
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("keeps nested include secret rotation ready and replaces ordinary drift", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-leaf-lifecycle-"));
+    const stateDir = path.join(root, "state");
+    const leaf = path.join(root, "child", "leaf");
+    const oldCustom = process.env.CUSTOM;
+    const config = validateDevFnConfig({ version: 1, project: { id: "leaf-lifecycle-fixture" },
+      services: { api: { adapter: "compose", service: "api", envAllowlist: ["CUSTOM"], secretEnv: ["CUSTOM"] } },
+      profiles: { default: { services: ["api"] } } });
+    const orchestrator = new DevFnOrchestrator();
+    const leafSource = "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n    environment:\n      CUSTOM: ${CUSTOM}\n      MODE: ${MODE}\n";
+    let lastContainer: string | undefined;
+    try {
+      delete process.env.CUSTOM;
+      await mkdir(leaf, { recursive: true });
+      await writeFile(path.join(root, "compose.yaml"), "include:\n  - path: child/compose.yaml\n    env_file: child/scope.env\n");
+      await writeFile(path.join(root, "child", "compose.yaml"), "include: [leaf/compose.yaml]\n");
+      await writeFile(path.join(root, "child", "scope.env"), "MODE=one\n");
+      await writeFile(path.join(leaf, ".env"), "CUSTOM=private-one\n");
+      await writeFile(path.join(leaf, "compose.yaml"), leafSource);
+      const first = await orchestrator.up({ config, root, stateDir });
+      lastContainer = first.services[0].containerIds[0];
+      const inspect = async (id: string) => JSON.parse((await execFileAsync("docker", ["inspect", "--format", "{{json .Config.Env}}", id])).stdout) as string[];
+      expect(await inspect(first.services[0].containerIds[0])).toEqual(expect.arrayContaining(["CUSTOM=private-one", "MODE=one"]));
+      await writeFile(path.join(leaf, ".env"), "CUSTOM=private-two\n");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+      expect(JSON.stringify(await readReceipt(config, root, first.instanceId))).not.toContain("private-two");
+      await writeFile(path.join(root, "child", "scope.env"), "MODE=two\n");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const second = await orchestrator.up({ config, root, stateDir });
+      lastContainer = second.services[0].containerIds[0];
+      expect(second.invocationId).not.toBe(first.invocationId);
+      expect(await inspect(second.services[0].containerIds[0])).toEqual(expect.arrayContaining(["CUSTOM=private-two", "MODE=two"]));
+      await writeFile(path.join(leaf, "compose.yaml"), "services:\n  api: [invalid\n");
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toThrow();
+      expect((await readReceipt(config, root, second.instanceId))?.invocationId).toBe(second.invocationId);
+      expect((await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", second.services[0].containerIds[0]])).stdout.trim()).toBe("true");
+    } finally {
+      await writeFile(path.join(leaf, "compose.yaml"), leafSource).catch(() => undefined);
+      await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+      if (oldCustom === undefined) delete process.env.CUSTOM;
+      else process.env.CUSTOM = oldCustom;
+      if (lastContainer) await execFileAsync("docker", ["inspect", lastContainer]).then(
+        () => { throw new Error("Fixture container survived cleanup"); }, () => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("keeps env_file secret aliases private through status and replacement", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-envfile-lifecycle-"));
     const stateDir = path.join(root, "state");

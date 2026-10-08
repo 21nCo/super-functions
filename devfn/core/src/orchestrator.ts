@@ -67,11 +67,12 @@ async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePl
   const provisionalNetworks = provisionalComposeNetworks(config, plan, ownerId);
   const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks: provisionalNetworks });
   const composeNetworks: Record<string, string[]> = {};
+  const deadline = Date.now() + 20_000;
   for (const node of plan.nodes) {
     if (node.kind !== "service") continue;
     const spec = config.services![node.name];
     const environment = createComposeEnvironment({ ...spec, env: provisional.nodes[node.name].environment }, provisional.nodes[node.name].environment);
-    composeNetworks[node.name] = await effectiveComposeServiceNetworks({ ...spec, env: provisional.nodes[node.name].environment }, root, ownerId, environment);
+    composeNetworks[node.name] = await effectiveComposeServiceNetworks({ ...spec, env: provisional.nodes[node.name].environment }, root, ownerId, environment, deadline);
   }
   return resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks });
 }
@@ -84,6 +85,7 @@ function compareCodepoint(left: string, right: string): number {
 
 async function startupFingerprints(config: DevFnConfig, root: string, resolved: ReturnType<typeof resolveEndpointTemplates>): Promise<Record<string, string>> {
   const fingerprints: Record<string, string> = {};
+  const deadline = Date.now() + 20_000;
   for (const [name, node] of Object.entries(resolved.nodes)) {
     const processSpec = config.processes?.[name];
     const serviceSpec = config.services?.[name];
@@ -107,7 +109,7 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
         projectName: serviceSpec.projectName ?? "devfn", ports: serviceSpec.ports ?? {},
         environment: declaredEnvironment,
         envAllowlist: [...(serviceSpec.envAllowlist ?? [])].sort(compareCodepoint), secretEnv: [...(serviceSpec.secretEnv ?? [])].sort(compareCodepoint),
-        source: await fingerprintComposeSource(spec, root, resolved.ownerId, environment),
+        source: await fingerprintComposeSource(spec, root, resolved.ownerId, environment, deadline),
       };
     } else continue;
     fingerprints[name] = createHash("sha256").update(JSON.stringify(startup)).digest("hex");
@@ -362,7 +364,7 @@ export class DevFnOrchestrator {
     try {
       receipt.environmentOutputs = await writeEnvironmentOutputs(options.root, runtimeDir, options.config.environmentOutputs ?? [], environment);
       for (const node of plan.nodes) {
-        await this.startSelectedNode(node, options, identity, receipt, resolved, ports, allocations, supervisor, compose);
+        await this.startSelectedNode(node, { options, identity, receipt, resolved, ports, allocations, supervisor, compose });
         receipt.updatedAt = new Date().toISOString();
         await writeReceipt(receipt);
       }
@@ -417,9 +419,17 @@ export class DevFnOrchestrator {
     }
   }
 
-  private async startSelectedNode(node: LifecyclePlan["nodes"][number], options: UpOptions, identity: InstanceIdentity,
-    receipt: LifecycleReceipt, resolved: ReturnType<typeof resolveEndpointTemplates>, ports: Record<string, number>,
-    allocations: readonly PortAllocation[], supervisor: ProcessSupervisor, compose: ComposeController): Promise<void> {
+  private async startSelectedNode(node: LifecyclePlan["nodes"][number], context: {
+    options: UpOptions;
+    identity: InstanceIdentity;
+    receipt: LifecycleReceipt;
+    resolved: ReturnType<typeof resolveEndpointTemplates>;
+    ports: Record<string, number>;
+    allocations: readonly PortAllocation[];
+    supervisor: ProcessSupervisor;
+    compose: ComposeController;
+  }): Promise<void> {
+    const { options, identity, receipt, resolved, ports, allocations, supervisor, compose } = context;
     if (node.kind === "service") {
       const spec = options.config.services![node.name];
       await compose.start({

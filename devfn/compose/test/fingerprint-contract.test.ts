@@ -1,12 +1,154 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { createComposeEnvironment, fingerprintComposeSource } from "../src/index.js";
 
 const live = process.env.DEVFN_REAL_COMPOSE === "1";
+const composeVersion = live ? execFileSync("docker", ["compose", "version", "--short"], { encoding: "utf8" }).trim() : "";
+const lacksBuildPrivileged = /^v?2\.24\.4$/.test(composeVersion);
 
 describe.skipIf(!live)("effective Compose startup fingerprint", () => {
+  it("accepts Compose BOM and tab export syntax while tracking effective ordinary values", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-bom-tab-"));
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    env_file: [base.env, active.env]\n");
+      await writeFile(path.join(root, "base.env"), "MODE=overridden\n");
+      await writeFile(path.join(root, "active.env"), "\uFEFFexport\tMODE=one\n");
+      const first = await fingerprint();
+      await writeFile(path.join(root, "base.env"), "MODE=still-overridden\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, "active.env"), "\uFEFFexport\tMODE=two\n");
+      expect(await fingerprint()).not.toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("keeps a leaf default secret private beneath a parent explicit include environment", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-leaf-secret-"));
+    const spec = { adapter: "compose" as const, service: "api", secretEnv: ["CUSTOM"] };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await mkdir(path.join(root, "child", "leaf"), { recursive: true });
+      await writeFile(path.join(root, "compose.yaml"), "include:\n  - path: child/compose.yaml\n    env_file: child/scope.env\n");
+      await writeFile(path.join(root, "child", "scope.env"), "MODE=one\n");
+      await writeFile(path.join(root, "child", "compose.yaml"), "include: [leaf/compose.yaml]\n");
+      await writeFile(path.join(root, "child", "leaf", ".env"), "CUSTOM=private-one\n");
+      await writeFile(path.join(root, "child", "leaf", "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: 'echo ${CUSTOM:-none} ${MODE:-none}'\n");
+      const first = await fingerprint();
+      await writeFile(path.join(root, "child", "leaf", ".env"), "CUSTOM=private-two\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, "child", "scope.env"), "MODE=two\n");
+      expect(await fingerprint()).not.toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("resolves a leaf env_file path from an outer explicit include environment", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-outer-path-"));
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await mkdir(path.join(root, "child", "leaf"), { recursive: true });
+      await writeFile(path.join(root, "compose.yaml"), "include:\n  - path: child/compose.yaml\n    env_file: child/scope.env\n");
+      await writeFile(path.join(root, "child", "scope.env"), "FILE_PATH=service.env\n");
+      await writeFile(path.join(root, "child", "compose.yaml"), "include: [leaf/compose.yaml]\n");
+      await writeFile(path.join(root, "child", "leaf", "compose.yaml"), "services:\n  api:\n    image: busybox\n    env_file: ${FILE_PATH}\n");
+      await writeFile(path.join(root, "child", "leaf", "service.env"), "MODE=one\n");
+      const first = await fingerprint();
+      await writeFile(path.join(root, "child", "leaf", "service.env"), "MODE=two\n");
+      expect(await fingerprint()).not.toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("resolves a nested include path from an outer explicit include environment", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-outer-include-path-"));
+    const spec = { adapter: "compose" as const, service: "api" };
+    try {
+      await mkdir(path.join(root, "child", "leaf"), { recursive: true });
+      await writeFile(path.join(root, "compose.yaml"), "include:\n  - path: child/compose.yaml\n    env_file: child/scope.env\n");
+      await writeFile(path.join(root, "child", "scope.env"), "NEXT=leaf/compose.yaml\n");
+      await writeFile(path.join(root, "child", "compose.yaml"), "include: ['${NEXT}']\n");
+      await writeFile(path.join(root, "child", "leaf", "compose.yaml"), "services:\n  api:\n    image: busybox\n");
+      await expect(fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec))).resolves.toMatch(/^[a-f0-9]{64}$/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(lacksBuildPrivileged)("masks build privileged with a Compose-valid boolean", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-build-boolean-"));
+    const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["BUILD_SECRET"], secretEnv: ["BUILD_SECRET"] };
+    try {
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    build:\n      context: .\n      privileged: ${BUILD_SECRET}\n");
+      for (const value of ["true", "false"]) {
+        await expect(fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec, {}, { ...process.env, BUILD_SECRET: value })))
+          .resolves.toMatch(/^[a-f0-9]{64}$/);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(lacksBuildPrivileged)("checks inherited unique volumes when typed fields force source fallback", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-fallback-volume-"));
+    const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["BUILD_SECRET"], secretEnv: ["BUILD_SECRET"] };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec, {}, { ...process.env, BUILD_SECRET: "true" }));
+    try {
+      await writeFile(path.join(root, "base.yaml"), "services:\n  base:\n    image: busybox\n    volumes: ['${HOME}:/data']\n");
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    volumes: ['./safe:/extra']\n    build:\n      context: .\n      privileged: ${BUILD_SECRET}\n");
+      await expect(fingerprint()).rejects.toThrow(/inherited host value/);
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    volumes: ['./safe:/data']\n    build:\n      context: .\n      privileged: ${BUILD_SECRET}\n");
+      await expect(fingerprint()).resolves.toMatch(/^[a-f0-9]{64}$/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("deduplicates equal include scopes before probing secret presence", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-probe-scopes-"));
+    const wrapperDirectory = path.join(root, "bin");
+    const log = path.join(root, "probes.log");
+    const docker = execFileSync("which", ["docker"], { encoding: "utf8" }).trim();
+    const spec = { adapter: "compose" as const, file: "scope0.yaml", service: "api", secretEnv: ["CUSTOM"], env: { DEVFN_PROBE_LOG: log } };
+    try {
+      await mkdir(wrapperDirectory);
+      await writeFile(path.join(wrapperDirectory, "docker"), `#!/bin/sh\ncase "$*" in *devfn-compose-presence-*) echo probe >> "$DEVFN_PROBE_LOG";; esac\nexec "${docker}" "$@"\n`);
+      await chmod(path.join(wrapperDirectory, "docker"), 0o700);
+      await writeFile(path.join(root, ".env"), "CUSTOM=private-one\n");
+      for (let index = 0; index < 12; index += 1) {
+        await writeFile(path.join(root, `scope${index}.yaml`), index === 11
+          ? "services:\n  api:\n    image: busybox\n    command: 'echo ${CUSTOM}'\n"
+          : `include: [scope${index + 1}.yaml]\n`);
+      }
+      const environment = createComposeEnvironment(spec, {}, { ...process.env, PATH: `${wrapperDirectory}:${process.env.PATH}` });
+      await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
+      const count = (await readFile(log, "utf8")).trim().split("\n").length;
+      expect(count).toBe(1);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("probes distinct include scopes concurrently under one budget", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-probe-parallel-"));
+    const wrapperDirectory = path.join(root, "bin");
+    const log = path.join(root, "probes.log");
+    const docker = execFileSync("which", ["docker"], { encoding: "utf8" }).trim();
+    const spec = { adapter: "compose" as const, file: "scope0/compose.yaml", service: "api", secretEnv: ["CUSTOM"], env: { DEVFN_PROBE_LOG: log } };
+    try {
+      await mkdir(wrapperDirectory);
+      await writeFile(path.join(wrapperDirectory, "docker"), `#!/bin/sh\ncase "$*" in *devfn-compose-presence-*) echo start >> "$DEVFN_PROBE_LOG"; sleep 0.2; echo end >> "$DEVFN_PROBE_LOG";; esac\nexec "${docker}" "$@"\n`);
+      await chmod(path.join(wrapperDirectory, "docker"), 0o700);
+      for (let index = 0; index < 8; index += 1) {
+        const directory = path.join(root, `scope${index}`);
+        await mkdir(directory);
+        await writeFile(path.join(directory, "compose.yaml"), index === 7
+          ? "services:\n  api:\n    image: busybox\n    command: 'echo ${CUSTOM:-none}'\n"
+          : `include: [../scope${index + 1}/compose.yaml]\n`);
+      }
+      await writeFile(path.join(root, "scope7", ".env"), "CUSTOM=private-one\n");
+      const environment = createComposeEnvironment(spec, {}, { ...process.env, PATH: `${wrapperDirectory}:${process.env.PATH}` });
+      await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
+      const entries = (await readFile(log, "utf8")).trim().split("\n");
+      expect(entries).toHaveLength(16);
+      expect(entries.slice(0, 2)).toEqual(["start", "start"]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
   it("accepts escaped dollars and tracks ordinary quoted env_file values", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-quoted-env-"));
     const spec = { adapter: "compose" as const, service: "api" };

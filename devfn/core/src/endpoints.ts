@@ -96,8 +96,8 @@ function resolveValues(values: Record<string, string>, base: CheckedValues, gene
   const { dependents, outstanding } = resolutionGraph(values, resolved, generated, field);
   const queue = [...outstanding].filter(([, count]) => count === 0).map(([key]) => key);
   let visited = 0;
-  for (let index = 0; index < queue.length; index += 1) {
-    const key = queue[index];
+  // Array iteration observes keys appended as their dependencies resolve.
+  for (const key of queue) {
     const expanded = expand(values[key], `${field}.${key}`, (reference) => {
       if (Object.hasOwn(generated.values, reference)) return [generated.values[reference], generated.checked[reference]];
       if (Object.hasOwn(resolved.values, reference)) return [resolved.values[reference], resolved.checked[reference]];
@@ -305,20 +305,21 @@ function rejectXmlTagNames(tag: string, field: string): void {
 /** Inspect XML names outside comments and quoted attribute values, including incomplete tags. */
 function rejectXmlCredentialFields(value: string, field: string, jsonStrings: readonly [number, number][]): void {
   let stringIndex = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    if (value[index] !== "<") continue;
+  let index = 0;
+  while (index < value.length) {
+    if (value[index] !== "<") { index += 1; continue; }
     while (stringIndex < jsonStrings.length && jsonStrings[stringIndex][1] < index) stringIndex += 1;
     // A comment opener inside JSON data is not an XML comment. Skipping it
     // would hide any real element that follows the string.
-    if (stringIndex < jsonStrings.length && jsonStrings[stringIndex][0] <= index) continue;
+    if (stringIndex < jsonStrings.length && jsonStrings[stringIndex][0] <= index) { index += 1; continue; }
     if (value.startsWith("<!--", index)) {
       const close = value.indexOf("-->", index + 4);
-      index = close < 0 ? value.length : close + 2;
+      index = close < 0 ? value.length : close + 3;
       continue;
     }
     const result = readXmlTag(value, index);
     rejectXmlTagNames(result.tag, field);
-    index = result.lastIndex;
+    index = result.lastIndex + 1;
   }
 }
 
@@ -721,14 +722,15 @@ function rejectSchemeRelativeUserinfo(value: string, field: string): void {
   // bracketed value, or after punctuation. Inspect the authority itself,
   // rather than guessing which preceding separator permits a URL. A single
   // cursor avoids reparsing malformed long authorities.
-  for (let index = 0; index + 1 < value.length; index += 1) {
-    if (value[index] !== "/" || value[index + 1] !== "/") continue;
+  let index = 0;
+  while (index + 1 < value.length) {
+    if (value[index] !== "/" || value[index + 1] !== "/") { index += 1; continue; }
     let end = index + 2;
     while (end < value.length && !/[\s\\/?#&]/.test(value[end])) {
       if (value[end] === "@") invalid(field, "credential-bearing URL must use the secret channel.");
       end += 1;
     }
-    index = end - 1;
+    index = end;
   }
 }
 
@@ -736,17 +738,21 @@ function rejectSpecialSchemeUserinfo(value: string, lower: string, field: string
   // WHATWG normalizes special-scheme URLs with no `//`, and treats a
   // backslash before the authority as a slash. Inspect that authority too:
   // the `//` scan above intentionally does not reinterpret UNC paths.
-  for (let index = 0; index < value.length; index += 1) {
+  let index = 0;
+  while (index < value.length) {
     const schemeLength = specialSchemeLength(lower, index);
-    if (!schemeLength) continue;
+    if (!schemeLength) { index += 1; continue; }
     index += schemeLength;
     while (value[index] === "/" || value[index] === "\\") index += 1;
     // A nested scheme starts a new candidate. Advancing the outer cursor
     // rather than rescanning its suffix keeps repeated prefixes linear.
-    for (; index < value.length && !/[\s\\/?#<>"'`{}|]/.test(value[index]); index += 1) {
+    let nested = false;
+    while (index < value.length && !/[\s\\/?#<>"'`{}|]/.test(value[index])) {
       if (value[index] === "@") invalid(field, "credential-bearing URL must use the secret channel.");
-      if (specialSchemeLength(lower, index)) { index -= 1; break; }
+      if (specialSchemeLength(lower, index)) { nested = true; break; }
+      index += 1;
     }
+    if (!nested) index += 1;
   }
 }
 
@@ -969,6 +975,17 @@ function directHealthUrl(node: LifecyclePlan["nodes"][number], input: EndpointRe
   return url.toString();
 }
 
+function composeInternalUrl(input: EndpointResolutionInput, config: DevFnConfig, name: string, scheme: string): string | undefined {
+  let url: string | undefined;
+  for (const node of input.plan.nodes) {
+    if (node.kind !== "service" || !input.composeNetworks?.[node.name]?.length) continue;
+    const service = config.services?.[node.name];
+    const internal = service?.ports?.[name];
+    if (internal !== undefined) url = `${scheme}://${service!.service}:${internal}`;
+  }
+  return url;
+}
+
 function generatedPortValues(input: EndpointResolutionInput, config: DevFnConfig, generated: Record<string, string>,
   httpPorts: ReadonlySet<string>, httpSchemes: ReadonlyMap<string, string>): { directUrls: Record<string, string>; composeUrls: Record<string, string> } {
   const directUrls: Record<string, string> = Object.create(null);
@@ -984,12 +1001,8 @@ function generatedPortValues(input: EndpointResolutionInput, config: DevFnConfig
     const url = `${scheme}://127.0.0.1:${port}`;
     directUrls[name] = url;
     generated[`DEVFN_URL_${normalized(name)}`] = url;
-    for (const node of input.plan.nodes) {
-      if (node.kind !== "service") continue;
-      const service = config.services?.[node.name];
-      const internal = service?.ports?.[name];
-      if (internal !== undefined && input.composeNetworks?.[node.name]?.length) composeUrls[name] = `${scheme}://${service!.service}:${internal}`;
-    }
+    const internalUrl = composeInternalUrl(input, config, name, scheme);
+    if (internalUrl) composeUrls[name] = internalUrl;
   }
   return { directUrls, composeUrls };
 }

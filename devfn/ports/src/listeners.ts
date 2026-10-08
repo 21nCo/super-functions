@@ -115,7 +115,7 @@ export async function scanListenerState(includeDocker = true): Promise<ListenerS
     inspection[protocol] = scanned.inspected;
   }
   if (includeDocker) {
-    try { results.push(...parseDockerListeners((await execFileAsync("docker", ["ps", "--format", "{{.ID}}\\t{{.Names}}\\t{{.Ports}}"], { timeout: 10_000 })).stdout)); inspection.docker = true; }
+    try { results.push(...parseDockerListeners((await execFileAsync("docker", ["ps", "--format", String.raw`{{.ID}}\t{{.Names}}\t{{.Ports}}`], { timeout: 10_000 })).stdout)); inspection.docker = true; }
     catch { /* Docker is optional */ }
   }
   results.sort((a, b) => {
