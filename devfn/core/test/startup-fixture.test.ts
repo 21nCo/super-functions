@@ -292,29 +292,31 @@ configs:
     const envFile = path.join(root, "service.env");
     const spec = "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n    env_file: service.env\n";
     await writeFile(source, spec);
-    await writeFile(envFile, "ACTIVATE=yes\nALIAS=${ACTIVATE:+${API_TOKEN}}\nMODE=one\n");
+    await writeFile(envFile, "ACTIVATE=yes\nMODE=one\nALIAS=${ACTIVATE:+${API_TOKEN}}-${MODE}\n");
     await writeFile(path.join(root, ".env"), "API_TOKEN=guessable-one\n");
     const config = validateDevFnConfig({ version: 1, project: { id: "ordered-envfile-fixture" },
       services: { api: { adapter: "compose", service: "api" } }, profiles: { default: { services: ["api"] } } });
     const orchestrator = new DevFnOrchestrator();
     let lastId: string | undefined;
+    let projectName: string | undefined;
     try {
       const first = await orchestrator.up({ config, root, stateDir });
+      projectName = first.services[0].projectName;
       lastId = first.services[0].containerIds[0];
       const containerEnv = async (id: string): Promise<string[]> => JSON.parse((await execFileAsync("docker",
         ["inspect", "--format", "{{json .Config.Env}}", id])).stdout) as string[];
-      expect(await containerEnv(lastId)).toContain("ALIAS=guessable-one");
+      expect(await containerEnv(lastId)).toContain("ALIAS=guessable-one-one");
       await writeFile(path.join(root, ".env"), "API_TOKEN=guessable-two\n");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(JSON.stringify(await readReceipt(config, root, first.instanceId))).not.toContain("guessable-one");
       expect(JSON.stringify(await readReceipt(config, root, first.instanceId))).not.toContain("guessable-two");
-      await writeFile(envFile, "ACTIVATE=yes\nALIAS=${ACTIVATE:+${API_TOKEN}}\nMODE=two\n");
+      await writeFile(envFile, "ACTIVATE=yes\nMODE=two\nALIAS=${ACTIVATE:+${API_TOKEN}}-${MODE}\n");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
       const next = await orchestrator.up({ config, root, stateDir });
       lastId = next.services[0].containerIds[0];
       expect(next.invocationId).not.toBe(first.invocationId);
-      expect(await containerEnv(lastId)).toEqual(expect.arrayContaining(["ALIAS=guessable-two", "MODE=two"]));
+      expect(await containerEnv(lastId)).toEqual(expect.arrayContaining(["ALIAS=guessable-two-two", "MODE=two"]));
       await writeFile(source, "services:\n  api: [invalid\n");
       await expect(orchestrator.up({ config, root, stateDir })).rejects.toThrow();
       expect((await readReceipt(config, root, next.instanceId))?.invocationId).toBe(next.invocationId);
@@ -324,6 +326,9 @@ configs:
       await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
       if (lastId) await execFileAsync("docker", ["inspect", lastId]).then(
         () => { throw new Error("Fixture container survived cleanup"); }, () => undefined);
+      if (projectName) await execFileAsync("docker", ["network", "rm", `${projectName}_default`]).catch((error: Error) => {
+        if (!error.message.includes("not found")) throw error;
+      });
       await rm(root, { recursive: true, force: true });
     }
   }, 60_000);
@@ -338,8 +343,10 @@ configs:
       services: { api: { adapter: "compose", service: "api" } }, profiles: { default: { services: ["api"] } } });
     const orchestrator = new DevFnOrchestrator();
     let containerId: string | undefined;
+    let projectName: string | undefined;
     try {
       const receipt = await orchestrator.up({ config, root, stateDir });
+      projectName = receipt.services[0].projectName;
       containerId = receipt.services[0].containerIds[0];
       await writeFile(source, "services:\n  api: [invalid\n");
       await expect(orchestrator.up({ config, root, stateDir }))
@@ -347,11 +354,21 @@ configs:
       const inspection = await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", containerId]);
       expect(inspection.stdout.trim()).toBe("true");
       expect((await readReceipt(config, root, receipt.instanceId))?.invocationId).toBe(receipt.invocationId);
+      await writeFile(path.join(root, ".env"), "ALIAS=${HOME}\n");
+      await writeFile(source, "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n    environment:\n      ALIAS: ${ALIAS}\n");
+      await expect(orchestrator.up({ config, root, stateDir }))
+        .rejects.toMatchObject({ code: "DEVFN_COMPOSE_START_FAILED" });
+      expect((await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", containerId])).stdout.trim()).toBe("true");
+      expect((await readReceipt(config, root, receipt.instanceId))?.invocationId).toBe(receipt.invocationId);
     } finally {
       await writeFile(source, original);
+      await writeFile(path.join(root, ".env"), "").catch(() => undefined);
       await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
       if (containerId) await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", containerId]).then(
         () => { throw new Error("Fixture container survived cleanup"); }, () => undefined);
+      if (projectName) await execFileAsync("docker", ["network", "rm", `${projectName}_default`]).catch((error: Error) => {
+        if (!error.message.includes("not found")) throw error;
+      });
       await rm(root, { recursive: true, force: true });
     }
   }, 60_000);

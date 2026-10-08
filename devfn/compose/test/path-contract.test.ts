@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 
-import { createScopedPathInterpolator, readComposeEnvDefinitions } from "../src/path-interpolation.js";
+import { createScopedPathInterpolator, readComposeEnvDefinitions, simpleInterpolation } from "../src/path-interpolation.js";
 import { createComposeEnvironment, selectedComposeEndpointReferences } from "../src/index.js";
 
 async function withDotenv(content: string, check: (root: string) => Promise<void>): Promise<void> {
@@ -46,6 +46,20 @@ it("reads Compose whitespace in dotenv declarations", async () => {
   await withDotenv("\u00a0FILE_PATH=service.env\n", async (root) => {
     expect((await readComposeEnvDefinitions(path.join(root, ".env"))).get("FILE_PATH")).toBe("service.env");
   });
+});
+
+it("parses long multiline dotenv values in bounded time", async () => {
+  const content = `MULTI="${Array.from({ length: 20_000 }, () => "line").join("\n")}"\n`;
+  await withDotenv(content, async (root) => {
+    const started = Date.now();
+    expect((await readComposeEnvDefinitions(path.join(root, ".env"))).get("MULTI")).toBe(content.trimEnd().slice("MULTI=".length));
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+}, 5_000);
+
+it("keeps escaped quote characters as data after dotenv decoding", () => {
+  expect(simpleInterpolation('"\\"one\\""', {})).toBe('"one"');
+  expect(simpleInterpolation("one", {})).toBe("one");
 });
 
 it("bounds acyclic dotenv expansion before materialization", async () => {
@@ -100,6 +114,29 @@ it("checks generated URLs only when their value reaches the selected Compose bra
     expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set());
     await writeFile(path.join(root, ".env"), "ACTIVATE=yes\n");
     expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set(["DEVFN_URL_WEB"]));
+  });
+});
+
+it("selects a generated URL when an escaped quoted dotenv condition is nonempty", async () => {
+  await withDotenv('ACTIVATE="\\"\\""\n', async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    await writeFile(path.join(root, "compose.yaml"),
+      "services:\n  api:\n    image: busybox\n    command: '${ACTIVATE:+${DEVFN_URL_WEB}}'\n");
+    const environment = createComposeEnvironment(spec, { DEVFN_URL_WEB: "http://web:8080" });
+    expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set(["DEVFN_URL_WEB"]));
+  });
+});
+
+it("rejects a transitive inherited host reference in selected dotenv input", async () => {
+  await withDotenv("ALIAS=${HOME}\n", async (root) => {
+    await writeFile(path.join(root, "compose.yaml"),
+      "services:\n  api:\n    image: busybox\n    command: '${ALIAS}'\n");
+    const spec = { adapter: "compose" as const, service: "api" };
+    await expect(selectedComposeEndpointReferences(spec, root, createComposeEnvironment(spec)))
+      .rejects.toThrow(/Unable to inspect selected Compose endpoint references/);
+    const declared = { ...spec, envAllowlist: ["HOME"] };
+    await expect(selectedComposeEndpointReferences(declared, root, createComposeEnvironment(declared)))
+      .resolves.toEqual(new Set());
   });
 });
 

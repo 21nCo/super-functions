@@ -32,10 +32,10 @@ function quotedEnvDefinitionEnd(line: string, start: number, quote: string): num
   return line.length;
 }
 
-function hasClosingEnvQuote(value: string): boolean {
-  for (let cursor = 1; cursor < value.length; cursor += 1) {
+function hasClosingEnvQuote(value: string, quote: string, start: number): boolean {
+  for (let cursor = start; cursor < value.length; cursor += 1) {
     if (value[cursor] === "\\" && cursor + 1 < value.length) { cursor += 1; continue; }
-    if (value[cursor] === value[0]) return true;
+    if (value[cursor] === quote) return true;
   }
   return false;
 }
@@ -76,12 +76,18 @@ export async function readComposeEnvDefinitions(file: string): Promise<EnvDefini
   found.declarations = [];
   const lines = content.split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
-    let line = index === 0 && lines[index].codePointAt(0) === 0xfeff ? lines[index].slice(1) : lines[index];
+    const line = index === 0 && lines[index].codePointAt(0) === 0xfeff ? lines[index].slice(1) : lines[index];
     let entry = parseEnvDefinition(line);
     if (entry && (entry[1].startsWith("'") || entry[1].startsWith('"'))) {
-      while (entry && !hasClosingEnvQuote(entry[1]) && index + 1 < lines.length) {
-        line += `\n${lines[++index]}`;
-        entry = parseEnvDefinition(line);
+      const quote = entry[1][0];
+      if (!hasClosingEnvQuote(entry[1], quote, 1)) {
+        const parts = [line];
+        while (index + 1 < lines.length) {
+          const next = lines[++index];
+          parts.push(next);
+          if (hasClosingEnvQuote(next, quote, 0)) break;
+        }
+        entry = parseEnvDefinition(parts.join("\n"));
       }
     }
     if (!entry) continue;
@@ -198,12 +204,18 @@ export function selectedInterpolationReferences(expression: string, values: Node
   options: { includeConditions?: boolean; strictMissing?: boolean; dotenvQuotes?: boolean;
     unknownValues?: ReadonlySet<string> } = {}, depth = 0): Set<string> {
   if (depth > 128) throw new Error("Compose interpolation exceeds the nesting limit");
-  const selected = new Set<string>();
-  if (options.dotenvQuotes && expression.startsWith("'") && expression.endsWith("'")) return selected;
+  if (options.dotenvQuotes && expression.startsWith("'") && expression.endsWith("'")) return new Set();
   if (options.dotenvQuotes && expression.startsWith('"') && expression.endsWith('"')) {
     return selectedInterpolationReferences(decodeDoubleQuoted(expression.slice(1, -1)), values,
       { ...options, dotenvQuotes: false }, depth + 1);
   }
+  return scanInterpolationReferences(expression, values, options, depth);
+}
+
+function scanInterpolationReferences(expression: string, values: NodeJS.ProcessEnv,
+  options: { includeConditions?: boolean; strictMissing?: boolean; unknownValues?: ReadonlySet<string> },
+  depth: number): Set<string> {
+  const selected = new Set<string>();
   for (let index = 0; index < expression.length;) {
     if (expression[index] !== "$" || expression[index + 1] === "$") {
       index += expression[index] === "$" && expression[index + 1] === "$" ? 2 : 1;
@@ -287,7 +299,9 @@ export function simpleInterpolation(expression: string, values: NodeJS.ProcessEn
   }
   if (expression.startsWith('"') && expression.endsWith('"')) {
     const inner = decodeDoubleQuoted(expression.slice(1, -1));
-    return simpleInterpolation(inner, values, depth + 1, maxBytes, missingAsEmpty);
+    // Escaped quote characters are data after lexical decoding. Re-entering
+    // simpleInterpolation would parse them as a second layer of dotenv syntax.
+    return interpolatePieces(inner, values, depth + 1, maxBytes, missingAsEmpty);
   }
   return interpolatePieces(expression, values, depth, maxBytes, missingAsEmpty);
 }
@@ -300,14 +314,37 @@ export function dotenvDependencyExpression(expression: string): string {
   return expression;
 }
 
-function selectedDeclaration(definitions: Awaited<ReturnType<typeof scopeDefinitions>>, name: string,
+function indexedPathDeclarations(definitions: Awaited<ReturnType<typeof scopeDefinitions>>): Array<Map<string, number[]>> {
+  return definitions.map(({ declarations }) => {
+    const index = new Map<string, number[]>();
+    for (const [position, [name]] of declarations.entries()) {
+      const positions = index.get(name) ?? [];
+      positions.push(position);
+      index.set(name, positions);
+    }
+    return index;
+  });
+}
+
+function lastSelectedPosition(positions: readonly number[], limit: number): number | undefined {
+  let left = 0;
+  let right = positions.length;
+  while (left < right) {
+    const middle = (left + right) >>> 1;
+    if (positions[middle] < limit) left = middle + 1;
+    else right = middle;
+  }
+  return left === 0 ? undefined : positions[left - 1];
+}
+
+function selectedDeclaration(definitions: Awaited<ReturnType<typeof scopeDefinitions>>,
+  index: readonly Map<string, number[]>[], name: string,
   scopeLimit: number, declarationLimit: number): { scope: number; index: number; expression: string } | undefined {
   for (let scope = 0; scope <= scopeLimit; scope += 1) {
     const declarations = definitions[scope].declarations;
     const limit = scope === scopeLimit ? declarationLimit : declarations.length;
-    for (let index = limit - 1; index >= 0; index -= 1) {
-      if (declarations[index][0] === name) return { scope, index, expression: declarations[index][1] };
-    }
+    const position = lastSelectedPosition(index[scope].get(name) ?? [], limit);
+    if (position !== undefined) return { scope, index: position, expression: declarations[position][1] };
   }
   return undefined;
 }
@@ -316,24 +353,28 @@ function neededVariables(paths: string[], definitions: Awaited<ReturnType<typeof
   environment: NodeJS.ProcessEnv, forbidden: ReadonlySet<string>, allowCredentialDependencies: boolean): NeededPathDeclarations {
   const needed = new Set<string>();
   const declarations = new Set<string>();
-  const visit = (name: string, scopeLimit: number, declarationLimit: number): void => {
+  const index = indexedPathDeclarations(definitions);
+  let remainingWork = MAX_PATH_EXPANSION_BYTES;
+  const visit = (name: string, scopeLimit: number, declarationLimit: number, depth: number): void => {
+    if (depth > 512) throw new Error("Compose path interpolation exceeds the dependency depth limit");
     if (forbidden.has(name) || (!allowCredentialDependencies && isCredentialKey(name))) {
       throw new Error("Compose source path interpolates an undeclared host or secret value");
     }
     needed.add(name);
-    if (needed.size > 128) throw new Error("Compose path interpolation exceeds the variable limit");
     if (Object.hasOwn(environment, name)) return;
-    const selected = selectedDeclaration(definitions, name, scopeLimit, declarationLimit);
+    const selected = selectedDeclaration(definitions, index, name, scopeLimit, declarationLimit);
     if (!selected) return;
     const identity = `${selected.scope}:${selected.index}`;
     if (declarations.has(identity)) return;
     declarations.add(identity);
+    remainingWork -= Buffer.byteLength(name) + Buffer.byteLength(selected.expression) + 1;
+    if (remainingWork < 0) throw new Error("Compose path interpolation exceeds the aggregate work limit");
     for (const dependency of pathInterpolationNames(dotenvDependencyExpression(selected.expression))) {
-      visit(dependency, selected.scope, selected.index);
+      visit(dependency, selected.scope, selected.index, depth + 1);
     }
   };
   for (const item of paths) for (const name of pathInterpolationNames(item)) {
-    visit(name, definitions.length - 1, definitions.at(-1)?.declarations.length ?? 0);
+    visit(name, definitions.length - 1, definitions.at(-1)?.declarations.length ?? 0, 0);
   }
   return { names: needed, declarations };
 }

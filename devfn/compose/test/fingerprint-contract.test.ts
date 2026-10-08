@@ -250,6 +250,21 @@ describe.skipIf(!live)("effective Compose startup fingerprint", () => {
     });
   }, 30_000);
 
+  it("tracks ordinary config drift within a credential-derived dotenv alias", async () => {
+    await withComposeSource({
+      ".env": "API_TOKEN=private-one\nREGION=east\nAPP_CONFIG=${API_TOKEN}-${REGION}\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", secretEnv: ["API_TOKEN"] };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const initial = await fingerprint();
+      await writeFile(path.join(root, ".env"), "API_TOKEN=private-two\nREGION=east\nAPP_CONFIG=${API_TOKEN}-${REGION}\n");
+      expect(await fingerprint()).toBe(initial);
+      await writeFile(path.join(root, ".env"), "API_TOKEN=private-two\nREGION=west\nAPP_CONFIG=${API_TOKEN}-${REGION}\n");
+      expect(await fingerprint()).not.toBe(initial);
+    });
+  }, 30_000);
+
   it("tracks ordinary config content behind an inactive nested secret branch", async () => {
     await withComposeSource({
       ".env": "APP_CONFIG=${API_TOKEN:-${PUBLIC_VALUE}}\n",
@@ -431,7 +446,7 @@ configs:
     });
   }, 30_000);
 
-  it("deduplicates equal include scopes before probing secret presence", async () => {
+  it("resolves equal include scopes without secret-presence subprocesses", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-probe-scopes-"));
     try {
       const { wrapperDirectory, log } = await installProbeLogger(root, "presence");
@@ -444,12 +459,11 @@ configs:
       }
       const environment = createComposeEnvironment(spec, {}, { ...process.env, PATH: `${wrapperDirectory}:${process.env.PATH}` });
       await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
-      const count = (await readFile(log, "utf8")).trim().split("\n").length;
-      expect(count).toBe(1);
+      await expect(readFile(log, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
-  it("probes only the winning secret scope in a deep include graph", async () => {
+  it("resolves the winning secret scope without serial subprocesses", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-probe-parallel-"));
     try {
       const { wrapperDirectory, log } = await installProbeLogger(root, "presence", 0.2);
@@ -465,8 +479,7 @@ configs:
       const environment = createComposeEnvironment(spec, {}, { ...process.env, PATH: `${wrapperDirectory}:${process.env.PATH}` });
       const started = Date.now();
       await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
-      const entries = (await readFile(log, "utf8")).trim().split("\n");
-      expect(entries).toEqual(["start", "end"]);
+      await expect(readFile(log, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
       expect(Date.now() - started).toBeLessThan(10_000);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
@@ -814,81 +827,53 @@ configs:
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
-  it("keeps an env_file alias of a credential out of the receipt digest", async () => {
-    await withComposeSource({
-      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
-      "service.env": "API_TOKEN=private-one\nPUBLIC_VALUE=${API_TOKEN}\nMODE=one\n",
-    }, async (root) => {
+  it.each([
+    {
+      name: "env_file alias", files: {
+        "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
+        "service.env": "API_TOKEN=private-one\nPUBLIC_VALUE=${API_TOKEN}\nMODE=one\n",
+      }, secretFile: "service.env", secretEdit: "API_TOKEN=private-two\nPUBLIC_VALUE=${API_TOKEN}\nMODE=one\n",
+      ordinaryFile: "service.env", ordinaryEdit: "API_TOKEN=private-two\nPUBLIC_VALUE=${API_TOKEN}\nMODE=two\n",
+    },
+    {
+      name: "project dotenv alias", files: {
+        ".env": "API_TOKEN=guessable-one\nPUBLIC_VALUE=${API_TOKEN}\n",
+        "compose.yaml": "services:\n  api:\n    image: busybox\n    command: 'echo ${PUBLIC_VALUE}'\n",
+      }, secretFile: ".env", secretEdit: "API_TOKEN=guessable-two\nPUBLIC_VALUE=${API_TOKEN}\n",
+      ordinaryFile: "compose.yaml", ordinaryEdit: "services:\n  api:\n    image: busybox\n    command: 'changed ${PUBLIC_VALUE}'\n",
+    },
+    {
+      name: "ordered env_file branch", files: {
+        ".env": "API_TOKEN=guessable-one\n",
+        "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
+        "service.env": "ACTIVATE=yes\nALIAS=${ACTIVATE:+${API_TOKEN}}\n",
+      }, secretFile: ".env", secretEdit: "API_TOKEN=guessable-two\n",
+      ordinaryFile: "service.env", ordinaryEdit: "ACTIVATE=\nALIAS=${ACTIVATE:+${API_TOKEN}}\n",
+    },
+    {
+      name: "literal service override", files: {
+        ".env": "API_TOKEN=guessable-one\n",
+        "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n    environment:\n      PUBLIC_VALUE: one\n",
+        "service.env": "PUBLIC_VALUE=${API_TOKEN}\n",
+      }, secretFile: ".env", secretEdit: "API_TOKEN=guessable-two\n",
+      ordinaryFile: "compose.yaml", ordinaryEdit: "services:\n  api:\n    image: busybox\n    env_file: service.env\n    environment:\n      PUBLIC_VALUE: two\n",
+    },
+    {
+      name: "project and env_file same key", files: {
+        ".env": "ACTIVATE=one\nAPI_TOKEN=guessable-one\n",
+        "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
+        "service.env": "ACTIVATE=${API_TOKEN}\nPUBLIC=${ACTIVATE}\n",
+      }, secretFile: ".env", secretEdit: "ACTIVATE=one\nAPI_TOKEN=guessable-two\n",
+      ordinaryFile: ".env", ordinaryEdit: "ACTIVATE=two\nAPI_TOKEN=guessable-two\n",
+    },
+  ])("distinguishes secret rotation from ordinary drift in $name", async ({ files, secretFile, secretEdit, ordinaryFile, ordinaryEdit }) => {
+    await withComposeSource(files, async (root) => {
       const spec = { adapter: "compose" as const, service: "api" };
       const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
       const first = await fingerprint();
-      await writeFile(path.join(root, "service.env"), "API_TOKEN=private-two\nPUBLIC_VALUE=${API_TOKEN}\nMODE=one\n");
+      await writeFile(path.join(root, secretFile), secretEdit);
       expect(await fingerprint()).toBe(first);
-      await writeFile(path.join(root, "service.env"), "API_TOKEN=private-two\nPUBLIC_VALUE=${API_TOKEN}\nMODE=two\n");
-      expect(await fingerprint()).not.toBe(first);
-    });
-  }, 30_000);
-
-  it("tracks credential provenance through project dotenv aliases", async () => {
-    await withComposeSource({
-      ".env": "API_TOKEN=guessable-one\nPUBLIC_VALUE=${API_TOKEN}\n",
-      "compose.yaml": "services:\n  api:\n    image: busybox\n    command: 'echo ${PUBLIC_VALUE}'\n",
-    }, async (root) => {
-      const spec = { adapter: "compose" as const, service: "api" };
-      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
-      const first = await fingerprint();
-      await writeFile(path.join(root, ".env"), "API_TOKEN=guessable-two\nPUBLIC_VALUE=${API_TOKEN}\n");
-      expect(await fingerprint()).toBe(first);
-      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: 'changed ${PUBLIC_VALUE}'\n");
-      expect(await fingerprint()).not.toBe(first);
-    });
-  }, 30_000);
-
-  it("tracks credential provenance through ordered env_file branches", async () => {
-    await withComposeSource({
-      ".env": "API_TOKEN=guessable-one\n",
-      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
-      "service.env": "ACTIVATE=yes\nALIAS=${ACTIVATE:+${API_TOKEN}}\n",
-    }, async (root) => {
-      const spec = { adapter: "compose" as const, service: "api" };
-      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
-      const first = await fingerprint();
-      await writeFile(path.join(root, ".env"), "API_TOKEN=guessable-two\n");
-      expect(await fingerprint()).toBe(first);
-      await writeFile(path.join(root, "service.env"), "ACTIVATE=\nALIAS=${ACTIVATE:+${API_TOKEN}}\n");
-      expect(await fingerprint()).not.toBe(first);
-    });
-  }, 30_000);
-
-  it("tracks a literal service override of a credential-derived env_file key", async () => {
-    await withComposeSource({
-      ".env": "API_TOKEN=guessable-one\n",
-      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n    environment:\n      PUBLIC_VALUE: one\n",
-      "service.env": "PUBLIC_VALUE=${API_TOKEN}\n",
-    }, async (root) => {
-      const spec = { adapter: "compose" as const, service: "api" };
-      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
-      const first = await fingerprint();
-      await writeFile(path.join(root, ".env"), "API_TOKEN=guessable-two\n");
-      expect(await fingerprint()).toBe(first);
-      await writeFile(path.join(root, "compose.yaml"),
-        "services:\n  api:\n    image: busybox\n    env_file: service.env\n    environment:\n      PUBLIC_VALUE: two\n");
-      expect(await fingerprint()).not.toBe(first);
-    });
-  }, 30_000);
-
-  it("keeps project interpolation distinct from an env_file secret with the same key", async () => {
-    await withComposeSource({
-      ".env": "ACTIVATE=one\nAPI_TOKEN=guessable-one\n",
-      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
-      "service.env": "ACTIVATE=${API_TOKEN}\nPUBLIC=${ACTIVATE}\n",
-    }, async (root) => {
-      const spec = { adapter: "compose" as const, service: "api" };
-      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
-      const first = await fingerprint();
-      await writeFile(path.join(root, ".env"), "ACTIVATE=one\nAPI_TOKEN=guessable-two\n");
-      expect(await fingerprint()).toBe(first);
-      await writeFile(path.join(root, ".env"), "ACTIVATE=two\nAPI_TOKEN=guessable-two\n");
+      await writeFile(path.join(root, ordinaryFile), ordinaryEdit);
       expect(await fingerprint()).not.toBe(first);
     });
   }, 30_000);
@@ -932,6 +917,72 @@ configs:
     await withComposeSource({
       ".env": "APP_CONFIG=${UNSET}\n",
       "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      await expect(fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec)))
+        .resolves.toMatch(/^[a-f0-9]{64}$/);
+    });
+  }, 30_000);
+
+  it.each([
+    {
+      name: "project dotenv", source: ".env",
+      files: {
+        ".env": "API_TOKEN=private-one\nDB_HOST=alpha\nMIXED=${API_TOKEN}-${DB_HOST}\n",
+        "compose.yaml": "services:\n  api:\n    image: busybox\n    environment:\n      MIXED: ${MIXED}\n",
+      },
+    },
+    {
+      name: "service env_file", source: "service.env",
+      files: {
+        "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
+        "service.env": "API_TOKEN=private-one\nDB_HOST=alpha\nMIXED=${API_TOKEN}-${DB_HOST}\n",
+      },
+    },
+  ])("retains ordinary drift within a $name credential alias", async ({ files, source }) => {
+    await withComposeSource(files, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", secretEnv: ["API_TOKEN"] };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const initial = await fingerprint();
+      await writeFile(path.join(root, source), "API_TOKEN=private-two\nDB_HOST=alpha\nMIXED=${API_TOKEN}-${DB_HOST}\n");
+      expect(await fingerprint()).toBe(initial);
+      await writeFile(path.join(root, source), "API_TOKEN=private-two\nDB_HOST=beta\nMIXED=${API_TOKEN}-${DB_HOST}\n");
+      expect(await fingerprint()).not.toBe(initial);
+    });
+  }, 30_000);
+
+  it("tracks an ordinary service destination with a secret-derived source alias of the same name", async () => {
+    await withComposeSource({
+      ".env": "API_TOKEN=private-one\nMIXED=${API_TOKEN}\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    command: 'echo ${MIXED}'\n    environment:\n      MIXED: one\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", secretEnv: ["API_TOKEN"] };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const initial = await fingerprint();
+      await writeFile(path.join(root, "compose.yaml"),
+        "services:\n  api:\n    image: busybox\n    command: 'echo ${MIXED}'\n    environment:\n      MIXED: two\n");
+      expect(await fingerprint()).not.toBe(initial);
+    });
+  }, 30_000);
+
+  it("distinguishes escaped quote data from unquoted config content", async () => {
+    await withComposeSource({
+      ".env": 'APP_CONFIG="\\"one\\""\n',
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const quoted = await fingerprint();
+      await writeFile(path.join(root, ".env"), "APP_CONFIG=one\n");
+      expect(await fingerprint()).not.toBe(quoted);
+    });
+  }, 30_000);
+
+  it("accepts more than 128 selected variables within the aggregate byte budget", async () => {
+    const names = Array.from({ length: 129 }, (_, index) => `V${index}`);
+    await withComposeSource({
+      ".env": `${names.map((name) => `${name}=x`).join("\n")}\n`,
+      "compose.yaml": `services:\n  api:\n    image: busybox\n    command: '${names.map((name) => `\${${name}}`).join(" ")}'\n`,
     }, async (root) => {
       const spec = { adapter: "compose" as const, service: "api" };
       await expect(fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec)))
