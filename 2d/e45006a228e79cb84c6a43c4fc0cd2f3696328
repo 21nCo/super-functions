@@ -1,0 +1,22 @@
+devfn/core/README.md
+  h_bdc5b81c173ee9 14-16
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 949-952,956,959-960,962-968,975-984,986,989-992,1002,1014
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 220-222,299-301
+devfn/core/test/endpoints.test.ts
+  h_bdc5b81c173ee9 200-216
+devfn/core/test/registered-domain-startup.test.ts
+  h_bdc5b81c173ee9 23,25,45-50,63-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2de45006a228e79cb84c6a43c4fc0cd2f3696328",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
