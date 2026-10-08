@@ -1,9 +1,11 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { verifyCertificate } from "@devfn/proxy";
 
 import { domainAliases, resolveInstanceIdentity } from "../src/index.js";
 
@@ -19,11 +21,21 @@ describe("instance identity", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
-  it("gives the primary worktree a canonical alias and same-named worktrees distinct readable labels", async () => {
+  it("gives the primary worktree a canonical alias and distinguishes paths with the old six-hex collision", async () => {
     const parent = await mkdtemp(path.join(tmpdir(), "devfn-aliases-"));
     const root = path.join(parent, "primary");
-    const first = path.join(parent, "one", "feature");
-    const second = path.join(parent, "two", "feature");
+    const canonicalParent = await realpath(parent);
+    const seen = new Map<string, string>();
+    let pair: [string, string] | undefined;
+    for (let index = 0; index < 30_000 && !pair; index += 1) {
+      const candidate = path.join(canonicalParent, `collision-${index}`, "feature");
+      const oldSuffix = createHash("sha256").update(candidate).digest("hex").slice(0, 6);
+      const previous = seen.get(oldSuffix);
+      if (previous) pair = [previous, candidate];
+      else seen.set(oldSuffix, candidate);
+    }
+    if (!pair) throw new Error("Could not find a six-hex path collision.");
+    const [first, second] = pair;
     try {
       await mkdir(root); await mkdir(path.dirname(first)); await mkdir(path.dirname(second));
       await execFileAsync("git", ["init", root]);
@@ -38,7 +50,15 @@ describe("instance identity", () => {
       expect(names[1]).toHaveLength(1);
       expect(names[2]).toHaveLength(1);
       expect(new Set(names.flat()).size).toBe(4);
-      expect(names[1][0]).toMatch(/^app-feature-[a-f0-9]{6}\.dev\.example\.test$/);
+      expect(names[1][0]).toMatch(/^app-feature-[a-f0-9]{20}\.dev\.example\.test$/);
+      expect(names[1][0]).not.toBe(names[2][0]);
+      expect(domainAliases("a".repeat(40), "dev.example.test", identities[1])[0].split(".")[0]).toHaveLength(63);
+      expect(() => domainAliases("a".repeat(41), "dev.example.test", identities[1])).toThrow(/no room/);
+      const certificateFile = path.join(parent, "aliases.pem");
+      const keyFile = path.join(parent, "aliases-key.pem");
+      await execFileAsync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
+        "-days", "1", "-subj", "/CN=unrelated.test", "-addext", `subjectAltName=${names.flat().map((alias) => `DNS:${alias}`).join(",")}`]);
+      await Promise.all(names.flat().map((alias) => expect(verifyCertificate(alias, certificateFile, keyFile)).resolves.toBeUndefined()));
       expect(domainAliases("app", "dev.example.test", identities[1])).toEqual(names[1]);
       const nested = path.join(root, "config", "devfn");
       await mkdir(nested, { recursive: true });

@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,6 +11,39 @@ import { validateDevFnConfig } from "@devfn/config";
 import { DevFnOrchestrator, domainAliases, resolveAllocationUrls, resolveInstanceIdentity } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
+
+it("protects Caddy listener ports before startup, including sibling profiles and UDP", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-listener-reservation-"));
+  const { httpPort, httpsPort } = proxyListenerPorts();
+  try {
+    for (const [name, preferred, exact, protocol, proxy] of [
+      ["exact", httpsPort, true, "tcp", true],
+      ["preferred", httpPort, false, "tcp", true],
+      ["sibling", httpsPort, false, "udp", false],
+    ] as const) {
+      const stateDir = path.join(root, name);
+      const started = path.join(root, `${name}.started`);
+      const config = validateDevFnConfig({ version: 1, project: { id: name },
+        ports: { app: { preferred, exact, protocol } },
+        processes: { app: { adapter: "command", command: [process.execPath, "-e", "require('node:fs').writeFileSync(process.argv[1], 'started'); process.exit(7)", started], ports: ["app"] } },
+        profiles: { default: { processes: ["app"], proxy } } });
+      await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toMatchObject({
+        code: exact ? "DEVFN_PORT_CONFLICT" : "DEVFN_START_FAILED",
+      });
+      if (exact) {
+        await expect(access(started)).rejects.toMatchObject({ code: "ENOENT" });
+        const registry = JSON.parse(await readFile(path.join(stateDir, "registry.json"), "utf8")) as { allocations: unknown[]; invocations: unknown[] };
+        expect(registry.allocations).toHaveLength(0);
+        expect(registry.invocations).toHaveLength(0);
+      } else {
+        const registry = JSON.parse(await readFile(path.join(stateDir, "registry.json"), "utf8")) as { allocations: Array<{ port: number; protocol: string }> };
+        expect(registry.allocations).toHaveLength(1);
+        expect(registry.allocations[0].port).not.toBe(preferred);
+        expect(registry.allocations[0].protocol).toBe(protocol);
+      }
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 it("refuses an unregistered or differently owned domain before lifecycle state exists", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-domain-preflight-"));
@@ -63,7 +96,7 @@ it("keeps registered-domain aliases and routes isolated across two Git worktrees
     const childAliases = domainAliases("app", "dev.example.test", child);
     expect(mainAliases).toContain("app.dev.example.test");
     expect(childAliases).toHaveLength(1);
-    expect(childAliases[0]).toMatch(/^app-feature-[a-f0-9]{6}\.dev\.example\.test$/);
+    expect(childAliases[0]).toMatch(/^app-feature-[a-f0-9]{20}\.dev\.example\.test$/);
     const dns = (async () => [{ address: "127.0.0.1", family: 4 }]) as never;
     await registerDomain(stateDir, { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: main.repositoryIdentity, tls: "internal" }, dns);
     const birthSignature = await processBirthSignature(process.pid);

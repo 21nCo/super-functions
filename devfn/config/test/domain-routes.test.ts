@@ -25,8 +25,8 @@ it("rejects ambiguous URL paths and deceptive localhost policy suffixes", () => 
 it("validates inferred registered-domain labels while loading the manifest", () => {
   const withKey = (key: string, host?: string) => ({ version: 1, project: { id: "fixture" }, ports: { app: {} },
     profiles: { default: { proxy: true } }, hostnames: { [key]: { target: "app", domain: "dev.example.test", ...(host ? { host } : {}) } } });
-  expect(() => validateDevFnConfig(withKey("a".repeat(54)))).not.toThrow();
-  expect(() => validateDevFnConfig(withKey("a".repeat(55)))).toThrow(/host label/);
+  expect(() => validateDevFnConfig(withKey("a".repeat(40)))).not.toThrow();
+  expect(() => validateDevFnConfig(withKey("a".repeat(41)))).toThrow(/host label/);
   expect(() => validateDevFnConfig(withKey("api_v2"))).toThrow(expect.objectContaining({ path: "hostnames.api_v2" }));
   expect(() => validateDevFnConfig(withKey("api_v2", "api"))).not.toThrow();
 });

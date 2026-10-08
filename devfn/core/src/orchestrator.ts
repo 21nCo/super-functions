@@ -383,6 +383,10 @@ export class DevFnOrchestrator {
       profile: plan.profile,
       requests: plan.portNames.map((name) => ({ name, spec: options.config.ports?.[name] ?? {}, ...(configuredHostnames[name] ? { hostname: configuredHostnames[name] } : {}) })),
       ...policy,
+      // Caddy's HTTP/HTTPS ports belong to the machine-wide proxy even when
+      // this profile does not start it. Reserve both protocols so a sibling
+      // can activate HTTP/3 without colliding with an existing DevFn lease.
+      protectedPorts: new Set([...policy.protectedPorts, ...Object.values(proxyListenerPorts())]),
     });
     const ports = Object.fromEntries(allocations.map((item) => [item.service, item.port]));
     let resolved: ReturnType<typeof resolveEndpointTemplates>;

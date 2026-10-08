@@ -26,8 +26,10 @@ export async function resolveInstanceIdentity(projectId: string, root: string): 
   // A failed or incomplete Git inventory cannot authorize the canonical alias.
   const isPrimaryWorktree = primaryPath !== undefined && await realpath(primaryPath).then((resolved) => resolved === worktreePath).catch(() => false);
   const readable = path.basename(worktreePath).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "worktree";
-  const suffix = createHash("sha256").update(worktreePath).digest("hex").slice(0, 6);
-  const readableWorktreeLabel = `${readable.slice(0, 56)}-${suffix}`;
+  // Keep enough of the path digest to make same-named worktrees practically
+  // collision resistant, including paths that share the old six-hex prefix.
+  const suffix = createHash("sha256").update(worktreePath).digest("hex").slice(0, 20);
+  const readableWorktreeLabel = `${readable.slice(0, 42)}-${suffix}`;
   return {
     projectId,
     repositoryRoot: root,
@@ -44,8 +46,8 @@ export async function resolveInstanceIdentity(projectId: string, root: string): 
 export function domainAliases(label: string, domain: string, identity: RoutingIdentity): string[] {
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) throw new Error("Registered route needs a DNS-safe host label.");
   const available = 63 - label.length - 1;
-  if (available < 8) throw new Error("Registered route has no room for a readable worktree label.");
-  const readable = identity.readableWorktreeLabel.slice(0, -7).slice(0, available - 7).replace(/-+$/, "") + identity.readableWorktreeLabel.slice(-7);
+  if (available < 22) throw new Error("Registered route has no room for a readable worktree label.");
+  const readable = identity.readableWorktreeLabel.slice(0, -21).slice(0, available - 21).replace(/-+$/, "") + identity.readableWorktreeLabel.slice(-21);
   const aliases = [`${label}-${readable}.${domain}`];
   if (identity.isPrimaryWorktree) aliases.push(`${label}.${domain}`);
   if (aliases.some((hostname) => hostname.length > 253)) throw new Error("Registered route exceeds the DNS hostname length limit.");

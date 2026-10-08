@@ -246,9 +246,9 @@ function hostnameSpec(value: unknown, field: string): HostnameSpec {
   const hostname = optionalString(input.hostname, `${field}.hostname`);
   const domain = optionalString(input.domain, `${field}.domain`);
   const host = optionalString(input.host, `${field}.host`);
-  // The generated alias adds a separator and an eight-character minimum
+  // The generated alias adds a separator and a 22-character minimum
   // worktree suffix; a longer host cannot fit in one DNS label.
-  if (host && (!domain || host.length > 54 || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(host))) fail(`${field}.host requires a registered domain and one DNS label of at most 54 characters.`, `${field}.host`);
+  if (host && (!domain || host.length > 40 || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(host))) fail(`${field}.host requires a registered domain and one DNS label of at most 40 characters.`, `${field}.host`);
   if (domain && hostname) fail(`${field} cannot set both hostname and domain.`, field);
   if (domain && (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain) || domain.endsWith(".localhost"))) {
     fail(`${field}.domain must be a concrete registered domain.`, `${field}.domain`);
@@ -380,8 +380,8 @@ function validateReferences(config: DevFnConfig): void {
   for (const [name, spec] of Object.entries(config.hostnames ?? {})) {
     if (spec.domain) {
       const label = spec.host ?? name;
-      if (label.length > 54 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)) {
-        fail(`hostnames.${name} requires a registered-domain host label of at most 54 DNS-safe characters.`, `hostnames.${name}${spec.host ? ".host" : ""}`);
+      if (label.length > 40 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)) {
+        fail(`hostnames.${name} requires a registered-domain host label of at most 40 DNS-safe characters.`, `hostnames.${name}${spec.host ? ".host" : ""}`);
       }
       continue;
     }
