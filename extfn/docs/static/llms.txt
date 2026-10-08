@@ -14,7 +14,7 @@
 - [CLI reference](https://extfn.com/docs/reference/cli) — Develop, build, scan, and package extension targets.
 - [Consumer host abstraction](https://extfn.com/docs/reference/consumer-host-abstraction) — Move SvelteKit runtime dependencies behind consumer-owned adapters.
 - [Reference](https://extfn.com/docs/reference) — Source-aligned ExtFn guides and examples.
-- [Content and background handlers](https://extfn.com/docs/reference/multi-content-and-background-handlers) — Multiple content modules, message handlers, ports, and Svelte mounts.
+- [Multi-content and background handlers](https://extfn.com/docs/reference/multi-content-and-background-handlers) — Multiple content modules, message handlers, ports, and Svelte mounts.
 - [Scanner and report](https://extfn.com/docs/reference/scan) — Strict scan rules, findings, formats, and packaging behavior.
 - [Runtime and browser access](https://extfn.com/docs/runtime) — Use the Promise-first browser facade, messaging, events, and capabilities.
 - [Scan and package](https://extfn.com/docs/scan-and-package) — Interpret strict findings and produce extension archives.

@@ -76,9 +76,7 @@ Extension adapter in the consumer repo:
 ```ts
 import { createRuntime } from "@extfn/core";
 
-const runtime = createRuntime({
-  target: "chromium-mv3",
-});
+const runtime = createRuntime();
 
 export const extfnHost = {
   navigation: {
@@ -147,6 +145,6 @@ without requiring changes in `extfn` itself.
 
 ## Related guidance
 
-- `extfn` runtime APIs are documented in [ExtFn overview](/docs)
+- `extfn` runtime APIs are documented in [Runtime](/docs/runtime)
 - CLI workflow is documented in [CLI reference](/docs/reference/cli)
 - DataFn integration is documented in [DataFn ExtFn source](https://github.com/21nCo/super-functions/blob/dev/datafn/extfn/README.md)

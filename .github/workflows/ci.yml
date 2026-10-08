@@ -117,9 +117,9 @@ jobs:
         if: needs.plan.outputs.has_js_build == 'true'
         run: |
           if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
-            ./node_modules/.bin/turbo run build --concurrency=2
+            ./node_modules/.bin/turbo run build
           else
-            ./node_modules/.bin/turbo run build --concurrency=2 ${{ needs.plan.outputs.js_build_filters }}
+            ./node_modules/.bin/turbo run build ${{ needs.plan.outputs.js_build_filters }}
           fi
 
       - name: Typecheck

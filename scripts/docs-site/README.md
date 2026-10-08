@@ -6,10 +6,12 @@ The new per-function sites supply their config and Vite raw-content globs to `cr
 
 Each site resolves the shared module's DocsFn imports through the scoped Vite resolver so it uses the versions pinned by that site. Run `npm run build` in the affected `<function>/docs` directory. After changing shared code, build all consumers and verify desktop search (including a result navigation and Escape) plus the mobile Menu drawer. Keep the responsive open-drawer override when using the current published theme.
 
-Each new-site PR includes this shared directory at the same repository path so it can land independently. ExtFn, AuthFn, and FileFn factory wrappers reference this canonical runtime. After changing it, build each of those consumers.
+Each new-site PR includes this shared directory at the same repository path so it can land independently. All factory wrappers reference this one canonical directory. After merge, edit it directly rather than duplicating provider logic in individual sites.
 
 Only sites whose factory wrappers import this directory consume this runtime. Check those imports when planning cross-site validation.
 
 Bundled files have no reliable filesystem modification time; the provider omits `updatedAt` instead of inventing one. YAML frontmatter uses the same gray-matter parser as the filesystem provider. Binary static files stay in SvelteKit’s static passthrough.
+
+Search-enabled consumers declare the published Core's `@searchfn/client` peer. In a workspace checkout, run `npm exec -- turbo run build --filter=<consumer-package>` from the repository root before direct `npm test` or native checks: `^build` prepares the physically imported SearchFn workspaces as well as the consumer's other declared prerequisites. A standalone install resolves published packages, whose dist files are already present. Do not substitute a root SDK pin or mocked search implementation.
 
 Run `npm test` in a new-site workspace to check generated LLM files and the shared provider/cache contracts. Initialization failures are retryable; concurrent successful requests reuse one cache.

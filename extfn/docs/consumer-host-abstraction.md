@@ -73,9 +73,7 @@ Extension adapter in the consumer repo:
 ```ts
 import { createRuntime } from "@extfn/core";
 
-const runtime = createRuntime({
-  target: "chromium-mv3",
-});
+const runtime = createRuntime();
 
 export const extfnHost = {
   navigation: {

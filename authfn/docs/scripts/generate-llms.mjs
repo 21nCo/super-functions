@@ -8,6 +8,5 @@ import { buildLlmsSiteArtifacts, writeLlmsArtifacts } from "../../../scripts/doc
 const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { artifacts } = await buildLlmsSiteArtifacts(cwd, {
   buildLlmsTxtArtifacts, buildManifest, loadDocsConfig, FsContentProvider,
-}, { canonicalUrl: process.env.CLOUDFLARE_DOCS_DEPLOY === "1"
-  ? process.env.CLOUDFLARE_DOCS_PUBLIC_ORIGIN || undefined : undefined });
+});
 writeLlmsArtifacts(resolve(cwd, "static"), artifacts);

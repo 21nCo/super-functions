@@ -216,4 +216,15 @@
   .landing-card:focus-visible .landing-card-cta {
     opacity: 1;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .landing-card {
+      transition: none;
+    }
+
+    .landing-card:hover,
+    .landing-card:focus-visible {
+      transform: none;
+    }
+  }
 </style>

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TransactionAdapter } from '@superfunctions/db';
-import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import { MemoryQueueAdapter } from '../../../../packages/queue/src/index.js';
+import { memoryAdapter } from '@superfunctions/db/testing';
+import { MemoryQueueAdapter } from '@superfunctions/queue';
 import { createBillFn, createBillFnReconciliationWorker, getSchema } from '../index.js';
 import type { BillFnCatalog, BillFnProviderAdapter } from '../types.js';
 

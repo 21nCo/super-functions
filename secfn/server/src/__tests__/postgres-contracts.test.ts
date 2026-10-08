@@ -11,8 +11,8 @@ import {
   jsonb,
   timestamp,
 } from "drizzle-orm/pg-core";
-import { drizzleAdapter } from "../../../../packages/db/src/adapters/drizzle/index.js";
-import { getSecFnSchema } from "../../../core/src/schema.js";
+import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
+import { getSecFnSchema } from "@secfn/core";
 import { createSecFnServer } from "../index.js";
 const url = process.env.SECFN_TEST_DATABASE_URL;
 const schemaName = `rex_contract_${randomUUID().replaceAll("-", "")}`;

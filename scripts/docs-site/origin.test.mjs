@@ -35,7 +35,7 @@ it.each(["extfn", "authfn", "filefn"])("%s generator owns public URLs independen
       expect(fixturePins[`@docsfn/${dependency}`]).toBe(pins[`@docsfn/${dependency}`]);
       const directory = dirname(dirname(require.resolve(`@docsfn/${dependency}`)));
       expect(JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).name).toBe(`@docsfn/${dependency}`);
-      symlinkSync(directory, join(base, product, "docs/node_modules/@docsfn", dependency), "dir");
+      symlinkSync(directory, join(base, product, "docs/node_modules/@docsfn", dependency), process.platform === "win32" ? "junction" : "dir");
     }
     for (const [deploy, publicOrigin, expected] of [["0", "", `https://${product}.com`], ["1", `https://dev.${product}.com`, `https://dev.${product}.com`], ["1", "https://public.example.test", "https://public.example.test"], ["1", "", `https://${product}.com`]]) {
       execute(base, [`${product}/docs/scripts/generate-llms.mjs`], {

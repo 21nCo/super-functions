@@ -11,9 +11,10 @@ filefn integrates with `@superfunctions/middleware`'s `RateLimiter` to throttle 
 
 ```ts
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
+  stores: { atomicKv: redisAtomicStore },
   rateLimit: {
-    persistence: redisPersistence,        // or undefined for in-memory
+    mode: "strict",
     algorithm: "sliding-window",          // or "fixed-window" | "token-bucket"
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -61,21 +62,23 @@ Routes not in any category (read-only file metadata, listing, render-descriptor)
 - **`sliding-window`** — smooths out the boundary effect. Default for the production examples.
 - **`token-bucket`** — burst-friendly, refill over time. Best when you have legitimate bursty traffic (e.g. mass uploads from a script).
 
-## Persistence
+## Shared stores and modes
 
-In-memory persistence is fine for development and single-instance deployments. For multi-instance / Edge / load-balanced deployments, use a shared persistence:
+FileFn 0.2.0 uses `stores` and `rateLimit.mode`, not `rateLimit.persistence`.
 
-- Redis (recommended)
-- Postgres
-- Cloudflare KV
+- **`strict`** — shared `stores.atomicKv` with `compareAndSet`; missing atomic
+  storage is rejected instead of silently using process-local counters.
+- **`best-effort`** — `stores.kv` for deployments that accept approximate
+  cross-replica limits.
+- **`local`** — in-process counters for development or a single instance.
 
-`@superfunctions/middleware` ships persistence implementations or accepts your own.
+Without an explicit mode, FileFn selects strict for `stores.atomicKv`,
+best-effort for `stores.kv`, otherwise local. Supply adapters implementing
+the `@superfunctions/db` runtime-store contracts.
 
-For a strict limit shared by multiple processes, configure `atomicStore` with
-an `AtomicKVStoreAdapter` that implements `compareAndSet`. The limiter rejects
-an `atomicStore` without CAS support instead of silently falling back to
-process-local serialization. Plain `persistence` remains suitable for
-single-process use or deployments that accept best-effort cross-replica limits.
+The separate pre-built `rateLimiter` still accepts the middleware's own
+`atomicStore` / `persistence` options.
+
 
 ## What clients see
 

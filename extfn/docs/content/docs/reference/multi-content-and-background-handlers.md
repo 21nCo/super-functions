@@ -1,5 +1,5 @@
 ---
-title: Content and background handlers
+title: Multi-content and background handlers
 description: Multiple content modules, message handlers, ports, and Svelte mounts.
 ---
 

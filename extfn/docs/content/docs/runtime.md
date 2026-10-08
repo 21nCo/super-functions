@@ -3,14 +3,12 @@ title: Runtime and browser access
 description: Use the Promise-first browser facade, messaging, events, and capabilities.
 ---
 
-`@extfn/core` provides `createRuntime`, context and capability detection, browser access, RPC, events, ports, envelopes, and content primitives. Create a runtime in an extension entry point and pass the active target:
+`@extfn/core` provides `createRuntime`, context and capability detection, browser access, RPC, events, ports, envelopes, and content primitives. Create a runtime in an extension entry point. It detects the active browser target; pass `target` only when the entry point is built for a single known target:
 
 ```ts
 import { createRuntime } from "@extfn/core";
 
-const runtime = createRuntime({
-  target: "chromium-mv3",
-});
+const runtime = createRuntime();
 
 const tabs = await runtime.browser.call("tabs.query", { active: true, currentWindow: true });
 ```

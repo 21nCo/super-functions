@@ -104,7 +104,7 @@ npm exec extfn scan -- --config extfn.config.ts
 npm exec extfn package -- --config extfn.config.ts
 ```
 
-Development emits an unpacked extension at `dist/<target>-dev`; production builds emit `dist/<target>`. `package` builds if needed, scans by default, and emits `.zip` for Chromium or `.xpi` for Firefox. Loading an unpacked extension into Firefox remains manual even when `--open` launches `about:debugging`. See [CLI workflow](/docs/cli) and the [vanilla example](https://github.com/21nCo/super-functions/tree/dev/extfn/examples/vanilla-messaging-demo).
+Development emits an unpacked extension at `dist/<target>-dev`; production builds emit `dist/<target>`. `package` always rebuilds the selected targets, scans by default, and emits `.zip` for Chromium or `.xpi` for Firefox. Loading an unpacked extension into Firefox remains manual even when `--open` launches `about:debugging`. See [CLI workflow](/docs/cli) and the [vanilla example](https://github.com/21nCo/super-functions/tree/dev/extfn/examples/vanilla-messaging-demo).
 
 ---
 
@@ -379,9 +379,7 @@ Extension adapter in the consumer repo:
 ```ts
 import { createRuntime } from "@extfn/core";
 
-const runtime = createRuntime({
-  target: "chromium-mv3",
-});
+const runtime = createRuntime();
 
 export const extfnHost = {
   navigation: {
@@ -450,7 +448,7 @@ without requiring changes in `extfn` itself.
 
 ## Related guidance
 
-- `extfn` runtime APIs are documented in [ExtFn overview](/docs)
+- `extfn` runtime APIs are documented in [Runtime](/docs/runtime)
 - CLI workflow is documented in [CLI reference](/docs/reference/cli)
 - DataFn integration is documented in [DataFn ExtFn source](https://github.com/21nCo/super-functions/blob/dev/datafn/extfn/README.md)
 
@@ -474,7 +472,7 @@ The [getting-started guide](/docs/getting-started) and [runtime guide](/docs/run
 ---
 
 <!-- page:docs:reference/multi-content-and-background-handlers.md path:/docs/reference/multi-content-and-background-handlers -->
-# Content and background handlers
+# Multi-content and background handlers
 
 > Multiple content modules, message handlers, ports, and Svelte mounts.
 
@@ -751,14 +749,12 @@ npm exec extfn scan -- --config extfn/examples/svelte-datafn-demo/extfn.config.t
 > Use the Promise-first browser facade, messaging, events, and capabilities.
 
 
-`@extfn/core` provides `createRuntime`, context and capability detection, browser access, RPC, events, ports, envelopes, and content primitives. Create a runtime in an extension entry point and pass the active target:
+`@extfn/core` provides `createRuntime`, context and capability detection, browser access, RPC, events, ports, envelopes, and content primitives. Create a runtime in an extension entry point. It detects the active browser target; pass `target` only when the entry point is built for a single known target:
 
 ```ts
 import { createRuntime } from "@extfn/core";
 
-const runtime = createRuntime({
-  target: "chromium-mv3",
-});
+const runtime = createRuntime();
 
 const tabs = await runtime.browser.call("tabs.query", { active: true, currentWindow: true });
 ```

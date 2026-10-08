@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/oauth-http",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OAuth HTTP transport contracts for Superfunctions",
   "type": "module",
   "main": "./dist/index.js",
@@ -18,7 +18,7 @@
     "build": "tsc",
     "test": "vitest --config ./vitest.config.ts --run",
     "test:watch": "vitest --config ./vitest.config.ts --watch",
-    "lint": "echo 'lint not configured'",
+    "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -38,7 +38,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@superfunctions/oauth-core": "0.1.1"
+    "@superfunctions/oauth-core": "0.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

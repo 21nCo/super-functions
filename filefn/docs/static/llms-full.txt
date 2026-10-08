@@ -1102,37 +1102,25 @@ If clients PUT directly to S3, the bucket needs CORS:
 Source: https://filefn.com/docs/ai-resources
 
 
-Use filefn from your AI coding assistant — llms.txt, MCP server, Skills, and editor configurations.
+Use FileFn documentation as assistant context without assuming unimplemented integrations.
 
 
 # AI Resources
 
-filefn ships first-class support for AI coding assistants. The same documentation you read here is mirrored as machine-readable surfaces.
+FileFn provides generated documentation context at its configured publication URLs:
 
-| Surface | Use it from | Best for |
-| --- | --- | --- |
-| [llms.txt](./llms-txt) | Anywhere | Auto-included context in tools that read llms.txt. |
-| [llms-full.txt](./llms-txt) | Anywhere | The whole site as a single text file. |
-| [MCP server](./mcp) | MCP-aware clients (Claude Desktop, Cursor, etc.) | Live search + page fetch. |
-| [Skills](./skills) | Skill-aware assistants | Pre-baked workflows (set up filefn, add a processor, debug a stuck upload). |
-| [Cursor](./cursor) | Cursor IDE | Project-level rules + skills. |
-| [Claude](./claude) | Claude Code / Claude Desktop | CLAUDE.md hints + MCP wiring. |
-| [Codex](./codex) | OpenAI Codex / GPT-based agents | system-prompt friendly bundle. |
+- [Short index](https://filefn.com/docs/llms.txt)
+- [Full context](https://filefn.com/docs/llms-full.txt)
 
-## Why?
+See [LLM artifacts](./llms-txt) for generation and local verification. A successful local build does not establish live hosting.
 
-filefn's surface is wide: 24 routes, 27 operations, a dozen configuration knobs, eight bundled processors, six storage adapters, and language SDKs in JS, Python, and Swift. AI assistants help users navigate it without reading every page.
-
-When you wire filefn into your AI tool of choice, the tool can:
-
-- answer "how do I make this S3 bucket use a CDN?" without you opening a docs tab.
-- generate a custom processor matching your style with up-to-date type signatures.
-- detect when your error code (e.g. `FILEFN_POLICY_MAX_SIZE_EXCEEDED`) is hit and suggest the relevant fix.
-- run pre-baked workflows ("install filefn into my Hono app", "add HEIC support") without you knowing the route map.
-
-## See also
-
-- [Reference](../reference) — the same content the AI surfaces consume.
+| Guide | Scope |
+| --- | --- |
+| [Claude](./claude) | Repository instructions and documentation context. |
+| [Cursor](./cursor) | Project rules and documentation context. |
+| [Codex](./codex) | Repository-aware context and review. |
+| [MCP](./mcp) | Boundaries for an independently implemented integration. |
+| [Skills](./skills) | Application-owned recipes, not bundled executable tools. |
 
 
 ---
@@ -1142,77 +1130,23 @@ When you wire filefn into your AI tool of choice, the tool can:
 Source: https://filefn.com/docs/ai-resources/claude
 
 
-Wire filefn into Claude Desktop and Claude Code — MCP server, CLAUDE.md, and recommended hints.
+Ground Claude in reviewed FileFn source and generated documentation context.
 
 
 # Claude
 
-## Claude Desktop
-
-In `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "filefn": {
-      "type": "http",
-      "url": "https://docs.filefn.dev/mcp"
-    }
-  }
-}
-```
-
-Restart Claude Desktop. The MCP tools panel now lists filefn search / fetch.
-
-## Claude Code
-
-```bash
-claude mcp add filefn https://docs.filefn.dev/mcp --type http
-```
-
-Or use Droid's wrapper:
-
-```bash
-droid mcp add filefn https://docs.filefn.dev/mcp --type http
-```
-
-## CLAUDE.md
-
-Drop a `CLAUDE.md` into your repo root:
+Use the generated [LLM context files](./llms-txt) through the context mechanism supported by your Claude client. For repository work, add project-specific instructions to `CLAUDE.md`:
 
 ```md
-# filefn
+# FileFn project instructions
 
-This repo uses **filefn** for file uploads, processing, and previews.
-
-Key packages:
-- `@filefn/server` — server kernel (createFileFn, FileProvider, Authorizer).
-- `@filefn/client` — browser/Bun/Deno client (uploadFile, resumeUpload, resolveRenderable).
-- `@filefn/processing` — bundled processors (thumbnails, PDF, OCR, image transforms, video, audio).
-- `FileFnClient` (Swift) — native iOS/macOS client.
-
-Common operations:
-- New upload: `client.uploadFile({ policy, file })` returns an `UploadHandle`.
-- Resumable: `client.resumeUpload(uploadSessionId, file, { uploadSessionToken })`.
-- Render: `client.resolveRenderable({ fileId, intent: "preview" })`.
-- Server routes: mount `fileFn.router.handle(request)`.
-
-For docs, use the filefn MCP server (`search_docs`, `fetch_page`, `get_route`, `get_error`).
-For workflows, use filefn skills (`list_skills` then `run_skill`).
-
-Common error codes:
-- `FILEFN_POLICY_NOT_FOUND` — policy name doesn't exist.
-- `FILEFN_POLICY_MAX_SIZE_EXCEEDED` — file too large for policy.
-- `FILEFN_UPLOAD_SESSION_EXPIRED` — session past TTL.
-- `FILEFN_QUOTA_EXCEEDED` — storage quota hit.
+- Read FileFn documentation at https://filefn.com/docs.
+- Inspect the installed package versions and public exports before changing configuration.
+- Keep file authorization, tenant context, and upload-session tokens intact.
+- Verify changes with this repository's tests before running them against live storage.
 ```
 
-Claude reads `CLAUDE.md` on every conversation in that repo and uses it to ground its answers.
-
-## See also
-
-- [MCP server](./mcp).
-- [Skills](./skills).
+These are instructions you own, not installed tools or an automatic workflow. This docs site does not implement a FileFn MCP endpoint or publish a verified tool list. See [MCP integration boundaries](./mcp) before registering any independently supplied service.
 
 
 ---
@@ -1222,95 +1156,23 @@ Claude reads `CLAUDE.md` on every conversation in that repo and uses it to groun
 Source: https://filefn.com/docs/ai-resources/codex
 
 
-Wire filefn into OpenAI Codex / GPT-based agents — system prompt bundle, JSON schema, and tool wrappers.
+Provide FileFn source and generated documentation context to coding agents.
 
 
 # Codex
 
-For agents based on OpenAI Codex / GPT (Codex CLI, ChatGPT custom GPTs, Continue.dev with GPT models):
+Give your agent the [short index or full context](./llms-txt) through its supported URL or file context interface. Prefer inspected installed versions and repository source over guessed APIs.
 
-## System prompt bundle
+Suggested repository instructions:
 
-Drop `https://docs.filefn.dev/llms.txt` (lightweight) or `https://docs.filefn.dev/llms-full.txt` (full) into the agent's system prompt. The lightweight version is ~3 KiB and gives the agent enough scaffolding to know what's available; the full version is ~150 KiB and is suitable for agents that pre-cache context.
-
-## Function tools
-
-For agents that support function calling, register the filefn MCP tools. Most clients (Cursor, Continue, ChatGPT custom GPT) speak MCP natively; for ones that don't, write a thin wrapper:
-
-```ts
-const tools = [
-  {
-    type: "function",
-    function: {
-      name: "filefn_search_docs",
-      description: "Search filefn documentation",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string" },
-          limit: { type: "integer", default: 5 },
-        },
-        required: ["query"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "filefn_fetch_page",
-      description: "Fetch a filefn docs page",
-      parameters: {
-        type: "object",
-        properties: {
-          slug: { type: "string" },
-        },
-        required: ["slug"],
-      },
-    },
-  },
-];
-
-async function handleToolCall(name, args) {
-  if (name === "filefn_search_docs") {
-    return await fetch(`https://docs.filefn.dev/search.json?q=${encodeURIComponent(args.query)}&limit=${args.limit}`)
-      .then((r) => r.json());
-  }
-  if (name === "filefn_fetch_page") {
-    return await fetch(`https://docs.filefn.dev/docs/${args.slug}/raw`).then((r) => r.text());
-  }
-}
+```md
+Use https://filefn.com/docs and the generated LLM context files for FileFn guidance.
+Inspect the actual installed public exports before writing examples.
+Preserve policy, tenant, quota, and authorization checks.
+Run local tests before proposing changes; ask before operating live infrastructure.
 ```
 
-The kernel exposes `/search.json` and `/docs/<slug>/raw` for non-MCP consumers.
-
-## ChatGPT custom GPT
-
-In the GPT builder:
-
-1. Knowledge → Upload `llms-full.txt`.
-2. Actions → Import the OpenAPI from `https://docs.filefn.dev/api/filefn.json` (the docs site OpenAPI, not the filefn server's OpenAPI).
-3. Instructions → "When the user asks about filefn, search the knowledge base or call the search_docs / fetch_page actions before answering."
-
-## Continue.dev
-
-`config.json`:
-
-```json
-{
-  "mcpServers": [
-    {
-      "name": "filefn",
-      "type": "http",
-      "url": "https://docs.filefn.dev/mcp"
-    }
-  ]
-}
-```
-
-## See also
-
-- [MCP server](./mcp) — the canonical surface.
-- [llms.txt](./llms-txt) — static alternative.
+The native `/docs/search.json` route is a search index, not a `?q=` query API or MCP service. This docs site has no `/docs/<slug>/raw`, `/mcp`, `/skills/`, `/api/filefn.json`, or `llms-rich.json` route contract. Do not register tool wrappers against invented endpoints. Any independent tool service must define and verify its own schema, authentication, authorization, and deployment.
 
 
 ---
@@ -1320,68 +1182,25 @@ In the GPT builder:
 Source: https://filefn.com/docs/ai-resources/cursor
 
 
-Wire filefn into Cursor — MCP server, project rules, and recommended .cursorrules.
+Use FileFn documentation and project rules as Cursor context.
 
 
 # Cursor
 
-## MCP
-
-In `.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "filefn": {
-      "type": "http",
-      "url": "https://docs.filefn.dev/mcp"
-    }
-  }
-}
-```
-
-Reload Cursor. The Composer panel now has search / fetch tools wired to the filefn docs.
-
-## .cursorrules
+Supply the [LLM context files](./llms-txt) using the context interface supported by your Cursor version. Example project rules:
 
 ```md
-# filefn rules
+# FileFn
 
-This project uses filefn for file uploads, processing, and previews.
+Documentation: https://filefn.com/docs
 
-When asked about file uploads:
-- Prefer @filefn/client (`uploadFile`, `resumeUpload`).
-- Always pass a `policy` matching one defined on the server.
-- Honour OPFS offline if `offline.enabled` is true.
-
-When asked about server config:
-- Use `createFileFn` from @filefn/server.
-- Wire @superfunctions/db and @superfunctions/storage adapters.
-- For processing, use processors from @filefn/processing.
-
-Reference docs at https://docs.filefn.dev. Use the MCP search_docs / fetch_page tools to find the latest content.
+- Confirm installed @filefn/server and @filefn/client public contracts.
+- Preserve policy checks, tenant context, and server-side authorization.
+- Use CAS-capable stores.atomicKv when the FileFn server requires strict shared rate limits.
+- Run the project's type checks and tests; do not infer live readiness from a local build.
 ```
 
-## Project rules folder
-
-For larger setups, create `.cursor/rules/filefn.md`:
-
-```md
-# filefn
-
-@filefn/server is the kernel. @filefn/client is the browser SDK. @filefn/processing has bundled processors.
-
-Routes are mounted via `fileFn.router.handle(request)`. The kernel returns `Response | null`; null means 404.
-
-Errors throw `FileFnError` with a canonical `code` (e.g. `FILEFN_POLICY_NOT_FOUND`). On the client, errors are `FileFnHttpError`.
-
-For more, query the filefn MCP server: search_docs / fetch_page / get_route / get_error.
-```
-
-## See also
-
-- [MCP server](./mcp) — the underlying tools.
-- [Skills](./skills) — pre-baked workflows.
+This site does not implement a FileFn MCP service, expose executable skills, or guarantee editor-specific automatic discovery. [MCP integration](./mcp) and [recipes](./skills) require separate application ownership.
 
 
 ---
@@ -1391,307 +1210,93 @@ For more, query the filefn MCP server: search_docs / fetch_page / get_route / ge
 Source: https://filefn.com/docs/ai-resources/llms-txt
 
 
-The static AI surfaces — llms.txt, llms-full.txt, llms-rich.json — generated on every docs build.
+The two generated FileFn documentation context files and their native docs routes.
 
 
 # llms.txt
 
-filefn publishes three machine-readable surfaces alongside the docs site:
+The site generates two text artifacts:
 
-| URL | Format | Use |
-| --- | --- | --- |
-| `/llms.txt` | Plain text outline | Lightweight context drop-in for any LLM. |
-| `/llms-full.txt` | Full plain text | The entire docs as one file. ~150 KiB. |
-| `/llms-rich.json` | Structured JSON | Pages with route maps, error codes, type signatures. |
+| Configured publication URL | Content |
+| --- | --- |
+| `https://filefn.com/docs/llms.txt` | Page outline and links. |
+| `https://filefn.com/docs/llms-full.txt` | Full documentation context. |
 
-These are generated automatically by `scripts/generate-llms.mjs` on every docs build (`npm run generate:llms` or `npm run build`).
+These are configured URLs, not a claim of live deployment. Native prerendered `/docs/llms.txt` and `/docs/llms-full.txt` routes publish the artifacts; root-level static copies are not the advertised docs-owner URLs. There is no `llms-rich.json` generator or endpoint in this site.
 
-## Format
+## Generate and check
 
-`llms.txt` follows the [llmstxt.org](https://llmstxt.org/) specification. A short version:
+Prepare the repository-owned dependencies and build from the repository root:
 
-```
-# filefn
-
-> File uploads, downloads, processing, and previews — for any stack.
-
-## Docs
-
-- [Welcome](https://docs.filefn.dev/docs): Overview and capability matrix.
-- [Getting started](https://docs.filefn.dev/docs/getting-started): 9-step walkthrough.
-- [Quickstart](https://docs.filefn.dev/docs/quickstart): Framework-specific.
-- [Core Concepts](https://docs.filefn.dev/docs/core-concepts): Architecture.
-- [Features](https://docs.filefn.dev/docs/features): Bundled features.
-- [SDKs](https://docs.filefn.dev/docs/sdk): Server, client, Python, Swift.
-- [Adapters](https://docs.filefn.dev/docs/adapters): Storage and DB.
-- [Frameworks](https://docs.filefn.dev/docs/frameworks): Production wiring.
-- [Recipes](https://docs.filefn.dev/docs/recipes): Production patterns.
-- [Examples](https://docs.filefn.dev/docs/examples): Reference apps.
-- [Reference](https://docs.filefn.dev/docs/reference): Routes, errors, events, schema.
-
-## Optional
-
-- [llms-full.txt](https://docs.filefn.dev/llms-full.txt): The whole site.
-- [OpenAPI](https://docs.filefn.dev/api/filefn.json): Annotated spec.
-- [MCP](https://docs.filefn.dev/docs/ai-resources/mcp): Live search + fetch.
+```sh
+npm exec -- turbo run build --filter=@filefn/docs
 ```
 
-## Use it from any tool
+After prerequisites are built, from `filefn/docs`:
 
-Most LLM clients accept arbitrary text context. Drop `llms.txt` into your project's prompt:
-
-```bash
-curl https://docs.filefn.dev/llms.txt > .ai/filefn-llms.txt
-# include .ai/filefn-llms.txt in your assistant's system prompt
+```sh
+npm run generate:llms
+npm run check:llms
 ```
 
-For tools that read `llms.txt` directly (Cursor, certain MCP servers), they'll discover it via the well-known URL.
+The generator loads the consumer's published DocsFn configuration and filesystem provider, builds a manifest, and writes `static/llms.txt` and `static/llms-full.txt`. The FileFn generator selects non-draft `docs:` pages and builds both text artifacts using the configured canonical URL; Blog posts are not included. `check:llms` compares content without writing.
 
-## llms-full.txt
+## Use as context
 
-When the outline isn't enough — e.g. you want the full route reference and the entire processor catalog inline — use `llms-full.txt`. It's a single document containing every docs page, in IA order.
+An assistant that supports URL retrieval can use the configured URLs above. If it cannot fetch them, supply a generated local file through that tool's supported context interface. Generated sizes vary with content; use the outline for smaller context budgets.
 
-## llms-rich.json
+The default local port is 6006:
 
-Structured JSON for tools that want metadata (route HTTP methods, error code groups, page tags). Schema:
-
-```jsonc
-{
-  "site": { "name": "filefn", "tagline": "...", "version": "..." },
-  "pages": [
-    {
-      "slug": "core-concepts/upload-sessions",
-      "title": "Upload sessions",
-      "description": "...",
-      "tags": ["multipart", "uploads", "lifecycle"],
-      "url": "https://docs.filefn.dev/docs/core-concepts/upload-sessions",
-      "body": "..."
-    }
-  ],
-  "routes": [
-    { "method": "POST", "path": "/upload/init", "description": "..." }
-  ],
-  "errors": [
-    { "code": "FILEFN_POLICY_NOT_FOUND", "status": 404, "description": "..." }
-  ]
-}
+```text
+http://localhost:6006/docs/llms.txt
+http://localhost:6006/docs/llms-full.txt
 ```
 
-## See also
-
-- [MCP server](./mcp) — live alternative.
-- [Reference](../reference) — the same content, formatted for humans.
+Documentation context does not authenticate an assistant, grant access to your FileFn server, or create [MCP tools](./mcp).
 
 
 ---
 
-# MCP server
+# MCP integration boundaries
 
 Source: https://filefn.com/docs/ai-resources/mcp
 
 
-Connect AI assistants to live filefn docs via the Model Context Protocol — search, fetch, and reference.
+The current FileFn docs site does not implement an MCP server.
 
 
-# MCP server
+# MCP integration boundaries
 
-filefn ships an MCP server that exposes the docs site as live tools. Clients see:
+This FileFn docs site does not implement a `/mcp` endpoint. It does not publish `search_docs`, `fetch_page`, `get_route`, `get_error`, or executable skill tools. Changing a hostname in an editor configuration would not create those services.
 
-| Tool | Purpose |
-| --- | --- |
-| `search_docs` | Full-text search; returns matching pages with snippets. |
-| `fetch_page` | Fetch a single page's full content by slug. |
-| `list_pages` | Enumerate the docs IA. |
-| `get_route` | Look up an HTTP route by `path` + `method`. |
-| `get_error` | Look up an error by code. |
-| `get_event` | Look up an event by name. |
+Use the generated [LLM context files](./llms-txt) or native documentation pages instead. The native `/docs/search.json` route supplies a search index, not a ready-made MCP tool protocol.
 
-## Installing
-
-```bash
-droid mcp add filefn https://docs.filefn.dev/mcp --type http
-```
-
-That registers the MCP server with Droid and similar MCP-aware clients.
-
-For Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "filefn": {
-      "type": "http",
-      "url": "https://docs.filefn.dev/mcp"
-    }
-  }
-}
-```
-
-For Cursor (`.cursor/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "filefn": {
-      "type": "http",
-      "url": "https://docs.filefn.dev/mcp"
-    }
-  }
-}
-```
-
-## Self-hosting
-
-The MCP server is part of the docs site. To run it under your own domain:
-
-```bash
-git clone https://github.com/21nco/super-functions.git
-cd super-functions/filefn/docs
-npm install
-npm run build
-npm run start
-```
-
-The server is available at `https://your-domain/mcp`. Behind it is the same content as `llms-full.txt` plus the structured `llms-rich.json` index.
-
-## Tool details
-
-### `search_docs`
-
-```jsonc
-{
-  "name": "search_docs",
-  "description": "Full-text search filefn documentation",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "query": { "type": "string" },
-      "limit": { "type": "integer", "default": 10 }
-    },
-    "required": ["query"]
-  }
-}
-```
-
-Returns top matches with title, snippet, slug.
-
-### `fetch_page`
-
-```jsonc
-{
-  "name": "fetch_page",
-  "description": "Fetch a single docs page by slug",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "slug": { "type": "string" }
-    },
-    "required": ["slug"]
-  }
-}
-```
-
-Returns the full markdown.
-
-### `get_route`
-
-```jsonc
-{
-  "name": "get_route",
-  "description": "Look up an HTTP route by method + path",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"] },
-      "path": { "type": "string" }
-    },
-    "required": ["method", "path"]
-  }
-}
-```
-
-Returns the route's request schema, response schema, error codes, and a link to the docs page.
-
-### `get_error`
-
-```jsonc
-{
-  "name": "get_error",
-  "description": "Look up an error code",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "code": { "type": "string" }
-    },
-    "required": ["code"]
-  }
-}
-```
-
-Returns the canonical message, HTTP status, and "common causes" / "fixes" prose.
-
-## See also
-
-- [llms.txt](./llms-txt) — static alternative.
-- [Skills](./skills) — pre-baked workflows.
+If your application provides a separate MCP service, use that application's verified endpoint and tool schema. Its operator owns authentication, authorization, request limits, data exposure, and deployment. Do not assume public documentation content authorizes tools to access or mutate your FileFn data.
 
 
 ---
 
-# Skills
+# Application-owned recipes
 
 Source: https://filefn.com/docs/ai-resources/skills
 
 
-Pre-baked filefn workflows your AI assistant can run on your behalf — install, configure, debug, extend.
+Create and review local FileFn assistant recipes; no bundled executable skill endpoint is supplied.
 
 
-# Skills
+# Application-owned recipes
 
-A "skill" is a small, self-contained recipe an AI assistant can run end-to-end. filefn ships skills for the most common workflows.
+The docs site does not publish executable FileFn skills, a `/skills/` endpoint, or `list_skills`/`run_skill` tools. Write recipes for your own assistant's documented skill format and review them as application code.
 
-| Skill | What it does |
-| --- | --- |
-| `filefn-install` | Detects your framework, installs filefn, adds the route mount, writes a sample policy. |
-| `filefn-add-storage` | Replaces the default local FS storage with S3 / GCS / R2 / MinIO. |
-| `filefn-add-processor` | Adds a bundled processor (thumbnails, OCR, video) to your config. |
-| `filefn-add-share-links` | Wires share-link UI components into your app. |
-| `filefn-debug-upload` | Walks the upload state machine to diagnose stuck uploads. |
-| `filefn-write-processor` | Scaffolds a custom `Processor` with tests. |
-| `filefn-add-tenant-isolation` | Adds tenant scoping to storage paths, quotas, and authorizer. |
-| `filefn-migrate-from` | Migrates from UploadThing / Roll-your-own / Direct S3 to filefn. |
+A useful recipe can:
 
-## Discoverability
+1. Inspect installed FileFn versions and existing server configuration.
+2. Read the relevant [documentation](https://filefn.com/docs) or [LLM context files](./llms-txt).
+3. Propose a narrowly scoped configuration or processor change.
+4. Run the project's tests and type checks.
+5. Obtain separate authorization before operating live storage or infrastructure.
 
-Skills are exposed via the MCP server (`list_skills` tool) and as static markdown under `https://docs.filefn.dev/skills/`. AI assistants that support skills (Claude Code, Cursor, Droid) discover them automatically once the MCP server is registered.
-
-## Authoring your own
-
-Skills are markdown files with a frontmatter header:
-
-```md
----
-name: filefn-add-watermark-processor
-description: Add an image watermarking processor to your filefn config.
-inputs:
-  - name: watermark_path
-    description: Path to the PNG watermark.
-    type: string
----
-
-# Steps
-
-1. Read filefn server config.
-2. Add a `createWatermarkProcessor` import.
-3. Insert the processor into `processing.processors`.
-4. Run tests.
-```
-
-Drop them under your project's `.factory/skills/` directory and the assistant picks them up.
-
-## See also
-
-- [Cursor](./cursor), [Claude](./claude), [Codex](./codex) — how each tool consumes skills.
+FileFn policy checks and tenant authorization still apply. Assistant instructions are not credentials and do not bypass server-owned access control. Skill installation, discovery, and execution are specific to your assistant and are not implemented by this docs build.
 
 
 ---
@@ -1706,7 +1311,7 @@ HTTP endpoints exposed by filefn — annotated OpenAPI spec covering uploads, do
 
 # API Reference
 
-filefn exposes 24 paths across 27 operations. The interactive OpenAPI explorer is mounted under `/api/filefn` and reads from the generated [`content/api/filefn.json`](https://docs.filefn.dev/api/filefn.json).
+filefn exposes 24 paths across 27 operations. The interactive OpenAPI explorer is mounted under `/docs/api/filefn` and reads from the generated [`content/api/filefn.json`](https://github.com/21nCo/super-functions/blob/dev/filefn/docs/content/api/filefn.json).
 
 The spec is regenerated on every docs build from `filefn/server/contracts/filefn-client-v1.openapi.json` — a single source of truth shared with the Node, Python, and Swift SDKs.
 
@@ -2993,9 +2598,10 @@ filefn integrates with `@superfunctions/middleware`'s `RateLimiter` to throttle 
 
 ```ts
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
+  stores: { atomicKv: redisAtomicStore },
   rateLimit: {
-    persistence: redisPersistence,        // or undefined for in-memory
+    mode: "strict",
     algorithm: "sliding-window",          // or "fixed-window" | "token-bucket"
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -3043,21 +2649,23 @@ Routes not in any category (read-only file metadata, listing, render-descriptor)
 - **`sliding-window`** — smooths out the boundary effect. Default for the production examples.
 - **`token-bucket`** — burst-friendly, refill over time. Best when you have legitimate bursty traffic (e.g. mass uploads from a script).
 
-## Persistence
+## Shared stores and modes
 
-In-memory persistence is fine for development and single-instance deployments. For multi-instance / Edge / load-balanced deployments, use a shared persistence:
+FileFn 0.2.0 uses `stores` and `rateLimit.mode`, not `rateLimit.persistence`.
 
-- Redis (recommended)
-- Postgres
-- Cloudflare KV
+- **`strict`** — shared `stores.atomicKv` with `compareAndSet`; missing atomic
+  storage is rejected instead of silently using process-local counters.
+- **`best-effort`** — `stores.kv` for deployments that accept approximate
+  cross-replica limits.
+- **`local`** — in-process counters for development or a single instance.
 
-`@superfunctions/middleware` ships persistence implementations or accepts your own.
+Without an explicit mode, FileFn selects strict for `stores.atomicKv`,
+best-effort for `stores.kv`, otherwise local. Supply adapters implementing
+the `@superfunctions/db` runtime-store contracts.
 
-For a strict limit shared by multiple processes, configure `atomicStore` with
-an `AtomicKVStoreAdapter` that implements `compareAndSet`. The limiter rejects
-an `atomicStore` without CAS support instead of silently falling back to
-process-local serialization. Plain `persistence` remains suitable for
-single-process use or deployments that accept best-effort cross-replica limits.
+The separate pre-built `rateLimiter` still accepts the middleware's own
+`atomicStore` / `persistence` options.
+
 
 ## What clients see
 
@@ -4798,9 +4406,10 @@ See [Core Concepts › Rate limiting](../core-concepts/rate-limiting) for the co
 import { createFileFn } from "@filefn/server";
 
 const fileFn = createFileFn({
-  db, storage,
+  database: db, storage,
+  stores: { atomicKv: redisAtomicStore },
   rateLimit: {
-    persistence: redisPersistence, // optional; in-memory by default
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -4818,7 +4427,11 @@ const fileFn = createFileFn({
 
 `rateLimit.algorithm` is one of `"fixed-window" | "sliding-window" | "token-bucket"`.
 
-`rateLimit.persistence` plugs in a shared store (Redis / Postgres / KV) so multi-instance deployments share counters.
+`rateLimit.mode: "strict"` uses CAS-capable `stores.atomicKv` for shared counters.
+Use `"best-effort"` with `stores.kv` when approximate cross-replica limits are
+acceptable, or `"local"` for in-process counters. Without an explicit mode,
+FileFn selects strict for `atomicKv`, best-effort for `kv`, otherwise local.
+The former `rateLimit.persistence` option was removed in 0.2.0.
 
 ## Pre-built rate limiter
 
@@ -8190,7 +7803,7 @@ Every option in FileFnConfig — types, defaults, and effects.
 
 | Field | Type | Effect |
 | --- | --- | --- |
-| `db` | `Adapter` | The DB adapter (`@superfunctions/db`). |
+| `database` | `Adapter` | The DB adapter (`@superfunctions/db`); `db` remains a deprecated alias. |
 | `storage` | `StorageAdapter` | The storage adapter (`@superfunctions/storage`). |
 
 ## Policies
@@ -8227,7 +7840,8 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit.persistence` | `RateLimitPersistence` | undefined | Shared persistence (Redis/KV). |
+| `stores` | `RuntimeStores` | undefined | Shared `atomicKv` / `kv` stores. |
+| `rateLimit.mode` | `"strict" \| "best-effort" \| "local"` | inferred from stores | Strict requires CAS-capable `stores.atomicKv`; best-effort uses `stores.kv`; local keeps counters in-process. |
 | `rateLimit.algorithm` | `"fixed-window" | "sliding-window" | "token-bucket"` | `"fixed-window"` | Algorithm. |
 | `rateLimit.limits.uploadInit` | `{ windowSeconds, maxRequests }` | undefined | Per-route. |
 | `rateLimit.limits.uploadSign` | same | undefined | |
@@ -8258,13 +7872,13 @@ Default authorizer reads `filefn_file_permissions` and respects ownership.
 | Field | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `namespace` | `string` | `"filefn"` | Table prefix. |
-| `logger` | `Logger` | undefined | Pluggable structured logger. |
+| `observability` | `ObservabilityInput<FileFnObservationEvent>` | undefined | Structured logger, events, metrics, traces and request observations. |
 
 ## Example: production config
 
 ```ts
 const fileFn = createFileFn({
-  db: createPostgresAdapter({ pool }),
+  database: createPostgresAdapter({ pool }),
   storage: createS3Storage({ region, bucket, cdnPrefix }),
   policies: createNucleusPolicies(),
 
@@ -8278,10 +7892,11 @@ const fileFn = createFileFn({
 
   quota: storageQuotaProvider,
   authorizer: composeAuthorizers([orgAdminCanRead, createDefaultAuthorizer({ db, namespace: "filefn" })]),
-  logger: pinoLogger,
+  observability: { logger: pinoLogger },
+  stores: { atomicKv: redisAtomicStore },
 
   rateLimit: {
-    persistence: redisPersistence,
+    mode: "strict",
     algorithm: "sliding-window",
     limits: {
       uploadInit:        { windowSeconds: 60, maxRequests: 10 },
@@ -9312,6 +8927,7 @@ const fileFn: FileFn = createFileFn(config);
 interface FileFn extends FileProvider {
   router: FileFnRouter;                                  // single Request → Response | null
   events: FileFnEventEmitter;                            // typed event emitter
+  readonly services: FileFnServices;                     // bound, authorized domain services
   definePolicy(name: string, policy: Omit<Policy, "name">): void;
   getSchema(): { version: number; schemas: TableSchema[] };
 }
@@ -9321,14 +8937,15 @@ interface FileFn extends FileProvider {
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `db` | `Adapter` | required | `@superfunctions/db` `Adapter`. |
+| `database` | `Adapter` | required | `@superfunctions/db` `Adapter`; FileFn applies its own schema. `db` remains a deprecated alias. |
 | `storage` | `StorageAdapter` | required | `@superfunctions/storage` `StorageAdapter`. |
+| `stores` | `RuntimeStores` | undefined | Shared runtime stores, including `atomicKv` for strict rate limiting and `kv` for best-effort counters. |
 | `policies` | `Policy[]` | `[]` | Initial policies. Use `createNucleusPolicies()` for sane defaults. |
 | `auth` | `AuthConfig` | `{}` | `{ resolveSession, required }`. |
 | `quota` | `QuotaProvider` | undefined | Optional storage quota. |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit` | `{ persistence?, algorithm?, limits? }` | undefined | Per-route rate limits. |
-| `logger` | `Logger` | undefined | Pluggable structured logger. |
+| `rateLimit` | `{ mode?, algorithm?, limits? }` | undefined | Per-route rate limits; mode is `"strict"`, `"best-effort"`, or `"local"`. |
+| `observability` | `ObservabilityInput<FileFnObservationEvent>` | undefined | Shared logging, typed events, metrics, traces and request observations. |
 | `authorizer` | `Authorizer` | default | Permission resolution. |
 | `namespace` | `string` | `"filefn"` | Table prefix. |
 | `defaultChunkSizeBytes` | `number` | `5 MiB` | Multipart chunk floor. |
@@ -9336,6 +8953,24 @@ interface FileFn extends FileProvider {
 | `signedUrlTtlSeconds` | `number` | `900` | Per-part signed URL TTL. |
 | `dedup` | `{ enabled: boolean }` | `{ enabled: false }` | Content-addressable storage. |
 | `processing` | `{ enabled, processors?, flowFn? }` | `{ enabled: false }` | Processing pipeline. |
+
+## Migrating from 0.1.x
+
+Version 0.2.0 removes `FileFnConfig.logger` and `rateLimit.persistence`; there
+are no compatibility aliases for these options.
+
+- Replace `logger` with `observability: { logger }`, using a logger compatible
+  with `@superfunctions/observability`.
+- Replace `rateLimit.persistence` with `stores.kv` and
+  `rateLimit.mode: "best-effort"` when cross-replica limits may be approximate.
+- For strict shared limits, provide a CAS-capable `stores.atomicKv` and set
+  `rateLimit.mode: "strict"`. Missing atomic storage is rejected.
+- For process-local counters, use `rateLimit.mode: "local"`.
+
+Without an explicit mode, FileFn selects strict when `stores.atomicKv` is
+present, otherwise best-effort when `stores.kv` is present, otherwise local.
+The separate pre-built `rateLimiter` option remains supported.
+
 
 ## `FileProvider`
 
@@ -9354,6 +8989,32 @@ const result = await fileFn.completeUploadSession({ uploadSessionId: session.upl
 ```
 
 `ctx` carries the principal — `{ principalId, tenantId, uploadSessionToken }`.
+
+## Bound domain services
+
+The public `FileFn.services` bundle is available in `@filefn/server` 0.2.0.
+It contains `files`, `uploads`, `grants`, `shares`, `processing`, and `policies`.
+These are the same instances used by the facade and router, bound to the same
+schema, namespace, database, storage, policies, quota provider, and event emitter.
+No separately constructed service or table access is needed.
+
+```ts
+const { versions } = await fileFn.services.files.listVersions(fileId, ctx);
+const grants = await fileFn.services.grants.listGrants(fileId, ctx);
+const artifacts = await fileFn.services.processing.listArtifactsForFile(fileId, ctx);
+await fileFn.services.processing.triggerProcessingForFile(fileId, ctx, versionId);
+```
+
+All file operations still require the caller's domain principal/tenant context.
+Grant management remains owner-only; share management and artifact access retain
+their existing domain checks. The bound processing surface intentionally does
+not expose `runProcessing` or a trigger accepting caller-supplied storage keys:
+`triggerProcessingForFile` authorizes the file/version and resolves the input
+from FileFn before scheduling work.
+
+`@filefn/admin` requires this declared server version. Its
+`createFileFnDomainAdminService({ fileFn, context })` maps each active admin
+actor/scope to FileFn's domain context rather than bypassing these checks.
 
 ## Routes
 

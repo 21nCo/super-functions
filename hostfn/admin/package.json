@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@superfunctions/admin": "0.1.0",
-    "hostfn": "0.1.7"
+    "hostfn": "0.2.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

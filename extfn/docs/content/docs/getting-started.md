@@ -26,4 +26,4 @@ npm exec extfn scan -- --config extfn.config.ts
 npm exec extfn package -- --config extfn.config.ts
 ```
 
-Development emits an unpacked extension at `dist/<target>-dev`; production builds emit `dist/<target>`. `package` builds if needed, scans by default, and emits `.zip` for Chromium or `.xpi` for Firefox. Loading an unpacked extension into Firefox remains manual even when `--open` launches `about:debugging`. See [CLI workflow](/docs/cli) and the [vanilla example](https://github.com/21nCo/super-functions/tree/dev/extfn/examples/vanilla-messaging-demo).
+Development emits an unpacked extension at `dist/<target>-dev`; production builds emit `dist/<target>`. `package` always rebuilds the selected targets, scans by default, and emits `.zip` for Chromium or `.xpi` for Firefox. Loading an unpacked extension into Firefox remains manual even when `--open` launches `about:debugging`. See [CLI workflow](/docs/cli) and the [vanilla example](https://github.com/21nCo/super-functions/tree/dev/extfn/examples/vanilla-messaging-demo).

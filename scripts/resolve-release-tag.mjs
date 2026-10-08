@@ -3,102 +3,57 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '..');
-const releasePackagesPath = path.join(repoRoot, 'release-packages.json');
-const tagPattern = /^(?<slug>[a-z0-9][a-z0-9-]*)-v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const number = '(?:0|[1-9][0-9]*)';
+const identifier = '(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)';
+const versionPattern = `${number}\\.${number}\\.${number}(?:-(${identifier}(?:\\.${identifier})*))?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?`;
+const tagPattern = new RegExp(`^([a-z0-9][a-z0-9-]*)-v(${versionPattern})$`);
 
-function fail(message) {
-  console.error(message);
-  process.exit(1);
-}
-
-async function loadReleaseTargets() {
-  const raw = await readFile(releasePackagesPath, 'utf8');
-  const releasePackages = JSON.parse(raw);
-
-  if (!Array.isArray(releasePackages)) {
-    fail(`Expected ${path.relative(repoRoot, releasePackagesPath)} to contain an array`);
+export async function resolveReleaseTag(tag, { root = repoRoot } = {}) {
+  const match = typeof tag === 'string' && tag.match(tagPattern);
+  if (!match) throw new Error(`Unsupported tag format: ${tag}. Expected <package-slug>-v<strict-semver>.`);
+  const [, slug, version, prerelease] = match;
+  const distTag = prerelease ? prerelease.split('.')[0] : 'latest';
+  // npm rejects dist-tags that parse as version ranges; prereleases must never
+  // move latest, even when someone names the prerelease "latest".
+  if (prerelease && (!/^[a-z][a-z0-9-]*$/.test(distTag) || /^(?:v[0-9]|x$)/.test(distTag) || distTag === 'latest')) {
+    throw new Error(`Unsafe prerelease dist-tag: ${distTag}`);
   }
-
-  const targets = [];
-
-  for (const entry of releasePackages) {
-    if (!entry?.slug || !entry?.path || !entry?.name) {
-      fail(`Invalid release target entry in ${path.relative(repoRoot, releasePackagesPath)}: ${JSON.stringify(entry)}`);
+  const targets = JSON.parse(await readFile(path.join(root, 'release-packages.json'), 'utf8'));
+  if (!Array.isArray(targets)) throw new Error('Expected release-packages.json to contain an array');
+  const slugs = new Set();
+  const names = new Set();
+  for (const entry of targets) {
+    if (!entry?.slug || !entry?.name || !entry?.path || slugs.has(entry.slug) || names.has(entry.name)) {
+      throw new Error(`Invalid or duplicate release target: ${JSON.stringify(entry)}`);
     }
-
-    targets.push({
-      slug: entry.slug,
-      name: entry.name,
-      path: entry.path,
-    });
+    const relative = path.relative(root, path.resolve(root, entry.path));
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(`Invalid target path: ${entry.path}`);
+    slugs.add(entry.slug);
+    names.add(entry.name);
   }
-
-  return targets;
-}
-
-async function writeOutputs(outputs) {
-  if (!process.env.GITHUB_OUTPUT) {
-    return;
+  const target = targets.find(candidate => candidate.slug === slug);
+  if (!target) throw new Error(`No publishable workspace found for slug "${slug}"`);
+  const manifest = JSON.parse(await readFile(path.join(root, target.path, 'package.json'), 'utf8'));
+  if (manifest.private === true) throw new Error(`Cannot publish private package ${target.name}`);
+  if (manifest.name !== target.name) throw new Error(`Release target ${slug} expected ${target.name}, found ${manifest.name}`);
+  if (manifest.version !== version) throw new Error(`Tag version ${version} does not match ${target.name}@${manifest.version}`);
+  if (manifest.publishConfig?.tag && manifest.publishConfig.tag !== distTag) {
+    throw new Error(`publishConfig.tag ${manifest.publishConfig.tag} conflicts with resolved dist-tag ${distTag}`);
   }
-
-  const lines = Object.entries(outputs).map(([key, value]) => `${key}=${value}`);
-  await appendFile(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
+  return { tag, slug, name: target.name, version, path: target.path, distTag };
 }
 
-const tag = process.argv[2] ?? process.env.GITHUB_REF_NAME;
-
-if (!tag) {
-  fail('Expected a release tag argument or GITHUB_REF_NAME');
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const result = await resolveReleaseTag(process.argv[2] ?? process.env.GITHUB_REF_NAME);
+    if (process.env.GITHUB_OUTPUT) {
+      const outputs = { pkg_slug: result.slug, pkg_name: result.name, pkg_version: result.version, pkg_path: result.path, dist_tag: result.distTag };
+      await appendFile(process.env.GITHUB_OUTPUT, Object.entries(outputs).map(([key, value]) => `${key}=${value}\n`).join(''));
+    }
+    console.log(JSON.stringify(result, null, 2));
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
 }
-
-const match = tag.match(tagPattern);
-
-if (!match?.groups) {
-  fail(`Unsupported tag format: ${tag}. Expected <package-slug>-v<version>.`);
-}
-
-const { slug, version } = match.groups;
-const releaseTargets = await loadReleaseTargets();
-const target = releaseTargets.find((candidate) => candidate.slug === slug);
-
-if (!target) {
-  const supportedSlugs = releaseTargets.map((target) => target.slug).join(', ');
-  fail(`No publishable workspace found for slug "${slug}". Supported slugs: ${supportedSlugs}`);
-}
-
-const packageJsonFile = path.join(repoRoot, target.path, 'package.json');
-const packageJson = JSON.parse(await readFile(packageJsonFile, 'utf8'));
-
-if (packageJson.name !== target.name) {
-  fail(
-    `Release target ${target.slug} expected ${target.name} at ${target.path}/package.json, found ${packageJson.name ?? 'undefined'}`,
-  );
-}
-
-if (packageJson.version !== version) {
-  fail(`Tag version ${version} does not match ${target.name}@${packageJson.version} in ${target.path}/package.json`);
-}
-
-await writeOutputs({
-  pkg_slug: target.slug,
-  pkg_name: target.name,
-  pkg_version: packageJson.version,
-  pkg_path: target.path,
-});
-
-console.log(
-  JSON.stringify(
-    {
-      tag,
-      slug: target.slug,
-      name: target.name,
-      version: packageJson.version,
-      path: target.path,
-    },
-    null,
-    2,
-  ),
-);

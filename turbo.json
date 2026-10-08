@@ -42,5 +42,6 @@
     "clean": {
       "cache": false
     }
-  }
+  },
+  "globalEnv": ["CLOUDFLARE_DOCS_DEPLOY", "CLOUDFLARE_DOCS_PUBLIC_ORIGIN", "CLOUDFLARE_DOCS_ASSETS_ORIGIN"]
 }

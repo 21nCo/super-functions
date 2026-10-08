@@ -1460,94 +1460,51 @@ Most assistants will accept that as a context source. If your tool is MCP-aware,
 
 # llms.txt
 
-[`llms.txt`](https://llmstxt.org/) is a community convention for static, LLM-friendly summaries of a project. authfn ships **two** files at the docs origin:
+[`llms.txt`](https://llmstxt.org/) is a convention for LLM-friendly project context. This docs site serves two generated files under its existing `/docs` mount:
 
-- `https://authfn.com/docs/llms.txt` — short index. Lists every doc page with a one-line description and a link.
-- `https://authfn.com/docs/llms-full.txt` — full text. Concatenated markdown of every doc page plus the OpenAPI spec.
+- `https://authfn.com/docs/llms.txt` — short page index.
+- `https://authfn.com/docs/llms-full.txt` — full documentation context, including the configured API material.
 
-Use whichever fits your assistant's context budget.
+These are the configured publication URLs; a local build does not prove live hosting or credentials.
 
-## How they're generated
+## Generation
 
-Both files are emitted by docsfn at build time:
+The normal repository build prepares AuthFn's physical dependencies before regenerating OpenAPI and LLM content:
 
-```bash
-npm run docs:llms     # writes static/llms.txt and static/llms-full.txt
+```sh
+npm exec -- turbo run build --filter=@authfn/docs
 ```
 
-The pipeline:
+After those prerequisites are built, run from `authfn/docs`:
 
-1. Walks every page in `content/docs/**`.
-2. For each page, extracts the H1 + frontmatter description for `llms.txt`.
-3. For each page, includes the full markdown body for `llms-full.txt`.
-4. Appends the OpenAPI spec from `content/api/authfn.json` (operations + schemas).
-5. Writes both files into `static/` so they ship with the deployed site.
+```sh
+npm run generate:openapi
+npm run generate:llms
+npm run check:llms
+```
+
+`generate:llms` loads `docsfn.config.ts` through the consumer's published DocsFn package and filesystem provider, builds the manifest, and writes `static/llms.txt` and `static/llms-full.txt`. Native prerendered routes publish those files at `/docs/llms.txt` and `/docs/llms-full.txt`; the app-root static copies are not the advertised docs-owner URLs. `check:llms` compares generated content without writing it.
 
 ## Use it
 
-In Cursor, Claude Desktop, ChatGPT custom GPTs, or anything that accepts a URL as context:
+Supply the full-context URL to an assistant that accepts URLs:
 
-```
+```text
 https://authfn.com/docs/llms-full.txt
 ```
 
-For local development against your own fork, you can also point at:
+The default local docs port is 6005:
 
-```
+```text
 http://localhost:6005/docs/llms.txt
 http://localhost:6005/docs/llms-full.txt
 ```
 
-## What's in `llms-full.txt`
+## Configuration and size
 
-Roughly:
+The manifest follows the configured content directories and `site.canonicalUrl` in `docsfn.config.ts`. The shared `scripts/docs-site/llms.mjs` builder passes the canonical URL and excludes Blog posts with the published `includeBlog:false` option. There is no consumer `docs:llms` script or invented `llmsTxt` configuration object.
 
-```text
-# authfn — Self-hosted authentication for any stack
-
-> Sessions, OTP, passwords, social OAuth, 2FA, API keys, multi-region...
-
-## Welcome
-[full body of index.md]
-
-## Getting Started
-[full body of getting-started.md]
-
-## Core Concepts › Architecture
-[full body of architecture.md]
-
-...
-
-## OpenAPI
-- POST /sign-up/password — Create a new account with email and password.
-- POST /sign-in/password — Sign in with email and password.
-[...all 31 operations...]
-```
-
-## Customizing
-
-The `docs:llms` task is configurable via `docsfn.config.ts`:
-
-```ts
-{
-  // ...
-  llmsTxt: {
-    enabled: true,
-    includeOpenApi: true,
-    includePages: ['docs/**'],
-    excludePages: ['docs/blog/**'],
-  },
-}
-```
-
-## Token budget
-
-| File | Approximate size |
-| --- | --- |
-| `llms.txt` | ~8 KB (~2,000 tokens) |
-| `llms-full.txt` | ~250 KB (~65,000 tokens) |
-
-For models with smaller context windows, prefer `llms.txt` and use the [MCP server](./mcp) for on-demand retrieval.
+Generated sizes vary with the corpus and API schema. Prefer the short index for smaller context budgets; retrieve individual linked pages or use the separately configured [MCP server](./mcp) when appropriate. Static context files do not authenticate an assistant or establish a live MCP connection.
 
 ---
 
@@ -5431,7 +5388,7 @@ If you're **comparing tools**, the highlights below are a cheatsheet against Bet
 | Email & password | Sign-up/sign-in, password reset via OTP, optional compromised-password checks | `@authfn/password` |
 | Email OTP | One-time codes for email verification, sign-in, sign-up, and password reset | `@authfn/email-otp` |
 | Social OAuth | Google, Apple, GitHub — and custom providers through the shared OAuth contracts | `@authfn/social-oauth` |
-| API keys | User-owned API keys with scopes, named, revocable, securely hashed | `@authfn/api-keys` |
+| API keys | Scoped, named, revocable, securely hashed keys: user-owned through HTTP routes; unowned through the trusted TypeScript server helper | `@authfn/api-keys` |
 | Two-factor (TOTP) | RFC 6238 TOTP with recovery codes, time-window tolerance, and pluggable encryption | `@authfn/two-factor` |
 | Multi-region | Region-aware lookup and request-specific runtime environment resolution | `@authfn/multi-region` |
 | Native handoff | Web ↔ native session handoff for iOS/Android wrappers | `@authfn/native-handoff` |
@@ -5474,18 +5431,18 @@ If you're **comparing tools**, the highlights below are a cheatsheet against Bet
 <!-- page:docs:plugins/api-keys.md path:/docs/plugins/api-keys -->
 # API keys plugin
 
-> User-owned API keys — issued, hashed, scoped, revocable.
+> User-owned and server-issued unowned API keys — hashed, scoped, revocable.
 
 
 # API keys plugin
 
-`authFnApiKeyPlugin` lets users issue API keys and use them as bearer tokens against your service. Keys are:
+`authFnApiKeyPlugin` lets signed-in users issue user-owned API keys and use them as bearer tokens against your service. Trusted TypeScript server code can also issue unowned service keys with the exported `createApiKey` helper. Keys are:
 
-- **User-owned** — every key is bound to a `userId`.
+- **User-owned or unowned** — cookie-session routes bind keys to the signed-in user's `userId`; trusted server code can explicitly pass `userId: null` to issue an unowned service key.
 - **Hashed at rest** — the plaintext is shown once at creation; only `secretHash` is persisted.
 - **Scoped** — keys carry an array of scope strings; your app decides what they mean.
-- **Named** — for the user's UI ("CI", "personal laptop").
-- **Revocable** — `DELETE /auth/api-keys/:id` flips `revokedAt`.
+- **Named** — for a user's UI or a service ("CI", "personal laptop", "retrieval-worker").
+- **Revocable** — cookie-session routes revoke the caller's user-owned keys; trusted server code can revoke unowned keys with `revokeApiKeyById`. Both set `revokedAt`.
 
 ```ts
 import { authfn, authFnPlugins } from 'authfn';
@@ -5521,9 +5478,9 @@ const authApp = authfn({
 
 When a request carries `Authorization: Bearer <secret>`, the kernel:
 
-1. Looks up the key by `secretHash`.
-2. Rejects if `revokedAt` is set (`AUTHFN_API_KEY_REVOKED`).
-3. Rejects if `expiresAt` is past.
+1. Looks up the key by `secretHash`; returns `null` if no key matches.
+2. Throws `AUTHFN_API_KEY_REVOKED` if `revokedAt` is set.
+3. Returns `null` if `expiresAt` is at or before the current time.
 4. Updates `lastUsedAt`.
 5. Synthesizes an `AuthFnSession` with `type: 'api-key'`, `actorType: 'api-key'`, `methods: ['api-key']`.
 
@@ -5531,8 +5488,9 @@ The synthesized session is what `auth.provider.authenticate(request)` returns. Y
 
 ```ts
 if (session.actorType === 'api-key') {
-  if (!session.subject.attributes?.scopes?.includes('repo:read')) {
-    return forbidden();
+  const scopes = session.metadata?.scopes;
+  if (!Array.isArray(scopes) || !scopes.includes('repo:read')) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 }
 ```
@@ -5554,16 +5512,76 @@ The plaintext follows `<secretPrefix><base64url(random)>`. Display it once, then
 repo:read repo:write account:read
 ```
 
-Authorize like this in your handlers:
+Return an explicit HTTP 403 when an authenticated API-key request lacks the required scope. In this example, `auth` is your AuthFn server and `handleAuthorizedRequest` is your application's protected handler; it only runs after the scope check passes.
 
 ```ts
-function require(session: AuthFnSession, scope: string) {
-  const scopes = (session.subject.attributes as any)?.scopes ?? [];
-  if (!scopes.includes(scope)) {
-    throw new AuthFnForbiddenError(`scope ${scope} required`);
+import type { AuthFnSession } from 'authfn';
+
+function hasScope(session: AuthFnSession, scope: string): boolean {
+  const scopes = session.metadata?.scopes;
+  return Array.isArray(scopes) && scopes.includes(scope);
+}
+
+async function handleRepositoryRequest(request: Request): Promise<Response> {
+  let session: AuthFnSession | null;
+  try {
+    session = await auth.provider.authenticate(request);
+  } catch (error) {
+    if (error !== null && typeof error === 'object' &&
+        'code' in error && error.code === 'AUTHFN_API_KEY_REVOKED') {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+    throw error;
   }
+  if (!session || session.actorType !== 'api-key') {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (!hasScope(session, 'repo:read')) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+  return handleAuthorizedRequest(request, session);
 }
 ```
+
+Authentication and scope denial belong to your application's HTTP response layer: missing, invalid, expired, revoked, or non-API-key credentials receive HTTP 401; an active key without the required scope receives HTTP 403. The catch covers only authentication and only maps `AUTHFN_API_KEY_REVOKED`; unexpected failures propagate to your host's error handler, and protected work stays outside the catch. Do not throw a plain `Error` for scope denial: AuthFn's error handler normalizes it to `AUTHFN_INTERNAL_ERROR` (HTTP 500).
+
+## Unowned service keys
+
+Trusted server code can issue an unowned key with the exported `createApiKey` helper. Pass `userId: null` explicitly, along with your server's database adapter and namespace:
+
+```ts
+import { createApiKey, revokeApiKeyById } from 'authfn/core/api-keys';
+
+const config = { database, namespace: 'authfn' };
+const serviceKey = await createApiKey(config, {
+  userId: null,
+  name: 'retrieval-worker',
+  scopes: ['skills:read'],
+  metadata: { servicePrincipalId: 'service:retrieval-worker' },
+  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+});
+
+// Before distributing serviceKey.secret, persist serviceKey.keyId in your
+// application's authorized service-key inventory and audit the issuance.
+
+// After checking your application's service-principal management policy:
+await revokeApiKeyById(config, serviceKey.keyId);
+// Update your inventory and audit the successful revocation.
+```
+
+These keys persist a null owner, use the same hashed-secret, expiry, and revocation behavior, and authenticate as `actorType: 'api-key'` with the key ID as their actor ID. Authentication exposes the stored scopes in `session.metadata.scopes` and leaves `session.metadata.ownerUserId` undefined. Your application must authorize service-principal issuance and use and enforce scopes; the helper does not create a user identity.
+
+Unowned keys authenticate through the normal `auth.provider.authenticate` path only. The opt-in [placement-context issuer](../recipes/placement-bound-auth-context) (`createAuthFnPlacementContextIssuer`) binds each API-key grant to its owning user's placement, so it rejects an unowned key with `AUTHFN_UNAUTHENTICATED`. Use a user-owned key when a service must derive placement-bound context.
+
+The cookie-session routes above remain user-owned: creation always uses the signed-in user's ID, and user listing and revocation exclude unowned keys. Manage unowned keys through trusted server code after applying your application's authorization policy.
+
+### Service-key inventory and audit ownership
+
+Keep a durable, access-controlled inventory mapping each `keyId` to its service principal, name, scopes, expiry, and revocation state. Record the ID before distributing the secret: `revokeApiKeyById` requires that ID, and the user listing route cannot discover unowned keys. Use bounded expiries, as in the example, to limit the lifetime of keys whose management records are lost.
+
+Inventory persistence, secret delivery, and recovery are application-owned. The helpers do not make inventory or audit writes atomic with issuance. If inventory persistence fails, do not distribute the secret; use the still-known key ID to attempt revocation and reconcile any cleanup failure through your application's operational tooling.
+
+Direct `createApiKey` and `revokeApiKeyById` calls do **not** emit the HTTP route events listed below. Audit successful service-key issuance and revocation in your application, recording the authorized management actor, service principal, key ID, timestamp, and relevant scopes. Exclude the plaintext secret and secret hash from inventory and audit logs.
 
 ## Revocation
 
@@ -5571,7 +5589,7 @@ function require(session: AuthFnSession, scope: string) {
 await client.revokeApiKey({ keyId });
 ```
 
-After revocation, every subsequent request with that key returns `AUTHFN_API_KEY_REVOKED` (HTTP 401).
+After revocation, `auth.provider.authenticate(request)` rejects with `AUTHFN_API_KEY_REVOKED`. AuthFn's HTTP error handler maps that error to HTTP 401; application-owned endpoints should return HTTP 401 as shown above. Unknown or expired keys instead authenticate to `null`.
 
 ## Errors
 
@@ -5579,13 +5597,17 @@ After revocation, every subsequent request with that key returns `AUTHFN_API_KEY
 | --- | --- |
 | `AUTHFN_VALIDATION_ERROR` | Invalid name / scopes / expiresAt. |
 | `AUTHFN_UNAUTHENTICATED` | Caller is not signed in (key creation requires a session). |
-| `AUTHFN_API_KEY_REVOKED` | Key was used after revocation or expiry. |
+| `AUTHFN_API_KEY_REVOKED` | Key was used after revocation. |
 | `AUTHFN_NOT_FOUND` | `revokeApiKey` for a missing key id. |
 
 ## Events
 
+The cookie-session HTTP routes emit these events:
+
 - `authfn.api_key.created`
 - `authfn.api_key.revoked`
+
+Trusted persistence helpers do not emit them; direct service-key lifecycle auditing is the application's responsibility.
 
 ## Quick UI: list and revoke keys
 
@@ -6169,7 +6191,7 @@ authfn ships seven plugins as independent packages. They compose into a single `
 | `authFnPasswordPlugin` | `@authfn/password` | Email + password sign-up, sign-in, reset-via-OTP. | [Password](./password) |
 | `authFnEmailOtpPlugin` | `@authfn/email-otp` | One-time codes for email verification, sign-in, sign-up, password reset. | [Email OTP](./email-otp) |
 | `authFnSocialOAuthPlugin` | `@authfn/social-oauth` | Google, Apple, GitHub OAuth. Custom providers via a plugin. | [Social OAuth](./social-oauth) |
-| `authFnApiKeyPlugin` | `@authfn/api-keys` | User-owned API keys with scopes. | [API keys](./api-keys) |
+| `authFnApiKeyPlugin` | `@authfn/api-keys` | Scoped API keys: user-owned through HTTP routes; unowned through the trusted TypeScript server helper. | [API keys](./api-keys) |
 | `authFnTwoFactorPlugin` | `@authfn/two-factor` | TOTP-based 2FA with recovery codes. | [Two-factor](./two-factor) |
 | `authFnMultiRegionPlugin` | `@authfn/multi-region` | Region pinning, lookup, runtime overlays. | [Multi-region](./multi-region) |
 | `authFnNativeHandoffPlugin` | `@authfn/native-handoff` | Web ↔ native session handoff. | [Native handoff](./native-handoff) |
@@ -8761,30 +8783,44 @@ const response = await fetch('https://api.acme.com/projects', {
 
 ## Server-side authentication
 
-Your protected endpoint authenticates via `auth.provider`:
+Your protected endpoint authenticates via `auth.provider` and uses `hasScope` to return HTTP 403 before loading protected data. Here `auth` is your AuthFn server and `app` is your application's HTTP router:
 
 ```ts
+import type { AuthFnSession } from 'authfn';
+
+function hasScope(session: AuthFnSession, scope: string): boolean {
+  const scopes = session.metadata?.scopes;
+  return Array.isArray(scopes) && scopes.includes(scope);
+}
+
 app.get('/projects', async (c) => {
-  const session = await auth.provider.authenticate(c.req.raw);
+  let session: AuthFnSession | null;
+  try {
+    session = await auth.provider.authenticate(c.req.raw);
+  } catch (error) {
+    if (error !== null && typeof error === 'object' &&
+        'code' in error && error.code === 'AUTHFN_API_KEY_REVOKED') {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    throw error;
+  }
   if (!session || session.actorType !== 'api-key') {
     return c.json({ error: 'unauthorized' }, 401);
   }
+  if (!hasScope(session, 'read')) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
   // session.actorId === api key id
-  // session.subject.attributes.scopes === ['read', 'write']
-  return c.json({ projects: [...] });
+  // session.metadata.scopes === ['read', 'write']
+  return c.json({ projects: [] }); // Replace with your application's project data.
 });
 ```
 
+Missing, invalid, expired, revoked, or non-API-key credentials receive HTTP 401. The catch only handles the expected revocation error from authentication; unexpected provider failures and failures while loading project data remain host application errors. Active keys lacking `read` receive HTTP 403.
+
 ## Per-key scopes
 
-Authorization is up to your application:
-
-```ts
-function require(session: AuthFnSession, scope: string) {
-  const scopes = session.subject.attributes?.scopes ?? [];
-  if (!scopes.includes(scope)) throw new Error('forbidden');
-}
-```
+Authorization is up to your application. `hasScope` in the server snippet above checks that `session.metadata.scopes` is an array containing the exact required scope. The handler owns the HTTP 403 response instead of throwing a generic error.
 
 ## Refreshing keys
 

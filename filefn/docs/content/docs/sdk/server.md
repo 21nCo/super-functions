@@ -23,6 +23,7 @@ const fileFn: FileFn = createFileFn(config);
 interface FileFn extends FileProvider {
   router: FileFnRouter;                                  // single Request → Response | null
   events: FileFnEventEmitter;                            // typed event emitter
+  readonly services: FileFnServices;                     // bound, authorized domain services
   definePolicy(name: string, policy: Omit<Policy, "name">): void;
   getSchema(): { version: number; schemas: TableSchema[] };
 }
@@ -32,14 +33,15 @@ interface FileFn extends FileProvider {
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `db` | `Adapter` | required | `@superfunctions/db` `Adapter`. |
+| `database` | `Adapter` | required | `@superfunctions/db` `Adapter`; FileFn applies its own schema. `db` remains a deprecated alias. |
 | `storage` | `StorageAdapter` | required | `@superfunctions/storage` `StorageAdapter`. |
+| `stores` | `RuntimeStores` | undefined | Shared runtime stores, including `atomicKv` for strict rate limiting and `kv` for best-effort counters. |
 | `policies` | `Policy[]` | `[]` | Initial policies. Use `createNucleusPolicies()` for sane defaults. |
 | `auth` | `AuthConfig` | `{}` | `{ resolveSession, required }`. |
 | `quota` | `QuotaProvider` | undefined | Optional storage quota. |
 | `rateLimiter` | `RateLimiter` | undefined | Single global rate limiter. |
-| `rateLimit` | `{ persistence?, algorithm?, limits? }` | undefined | Per-route rate limits. |
-| `logger` | `Logger` | undefined | Pluggable structured logger. |
+| `rateLimit` | `{ mode?, algorithm?, limits? }` | undefined | Per-route rate limits; mode is `"strict"`, `"best-effort"`, or `"local"`. |
+| `observability` | `ObservabilityInput<FileFnObservationEvent>` | undefined | Shared logging, typed events, metrics, traces and request observations. |
 | `authorizer` | `Authorizer` | default | Permission resolution. |
 | `namespace` | `string` | `"filefn"` | Table prefix. |
 | `defaultChunkSizeBytes` | `number` | `5 MiB` | Multipart chunk floor. |
@@ -47,6 +49,24 @@ interface FileFn extends FileProvider {
 | `signedUrlTtlSeconds` | `number` | `900` | Per-part signed URL TTL. |
 | `dedup` | `{ enabled: boolean }` | `{ enabled: false }` | Content-addressable storage. |
 | `processing` | `{ enabled, processors?, flowFn? }` | `{ enabled: false }` | Processing pipeline. |
+
+## Migrating from 0.1.x
+
+Version 0.2.0 removes `FileFnConfig.logger` and `rateLimit.persistence`; there
+are no compatibility aliases for these options.
+
+- Replace `logger` with `observability: { logger }`, using a logger compatible
+  with `@superfunctions/observability`.
+- Replace `rateLimit.persistence` with `stores.kv` and
+  `rateLimit.mode: "best-effort"` when cross-replica limits may be approximate.
+- For strict shared limits, provide a CAS-capable `stores.atomicKv` and set
+  `rateLimit.mode: "strict"`. Missing atomic storage is rejected.
+- For process-local counters, use `rateLimit.mode: "local"`.
+
+Without an explicit mode, FileFn selects strict when `stores.atomicKv` is
+present, otherwise best-effort when `stores.kv` is present, otherwise local.
+The separate pre-built `rateLimiter` option remains supported.
+
 
 ## `FileProvider`
 
@@ -65,6 +85,32 @@ const result = await fileFn.completeUploadSession({ uploadSessionId: session.upl
 ```
 
 `ctx` carries the principal — `{ principalId, tenantId, uploadSessionToken }`.
+
+## Bound domain services
+
+The public `FileFn.services` bundle is available in `@filefn/server` 0.2.0.
+It contains `files`, `uploads`, `grants`, `shares`, `processing`, and `policies`.
+These are the same instances used by the facade and router, bound to the same
+schema, namespace, database, storage, policies, quota provider, and event emitter.
+No separately constructed service or table access is needed.
+
+```ts
+const { versions } = await fileFn.services.files.listVersions(fileId, ctx);
+const grants = await fileFn.services.grants.listGrants(fileId, ctx);
+const artifacts = await fileFn.services.processing.listArtifactsForFile(fileId, ctx);
+await fileFn.services.processing.triggerProcessingForFile(fileId, ctx, versionId);
+```
+
+All file operations still require the caller's domain principal/tenant context.
+Grant management remains owner-only; share management and artifact access retain
+their existing domain checks. The bound processing surface intentionally does
+not expose `runProcessing` or a trigger accepting caller-supplied storage keys:
+`triggerProcessingForFile` authorizes the file/version and resolves the input
+from FileFn before scheduling work.
+
+`@filefn/admin` requires this declared server version. Its
+`createFileFnDomainAdminService({ fileFn, context })` maps each active admin
+actor/scope to FileFn's domain context rather than bypassing these checks.
 
 ## Routes
 

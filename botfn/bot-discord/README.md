@@ -2,6 +2,17 @@
 
 Discord slash commands for integrating GitHub and Linear with Discord threads, deployed on Cloudflare Workers.
 
+The npm package exports a compiled Cloudflare app at `@superfunctions/botfn-discord-bot` and the
+`createBotApp` factory at `@superfunctions/botfn-discord-bot/core`. Install the published
+shared-types, discord-core, github-integration, linear-integration and
+persistence-service prerequisites before building an isolated source checkout.
+Persistence clients use `@superfunctions/botfn-persistence-service/client`, not a source deep import.
+
+Run `npm run build` and `npm test` before `npm pack`. The interaction tests sign
+real Ed25519 requests and check ping, tampering, invalid input and autocomplete
+responses without requiring Discord, GitHub or Linear credentials.
+
+
 ## Features
 
 ### GitHub Integration

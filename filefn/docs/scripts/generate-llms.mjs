@@ -16,7 +16,6 @@ const siteDescription =
   config.site?.tagline ??
   "Self-hosted file uploads, storage, and processing for TypeScript, Python, and Swift.";
 const canonicalUrl =
-  (process.env.CLOUDFLARE_DOCS_DEPLOY === "1" ? process.env.CLOUDFLARE_DOCS_PUBLIC_ORIGIN : undefined) ||
   (config.site && (config.site.canonicalUrl || config.site.url)) ||
   "https://filefn.com";
 
