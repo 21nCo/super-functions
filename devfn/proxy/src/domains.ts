@@ -150,11 +150,28 @@ export async function unregisterDomain(stateDir: string, domain: string, project
     const entry = domains.find((item) => item.domain === domain);
     if (!entry || entry.projectId !== projectId || entry.repositoryIdentity !== canonicalRepositoryIdentity) throw new DomainError("DEVFN_DOMAIN_UNREGISTERED", `Domain ${domain} is not registered to this repository.`);
     for (const file of ["proxy-routes.json", "proxy-routes.pending.json"]) {
-      let routes: { version?: number; routes?: Array<{ registeredDomain?: string }> };
+      let routes: unknown;
       try { routes = JSON.parse(await readFile(path.join(stateDir, file), "utf8")); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new DomainError("DEVFN_DOMAIN_INVALID", "Proxy route state is invalid."); routes = {}; }
-      if (routes.routes !== undefined && (routes.version !== 1 || !Array.isArray(routes.routes))) throw new DomainError("DEVFN_DOMAIN_INVALID", "Proxy route state is invalid.");
-      if (routes.routes?.some((route) => route.registeredDomain === domain)) throw new DomainError("DEVFN_DOMAIN_IN_USE", `Domain ${domain} still has active routes.`);
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw new DomainError("DEVFN_DOMAIN_INVALID", "Proxy route state is invalid.");
+      }
+      if (!routes || typeof routes !== "object" || (routes as { version?: unknown }).version !== 1 ||
+        !Array.isArray((routes as { routes?: unknown }).routes) ||
+        !(routes as { routes: unknown[] }).routes.every((value) => {
+          if (!value || typeof value !== "object") return false;
+          const route = value as Record<string, unknown>;
+          return typeof route.id === "string" && typeof route.instanceId === "string" && typeof route.hostname === "string" &&
+            (route.targetHost === "127.0.0.1" || route.targetHost === "::1") && Number.isInteger(route.targetPort) &&
+            ["off", "internal", "certificate"].includes(route.tls as string) && typeof route.updatedAt === "string" &&
+            (route.registeredDomain === undefined || typeof route.registeredDomain === "string");
+        })) {
+        throw new DomainError("DEVFN_DOMAIN_INVALID", "Proxy route state is invalid.");
+      }
+      if ((routes as { routes: Array<{ registeredDomain?: string; hostname: string }> }).routes.some((route) =>
+        route.registeredDomain === domain || domainContains(domain, route.hostname))) {
+        throw new DomainError("DEVFN_DOMAIN_IN_USE", `Domain ${domain} still has active routes.`);
+      }
     }
     await writeDomains(stateDir, domains.filter((item) => item.domain !== domain));
   }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });

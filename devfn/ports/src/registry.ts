@@ -12,6 +12,57 @@ import { PortRegistryError, type PortAllocation, type RegistryInvocation, type R
 
 const EMPTY: RegistryState = { version: 1, revision: 0, allocations: [], invocations: [] };
 const execFileAsync = promisify(execFile);
+const ABANDONED_CLAIM_MS = 300_000;
+
+// Route files are owned by the proxy. A missing file proves no routes there;
+// an unreadable or malformed file cannot prove that a claim is safe to drop.
+async function noOwnedProxyRoutes(stateDir: string, instanceId: string): Promise<boolean> {
+  for (const name of ["proxy-routes.json", "proxy-routes.pending.json"]) {
+    let state: unknown;
+    try { state = JSON.parse(await readFile(path.join(stateDir, name), "utf8")); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      return false;
+    }
+    if (!state || typeof state !== "object" || (state as { version?: unknown }).version !== 1 ||
+      !Array.isArray((state as { routes?: unknown }).routes)) return false;
+    for (const value of (state as { routes: unknown[] }).routes) {
+      if (!value || typeof value !== "object") return false;
+      const route = value as Record<string, unknown>;
+      if (typeof route.id !== "string" || typeof route.instanceId !== "string" || typeof route.hostname !== "string" ||
+        (route.targetHost !== "127.0.0.1" && route.targetHost !== "::1") || !Number.isInteger(route.targetPort) ||
+        !["off", "internal", "certificate"].includes(route.tls as string) || typeof route.updatedAt !== "string") return false;
+      if (route.instanceId === instanceId) return false;
+    }
+  }
+  return true;
+}
+
+async function noLiveProxyOwner(stateDir: string): Promise<boolean> {
+  let owner: unknown;
+  try { owner = JSON.parse(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
+  }
+  if (owner !== undefined) {
+    if (!owner || typeof owner !== "object" || !Number.isInteger((owner as { pid?: unknown }).pid)) return false;
+    const pid = (owner as { pid: number }).pid;
+    if (pid <= 0 || processExists(pid)) return false;
+  }
+  // DevFn always enables Caddy's loopback admin listener. A live but
+  // unrecorded Caddy must continue to protect its HTTP and HTTPS listeners.
+  return await isPortAvailable(2019, "tcp", "127.0.0.1");
+}
+
+async function expireAbandonedProxyClaims(state: RegistryState, stateDir: string, now: string): Promise<void> {
+  for (const invocation of state.invocations) {
+    if (!invocation.proxyListenerPorts?.length || !["planning", "starting", "ready"].includes(invocation.state) ||
+      !Number.isFinite(Date.parse(invocation.updatedAt)) || Date.now() - Date.parse(invocation.updatedAt) <= ABANDONED_CLAIM_MS ||
+      state.allocations.some((item) => item.invocationId === invocation.id && active(item))) continue;
+    if (!await noOwnedProxyRoutes(stateDir, invocation.instanceId) || !await noLiveProxyOwner(stateDir)) continue;
+    Object.assign(invocation, { state: "failed", errorCode: "DEVFN_INTERRUPTED", updatedAt: now });
+  }
+}
 
 function stableOffset(value: string, size: number): number {
   if (size <= 1) return 0;
@@ -85,9 +136,13 @@ export class FilePortRegistry {
           { port, instanceId: conflict.instanceId, service: conflict.service });
       }
       const occupied = new Set(state.allocations.filter(active).map((item) => occupancyKey(item.port, item.protocol)));
+      const claimingInstance = new Map<number, string>();
       for (const invocation of state.invocations) {
         if (["planning", "starting", "ready"].includes(invocation.state)) {
-          for (const port of invocation.proxyListenerPorts ?? []) proxyPorts.add(port);
+          for (const port of invocation.proxyListenerPorts ?? []) {
+            proxyPorts.add(port);
+            claimingInstance.set(port, invocation.instanceId);
+          }
         }
       }
       for (const value of [...(input.protectedPorts ?? []), ...(input.excludedPorts ?? []), ...proxyPorts]) {
@@ -113,6 +168,9 @@ export class FilePortRegistry {
         }
         if (spec.exact && spec.preferred !== undefined) {
           if (occupied.has(occupancyKey(spec.preferred, protocol)) || !await this.availabilityCheck(spec.preferred, protocol, host)) {
+            const claimant = claimingInstance.get(spec.preferred);
+            if (claimant) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is claimed by proxy instance ${claimant}.`,
+              { service: name, port: spec.preferred, instanceId: claimant });
             throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is occupied.`, { service: name, port: spec.preferred });
           }
           return { port: spec.preferred, source: "exact" };
@@ -295,12 +353,14 @@ export class FilePortRegistry {
         else if (allocation.state === "externally-occupied" && available) allocation.state = "stale";
         if (allocation.state !== previousState) allocation.updatedAt = now;
       }
+      await expireAbandonedProxyClaims(state, path.dirname(this.filePath), now);
     });
     return await this.read();
   }
 
   public async gc(): Promise<number> {
-    return await this.transaction((state) => {
+    return await this.transaction(async (state) => {
+      await expireAbandonedProxyClaims(state, path.dirname(this.filePath), new Date().toISOString());
       const before = state.allocations.length;
       state.allocations = state.allocations.filter((allocation) => allocation.state !== "stale" && allocation.state !== "released");
       state.invocations = state.invocations.filter((invocation) => !["failed", "stopped"].includes(invocation.state));

@@ -50,6 +50,24 @@ describe("registered local domains", () => {
     } finally { await rm(stateDir, { recursive: true, force: true }); await rm(repo, { recursive: true, force: true }); }
   });
 
+  it("keeps a registration when either persisted route file cannot prove absence", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-state-"));
+    const resolve = (async () => [{ address: "127.0.0.1", family: 4 }]) as never;
+    try {
+      await registerDomain(stateDir, { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: stateDir, tls: "internal" }, resolve);
+      for (const file of ["proxy-routes.json", "proxy-routes.pending.json"]) {
+        for (const state of [{}, { version: 1 }, { version: 1, routes: [null] }, { version: 1, routes: [{ registeredDomain: "other.test" }] }]) {
+          await writeFile(path.join(stateDir, file), JSON.stringify(state));
+          await expect(unregisterDomain(stateDir, "dev.example.test", "fixture", stateDir)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_INVALID" });
+          expect((await readRegisteredDomains(stateDir)).map((item) => item.domain)).toEqual(["dev.example.test"]);
+        }
+        await rm(path.join(stateDir, file));
+      }
+      await unregisterDomain(stateDir, "dev.example.test", "fixture", stateDir);
+      expect(await readRegisteredDomains(stateDir)).toEqual([]);
+    } finally { await rm(stateDir, { recursive: true, force: true }); }
+  });
+
   it("waits for an in-flight proxy mutation before registering or unregistering domains", async () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-lock-"));
     const resolve = (async () => [{ address: "127.0.0.1", family: 4 }]) as never;
