@@ -1,0 +1,22 @@
+devfn/ports/src/proxy-state.ts
+  h_bdc5b81c173ee9 13,42-44,46
+devfn/ports/test/registry.test.ts
+  h_bdc5b81c173ee9 37-61
+devfn/proxy/src/domains.ts
+  h_bdc5b81c173ee9 38-40
+devfn/proxy/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 22-23,77-94,165,168
+devfn/proxy/test/proxy.test.ts
+  h_bdc5b81c173ee9 48-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c0ff72dc18176b75126ab9429c431f6c951e210",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
