@@ -1,0 +1,43 @@
+devfn/compose/test/fingerprint-contract.test.ts
+  s_b7da401caff52c::t_5b2548bf6f4730 6,47-61
+  s_b7da401caff52c::t_cac04c386d4364 253-289,474-482,487,490-492
+devfn/compose/test/path-contract.test.ts
+  s_b7da401caff52c::t_5b2548bf6f4730 1,7,50-97
+  s_b7da401caff52c::t_789a53c5b6a726 98-100
+devfn/compose/src/index.ts
+  s_b7da401caff52c::t_5b2548bf6f4730 10,135,137,142,144,269,275,295-306,318,521,523,529-545,554-555,557,559-560,701-703,730-732,741,744,774-775,810-811,814,831,835-836
+devfn/compose/src/path-interpolation.ts
+  s_b7da401caff52c::t_5b2548bf6f4730 31,33,163,174,179,182,184,200,210,215,221-247,249-265,270,277,279,285,312
+  s_b7da401caff52c::t_2b251145fd1226 28-30
+  s_b7da401caff52c::t_3d414b076a8c85 32
+  s_b7da401caff52c::t_b3345acbe12fa6 34
+  s_b7da401caff52c::t_99f7b4335e1b62 160-162
+  s_b7da401caff52c::t_02dca69e3a40db 164-166,171-173
+  s_b7da401caff52c::t_4cce7dcdd14d2a 175-178
+  s_b7da401caff52c::t_b9aa231ef94616 180-181
+  s_b7da401caff52c::t_b962c8cc83b546 183
+  s_b7da401caff52c::t_2992349bd0d80c 185-186
+  s_b7da401caff52c::t_28317cb6c4fbfb 271-273
+  s_b7da401caff52c::t_67100af52f1e52 276
+  s_b7da401caff52c::t_d153d300b35ac9 278
+  s_b7da401caff52c::t_ba7316459c5ea2 280-284
+  s_b7da401caff52c::t_46a71073f92f88 286-288
+  s_b7da401caff52c::t_e681cbf7b946f6 311
+  s_b7da401caff52c::t_e9811a491fab1a 313-315
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bea3f8fe79fda940a1477aec5e193c42f595b7c6",
+  "prompts": {},
+  "sessions": {
+    "s_b7da401caff52c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51593f53-9c12-4d52-9b48-2d6bbdd12aac",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
