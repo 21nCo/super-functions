@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, it } from "vitest";
 
 import { createScopedPathInterpolator, readComposeEnvDefinitions, simpleInterpolation } from "../src/path-interpolation.js";
-import { createComposeEnvironment, selectedComposeEndpointReferences } from "../src/index.js";
+import { createComposeEnvironment, fingerprintComposeSource, selectedComposeEndpointReferences } from "../src/index.js";
 
 async function withDotenv(content: string, check: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-path-contract-"));
@@ -59,6 +59,7 @@ it("parses long multiline dotenv values in bounded time", async () => {
 
 it("keeps escaped quote characters as data after dotenv decoding", () => {
   expect(simpleInterpolation('"\\"one\\""', {})).toBe('"one"');
+  expect(simpleInterpolation("'It\\'s ${HOME}'", {})).toBe("It's ${HOME}");
   expect(simpleInterpolation("one", {})).toBe("one");
 });
 
@@ -98,6 +99,43 @@ it("allows a large unrelated dotenv value while bounding selected paths", async 
     expect((await readComposeEnvDefinitions(path.join(root, ".env"))).get("FILE_PATH")).toBe("service.env");
     const interpolate = createScopedPathInterpolator({}, Date.now() + 5_000, new Set());
     await expect(interpolate(["${FILE_PATH}"], root)).resolves.toEqual(["service.env"]);
+  });
+});
+
+it("bounds selected reference count without rejecting an ordinary 129-variable path", async () => {
+  const declarations = Array.from({ length: 129 }, (_, index) => `V${index}=x`).join("\n");
+  await withDotenv(declarations, async (root) => {
+    const interpolate = createScopedPathInterpolator({}, Date.now() + 5_000, new Set());
+    const ordinary = Array.from({ length: 129 }, (_, index) => `\${V${index}}`).join("/");
+    await expect(interpolate([ordinary], root)).resolves.toEqual([Array(129).fill("x").join("/")]);
+    const manyMissing = Array.from({ length: 5000 }, (_, index) => `\${M${index}}`).join("/");
+    const started = Date.now();
+    await expect(interpolate([manyMissing], root)).rejects.toThrow(/reference count limit/);
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+});
+
+it("rejects thousands of distinct selected Compose names before rendering a service", async () => {
+  await withDotenv("", async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    const references = Array.from({ length: 5000 }, (_, index) => `\${M${index}}`).join("");
+    await writeFile(path.join(root, "compose.yaml"), `services:\n  api:\n    image: busybox\n    command: '${references}'\n`);
+    await expect(fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec)))
+      .rejects.toThrow(/reference count limit/);
+  });
+});
+
+it("does not charge references in an inactive Compose fallback branch", async () => {
+  await withDotenv("SET=yes\n", async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    const inactive = Array.from({ length: 5000 }, (_, index) => `\${M${index}}`).join("");
+    await writeFile(path.join(root, "compose.yaml"),
+      `services:\n  api:\n    image: busybox\n    command: 'echo \${SET:-${inactive}}'\n`);
+    await expect(selectedComposeEndpointReferences(spec, root, createComposeEnvironment(spec)))
+      .resolves.toEqual(new Set());
+    await writeFile(path.join(root, ".env"), "SET=\n");
+    await expect(selectedComposeEndpointReferences(spec, root, createComposeEnvironment(spec)))
+      .rejects.toThrow(/Unable to inspect selected Compose endpoint references/);
   });
 });
 

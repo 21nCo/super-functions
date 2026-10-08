@@ -44,6 +44,67 @@ async function installProbeLogger(root: string, kind: "presence" | "paths", dela
 }
 
 describe.skipIf(!live)("effective Compose startup fingerprint", () => {
+  it("checks only active dotenv aliases while rejecting an active inherited host input", async () => {
+    await withComposeSource({
+      ".env": "ALIAS=${HOME}\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    command: 'echo ${SET:-${ALIAS}}'\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", env: { SET: "yes" } };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      await expect(fingerprint()).resolves.toMatch(/^[a-f0-9]{64}$/);
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: 'echo ${ALIAS}'\n");
+      await expect(fingerprint()).rejects.toThrow(/inherited host value/);
+    });
+  }, 30_000);
+
+  it("fingerprints decoded env_file values rather than their quote spelling", async () => {
+    await withComposeSource({
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
+      "service.env": 'API_TOKEN=private-one\nMODE=one\nALIAS="${API_TOKEN}\\n${MODE}"\n',
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", secretEnv: ["API_TOKEN"] };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, "service.env"), 'API_TOKEN=private-one\nMODE=one\nALIAS="${API_TOKEN}\n${MODE}"\n');
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, "service.env"), 'API_TOKEN=private-two\nMODE=one\nALIAS="${API_TOKEN}\n${MODE}"\n');
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, "service.env"), 'API_TOKEN=private-two\nMODE=two\nALIAS="${API_TOKEN}\n${MODE}"\n');
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("keeps missing, empty and present secret branches distinct without hashing secret bytes", async () => {
+    await withComposeSource({
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    command: 'echo ${CUSTOM+present}${CUSTOM-absent}'\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", secretEnv: ["CUSTOM"] };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const missing = await fingerprint();
+      await writeFile(path.join(root, ".env"), "CUSTOM=\n");
+      const empty = await fingerprint();
+      expect(empty).not.toBe(missing);
+      await writeFile(path.join(root, ".env"), "CUSTOM=private-one\n");
+      const present = await fingerprint();
+      expect(present).not.toBe(empty);
+      await writeFile(path.join(root, ".env"), "CUSTOM=private-two\n");
+      expect(await fingerprint()).toBe(present);
+    });
+  }, 30_000);
+
+  it("retains an unselected project secret while rendering the full Compose model safely", async () => {
+    await withComposeSource({
+      ".env": "API_TOKEN=private-one\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n  unrelated:\n    image: busybox\n    command: 'echo ${API_TOKEN:?required}'\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", secretEnv: ["API_TOKEN"] };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, ".env"), "API_TOKEN=private-two\n");
+      expect(await fingerprint()).toBe(first);
+    });
+  }, 30_000);
+
   it("keeps inactive generated URL branches out of effective network references", async () => {
     await withComposeSource({
       "compose.yaml": "services:\n  api:\n    image: busybox\n    command: 'echo ${DEVFN_URL_WEB:+fallback}'\n",
@@ -143,6 +204,7 @@ describe.skipIf(!live)("effective Compose startup fingerprint", () => {
     ["prior duplicate declaration", "DIR=service\nFILE_PATH=${DIR}.env\nDIR=missing\n"],
     ["trailing comment", "FILE_PATH=service.env # ${HOME} is only a comment\n"],
     ["quoted trailing comment", "FILE_PATH='service.env' # ${HOME} is only a comment\n"],
+    ["overwritten missing declaration", "DIR=${MISSING}\nDIR=service\nFILE_PATH=${DIR}.env\n"],
   ])("resolves $0 dotenv path provenance", async (_name, definitions) => {
     await withComposeSource({
       ".env": definitions,
@@ -551,18 +613,31 @@ configs:
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
-  it("accepts credential keys that are not Compose interpolation variables", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-credential-keys-"));
-    const spec = { adapter: "compose" as const, service: "api" };
-    try {
-      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    env_file: service.env\n");
-      await writeFile(path.join(root, "service.env"), "db.password=private-one\ndb-password=private-one\nMODE=one\n");
-      const first = await fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
-      await writeFile(path.join(root, "service.env"), "db.password=private-two\ndb-password=private-two\nMODE=one\n");
-      expect(await fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec))).toBe(first);
-      await writeFile(path.join(root, "service.env"), "db.password=private-two\ndb-password=private-two\nMODE=two\n");
-      expect(await fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec))).not.toBe(first);
-    } finally { await rm(root, { recursive: true, force: true }); }
+  it.each([
+    {
+      name: "credential keys outside Compose interpolation grammar",
+      files: { "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
+        "service.env": "db.password=private-one\ndb-password=private-one\nMODE=one\n" },
+      ignoredFile: "service.env", ignoredEdit: "db.password=private-two\ndb-password=private-two\nMODE=one\n",
+      changedFile: "service.env", changedEdit: "db.password=private-two\ndb-password=private-two\nMODE=two\n",
+    },
+    {
+      name: "dotted env_file keys and overridden values",
+      files: { "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: [first.env, service.env]\n",
+        "first.env": "app.mode=overridden\n", "service.env": "app.mode=one\n" },
+      ignoredFile: "first.env", ignoredEdit: "app.mode=still-overridden\n",
+      changedFile: "service.env", changedEdit: "app.mode=two\n",
+    },
+  ])("tracks effective env_file inputs for $name", async ({ files, ignoredFile, ignoredEdit, changedFile, changedEdit }) => {
+    await withComposeSource(files, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, ignoredFile), ignoredEdit);
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, changedFile), changedEdit);
+      expect(await fingerprint()).not.toBe(first);
+    });
   }, 30_000);
 
   it("masks selected Boolean resources using a type-valid sentinel", async () => {
@@ -632,21 +707,6 @@ configs:
       expect(await fingerprint("10020", "false")).toBe(first);
       await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    expose: ['${CUSTOM}']\n    tty: ${FLAG}\n    command: 'echo ${API_TOKEN}'\n  unrelated:\n    image: busybox\n    command: 'echo two'\n");
       expect(await fingerprint("10020", "false")).toBe(first);
-    } finally { await rm(root, { recursive: true, force: true }); }
-  }, 30_000);
-
-  it("accepts dotted env_file keys and tracks ordinary values", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-dotted-env-"));
-    const spec = { adapter: "compose" as const, service: "api" };
-    try {
-      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    env_file: [first.env, service.env]\n");
-      await writeFile(path.join(root, "first.env"), "app.mode=overridden\n");
-      await writeFile(path.join(root, "service.env"), "app.mode=one\n");
-      const first = await fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
-      await writeFile(path.join(root, "first.env"), "app.mode=still-overridden\n");
-      expect(await fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec))).toBe(first);
-      await writeFile(path.join(root, "service.env"), "app.mode=two\n");
-      expect(await fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec))).not.toBe(first);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
@@ -874,20 +934,6 @@ configs:
       await writeFile(path.join(root, secretFile), secretEdit);
       expect(await fingerprint()).toBe(first);
       await writeFile(path.join(root, ordinaryFile), ordinaryEdit);
-      expect(await fingerprint()).not.toBe(first);
-    });
-  }, 30_000);
-
-  it("selects an env_file path after an overwritten missing dotenv declaration", async () => {
-    await withComposeSource({
-      ".env": "DIR=${MISSING}\nDIR=service\nFILE_PATH=${DIR}.env\n",
-      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: ${FILE_PATH}\n",
-      "service.env": "MODE=one\n",
-    }, async (root) => {
-      const spec = { adapter: "compose" as const, service: "api" };
-      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
-      const first = await fingerprint();
-      await writeFile(path.join(root, "service.env"), "MODE=two\n");
       expect(await fingerprint()).not.toBe(first);
     });
   }, 30_000);

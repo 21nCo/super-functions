@@ -67,6 +67,22 @@ function parseEnvDefinition(line: string): [string, string] | undefined {
   return [name, line.slice(cursor, envDefinitionEnd(line, cursor)).trimEnd()];
 }
 
+function continuedEnvDefinition(lines: readonly string[], start: number,
+  entry: [string, string] | undefined): { entry: [string, string] | undefined; lastLine: number } {
+  const quote = entry?.[1][0];
+  if ((quote !== "'" && quote !== '"') || hasClosingEnvQuote(entry![1], quote, 1)) {
+    return { entry, lastLine: start };
+  }
+  const parts = [lines[start]];
+  let lastLine = start;
+  while (lastLine + 1 < lines.length) {
+    const next = lines[++lastLine];
+    parts.push(next);
+    if (hasClosingEnvQuote(next, quote, 0)) break;
+  }
+  return { entry: parseEnvDefinition(parts.join("\n")), lastLine };
+}
+
 export async function readComposeEnvDefinitions(file: string): Promise<EnvDefinitions> {
   const size = (await stat(file)).size;
   if (size > 10 * 1024 * 1024) throw new Error("Compose interpolation env file exceeds the byte limit");
@@ -75,21 +91,11 @@ export async function readComposeEnvDefinitions(file: string): Promise<EnvDefini
   const found = new Map<string, string>() as EnvDefinitions;
   found.declarations = [];
   const lines = content.split(/\r?\n/);
+  if (lines[0]?.codePointAt(0) === 0xfeff) lines[0] = lines[0].slice(1);
   for (let index = 0; index < lines.length; index += 1) {
-    const line = index === 0 && lines[index].codePointAt(0) === 0xfeff ? lines[index].slice(1) : lines[index];
-    let entry = parseEnvDefinition(line);
-    if (entry && (entry[1].startsWith("'") || entry[1].startsWith('"'))) {
-      const quote = entry[1][0];
-      if (!hasClosingEnvQuote(entry[1], quote, 1)) {
-        const parts = [line];
-        while (index + 1 < lines.length) {
-          const next = lines[++index];
-          parts.push(next);
-          if (hasClosingEnvQuote(next, quote, 0)) break;
-        }
-        entry = parseEnvDefinition(parts.join("\n"));
-      }
-    }
+    const continued = continuedEnvDefinition(lines, index, parseEnvDefinition(lines[index]));
+    const entry = continued.entry;
+    index = continued.lastLine;
     if (!entry) continue;
     const [name, value] = entry;
     found.declarations.push([name, value]);
@@ -176,7 +182,7 @@ function tokenHasOwnValue(operator: string | undefined, unset: boolean): boolean
 }
 
 function unknownTokenReferences(token: InterpolationToken, values: NodeJS.ProcessEnv,
-  options: { unknownValues?: ReadonlySet<string> }, depth: number): Set<string> {
+  options: { unknownValues?: ReadonlySet<string>; lookup?: (name: string) => string | undefined }, depth: number): Set<string> {
   const selected = new Set([token.name]);
   if (token.fallback) for (const name of selectedInterpolationReferences(token.fallback, values, options, depth + 1)) {
     selected.add(name);
@@ -185,10 +191,12 @@ function unknownTokenReferences(token: InterpolationToken, values: NodeJS.Proces
 }
 
 function selectedTokenReferences(token: InterpolationToken, values: NodeJS.ProcessEnv,
-  options: { includeConditions?: boolean; strictMissing?: boolean; unknownValues?: ReadonlySet<string> }, depth: number): Set<string> {
+  options: { includeConditions?: boolean; strictMissing?: boolean; unknownValues?: ReadonlySet<string>;
+    lookup?: (name: string) => string | undefined }, depth: number): Set<string> {
   if (options.unknownValues?.has(token.name)) return unknownTokenReferences(token, values, options, depth);
   const selected = new Set<string>();
-  const value = Object.hasOwn(values, token.name) ? values[token.name] : undefined;
+  const value = Object.hasOwn(values, token.name) ? values[token.name] : options.lookup?.(token.name);
+  if (value !== undefined) values[token.name] = value;
   const unset = value === undefined || (token.operator?.startsWith(":") === true && value === "");
   if (tokenUsesFallback(token.operator, unset)) {
     for (const name of selectedInterpolationReferences(token.fallback ?? "", values, options, depth + 1)) selected.add(name);
@@ -202,7 +210,7 @@ function selectedTokenReferences(token: InterpolationToken, values: NodeJS.Proce
 
 export function selectedInterpolationReferences(expression: string, values: NodeJS.ProcessEnv,
   options: { includeConditions?: boolean; strictMissing?: boolean; dotenvQuotes?: boolean;
-    unknownValues?: ReadonlySet<string> } = {}, depth = 0): Set<string> {
+    unknownValues?: ReadonlySet<string>; lookup?: (name: string) => string | undefined } = {}, depth = 0): Set<string> {
   if (depth > 128) throw new Error("Compose interpolation exceeds the nesting limit");
   if (options.dotenvQuotes && expression.startsWith("'") && expression.endsWith("'")) return new Set();
   if (options.dotenvQuotes && expression.startsWith('"') && expression.endsWith('"')) {
@@ -213,7 +221,8 @@ export function selectedInterpolationReferences(expression: string, values: Node
 }
 
 function scanInterpolationReferences(expression: string, values: NodeJS.ProcessEnv,
-  options: { includeConditions?: boolean; strictMissing?: boolean; unknownValues?: ReadonlySet<string> },
+  options: { includeConditions?: boolean; strictMissing?: boolean; unknownValues?: ReadonlySet<string>;
+    lookup?: (name: string) => string | undefined },
   depth: number): Set<string> {
   const selected = new Set<string>();
   for (let index = 0; index < expression.length;) {
@@ -293,7 +302,12 @@ export function simpleInterpolation(expression: string, values: NodeJS.ProcessEn
     return expression;
   }
   if (expression.startsWith("'") && expression.endsWith("'")) {
-    const literal = expression.slice(1, -1);
+    const quoted = expression.slice(1, -1);
+    let literal = "";
+    for (let index = 0; index < quoted.length; index += 1) {
+      if (quoted[index] === "\\" && quoted[index + 1] === "'") index += 1;
+      literal += quoted[index];
+    }
     if (Buffer.byteLength(literal) > maxBytes) throw new Error("Compose interpolation exceeds the value limit");
     return literal;
   }
@@ -350,19 +364,27 @@ function selectedDeclaration(definitions: Awaited<ReturnType<typeof scopeDefinit
 }
 
 function neededVariables(paths: string[], definitions: Awaited<ReturnType<typeof scopeDefinitions>>,
-  environment: NodeJS.ProcessEnv, forbidden: ReadonlySet<string>, allowCredentialDependencies: boolean): NeededPathDeclarations {
+  environment: NodeJS.ProcessEnv, forbidden: ReadonlySet<string>, allowCredentialDependencies: boolean,
+  deadline: number): NeededPathDeclarations {
   const needed = new Set<string>();
   const declarations = new Set<string>();
+  const visited = new Set<string>();
   const index = indexedPathDeclarations(definitions);
   let remainingWork = MAX_PATH_EXPANSION_BYTES;
   const visit = (name: string, scopeLimit: number, declarationLimit: number, depth: number): void => {
     if (depth > 512) throw new Error("Compose path interpolation exceeds the dependency depth limit");
+    if (Date.now() > deadline) throw new Error("Compose source validation exceeded the aggregate time budget");
     if (forbidden.has(name) || (!allowCredentialDependencies && isCredentialKey(name))) {
       throw new Error("Compose source path interpolates an undeclared host or secret value");
     }
+    const supplied = Object.hasOwn(environment, name);
+    const selected = supplied ? undefined : selectedDeclaration(definitions, index, name, scopeLimit, declarationLimit);
+    const visitKey = supplied ? `host:${name}` : selected ? `${selected.scope}:${selected.index}` : `missing:${name}`;
+    if (visited.has(visitKey)) return;
+    visited.add(visitKey);
+    if (visited.size > 4096) throw new Error("Compose path interpolation exceeds the reference count limit");
     needed.add(name);
-    if (Object.hasOwn(environment, name)) return;
-    const selected = selectedDeclaration(definitions, index, name, scopeLimit, declarationLimit);
+    if (supplied) return;
     if (!selected) return;
     const identity = `${selected.scope}:${selected.index}`;
     if (declarations.has(identity)) return;
@@ -390,21 +412,24 @@ async function evaluateScope(definition: Awaited<ReturnType<typeof scopeDefiniti
   budget: { remaining: number }): Promise<Record<string, string>> {
   const { scope, files, declarations } = definition;
   const local: Record<string, string> = Object.create(null);
+  const values: NodeJS.ProcessEnv = { ...prior };
   const unresolved = new Set<string>();
   for (const [index, [name, literal]] of declarations.entries()) {
+    if (Date.now() > deadline) throw new Error("Compose source validation exceeded the aggregate time budget");
     if (!needed.declarations.has(`${scopeIndex}:${index}`) || Object.hasOwn(prior, name)) continue;
     const dependsOnUnresolved = [...pathInterpolationNames(dotenvDependencyExpression(literal))]
       .some((dependency) => unresolved.has(dependency));
     let value: string | undefined;
     if (!dependsOnUnresolved) {
-      value = /^[A-Za-z0-9_./-]+$/.test(literal) ? literal : simpleInterpolation(literal, { ...prior, ...local });
+      value = /^[A-Za-z0-9_./-]+$/.test(literal) ? literal : simpleInterpolation(literal, values);
     }
     if (value === undefined) {
-      selectedInterpolationReferences(literal, { ...prior, ...local }, { strictMissing: true, dotenvQuotes: true });
+      selectedInterpolationReferences(literal, values, { strictMissing: true, dotenvQuotes: true });
       unresolved.add(name);
       delete local[name];
+      delete values[name];
     }
-    else { unresolved.delete(name); recordEvaluatedValue(local, name, value, budget); }
+    else { unresolved.delete(name); recordEvaluatedValue(local, name, value, budget); values[name] = value; }
   }
   if (unresolved.size) {
     const names = [...unresolved];
@@ -449,7 +474,7 @@ export function createScopedPathInterpolator(environment: NodeJS.ProcessEnv, dea
     if (!pending) {
       pending = (async () => {
         const definitions = await scopeDefinitions(scopes, readDefinitions);
-        const needed = neededVariables(paths, definitions, environment, forbidden, allowCredentialDependencies);
+        const needed = neededVariables(paths, definitions, environment, forbidden, allowCredentialDependencies, deadline);
         const evaluated = await evaluatedVariables(needed, definitions, environment, deadline);
         const selected = directPathValues(paths, { ...environment, ...evaluated });
         if (selected) return selected;
