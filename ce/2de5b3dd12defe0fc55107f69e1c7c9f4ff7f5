@@ -1,0 +1,24 @@
+devfn/cli/SECURITY.md
+  h_bdc5b81c173ee9 12
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 365-368,388-391
+devfn/core/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 11,16,20,23-25,31-32,34,36,42-43,45,47-52,58-79
+devfn/ports/src/registry.ts
+  h_bdc5b81c173ee9 81-86,88-93,212-213,218-227
+devfn/ports/src/types.ts
+  h_bdc5b81c173ee9 45,71
+devfn/ports/test/registry.test.ts
+  h_bdc5b81c173ee9 10-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ce2de5b3dd12defe0fc55107f69e1c7c9f4ff7f5",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
