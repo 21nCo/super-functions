@@ -1,0 +1,18 @@
+# BotFn
+
+> Discord and Slack bot integrations, issue linking, persistence, and operator controls.
+
+## Documentation
+
+- [Administration capability](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/admin.md) — Integrate BotFn operator resources with Super Console.
+- [Discord bot](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/discord-bot.md) — Configure signed interactions, issue commands, and the Worker.
+- [Getting started](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/getting-started.md) — Find the BotFn package or service that fits your integration.
+- [BotFn](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/index.md) — Build and operate Discord and Slack bot integrations.
+- [Integration helpers](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/integrations.md) — Reuse Discord, Slack, GitHub, Linear, and schema helpers.
+- [Operations and limits](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/operations-and-limits.md) — Deployment responsibilities and current feature boundaries.
+- [Persistence service](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/persistence.md) — Store issue and Discord thread relationships through tRPC.
+- [Commands and routes](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/commands-and-routes.md) — BotFn's registered commands, Worker routes, and tRPC procedures.
+- [Configuration](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/configuration.md) — Runtime bindings and deployment inputs by package.
+- [Reference](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/index.md) — BotFn package and runtime contract index.
+- [Packages](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/reference/packages.md) — Current BotFn package map and public entry points.
+- [Slack receiver](https://github.com/21nCo/super-functions/blob/dev/botfn/docs/content/docs/slack-bot.md) — Verify Slack requests and understand the current event handler.
