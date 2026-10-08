@@ -244,6 +244,22 @@ function hostnameSpec(value: unknown, field: string): HostnameSpec {
   const tls = input.tls === undefined ? "off" : string(input.tls, `${field}.tls`);
   if (tls !== "off" && tls !== "internal") fail(`${field}.tls must be off or internal.`, `${field}.tls`);
   const hostname = optionalString(input.hostname, `${field}.hostname`);
+  const domain = optionalString(input.domain, `${field}.domain`);
+  const host = optionalString(input.host, `${field}.host`);
+  if (host && (!domain || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(host))) fail(`${field}.host requires a registered domain and one DNS label.`, `${field}.host`);
+  if (domain && hostname) fail(`${field} cannot set both hostname and domain.`, field);
+  if (domain && (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain) || domain.endsWith(".localhost"))) {
+    fail(`${field}.domain must be a concrete registered domain.`, `${field}.domain`);
+  }
+  if (domain && tls !== "off") fail(`${field}.tls is controlled by the machine domain registration.`, `${field}.tls`);
+  const routePath = optionalString(input.path, `${field}.path`);
+  if (routePath && (!/^\/(?:[A-Za-z0-9._~!$&'()+,;=:@/-]*)$/.test(routePath) || routePath.includes("//") || routePath.split("/").some((part) => part === "." || part === ".."))) {
+    fail(`${field}.path must be an unambiguous absolute URL path.`, `${field}.path`);
+  }
+  const match = input.match === undefined ? undefined : string(input.match, `${field}.match`);
+  if (match && match !== "exact" && match !== "prefix") fail(`${field}.match must be exact or prefix.`, `${field}.match`);
+  const stripPrefix = optionalBoolean(input.stripPrefix, `${field}.stripPrefix`);
+  if (stripPrefix && (match === "exact" || !routePath || routePath === "/")) fail(`${field}.stripPrefix requires a non-root prefix path.`, `${field}.stripPrefix`);
   const expandedHostname = hostname?.replaceAll("{project}", "project").replaceAll("{instance}", "instance");
   if (hostname && (expandedHostname?.includes("{") || expandedHostname?.includes("}") || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(expandedHostname!))) {
     fail(`${field}.hostname must be a .localhost hostname using only {project} and {instance} placeholders.`, `${field}.hostname`);
@@ -251,6 +267,11 @@ function hostnameSpec(value: unknown, field: string): HostnameSpec {
   return {
     target: string(input.target, `${field}.target`),
     ...(hostname ? { hostname } : {}),
+    ...(domain ? { domain } : {}),
+    ...(host ? { host } : {}),
+    ...(routePath ? { path: routePath } : {}),
+    ...(match ? { match: match as "exact" | "prefix" } : {}),
+    ...(stripPrefix === undefined ? {} : { stripPrefix }),
     tls,
     ...(stringArray(input.profiles, `${field}.profiles`) ? { profiles: stringArray(input.profiles, `${field}.profiles`) } : {}),
   };
@@ -355,6 +376,7 @@ function validateReferences(config: DevFnConfig): void {
     }
   }
   for (const [name, spec] of Object.entries(config.hostnames ?? {})) {
+    if (spec.domain) continue;
     const expanded = (spec.hostname ?? `${name}-{instance}.localhost`).replaceAll("{instance}", "instance").replaceAll("{project}", config.project.id);
     if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(expanded)) fail(`hostnames.${name}.hostname resolves to an invalid .localhost hostname for project ${config.project.id}.`, `hostnames.${name}.hostname`);
   }
@@ -412,7 +434,7 @@ export function validateDevFnPolicy(value: unknown): DevFnPolicy {
     return input.ports.map((item, index) => policyEntry(item, `ports[${index}]`));
   })();
   const hostnameSuffix = optionalString(input.hostnameSuffix, "hostnameSuffix");
-  if (hostnameSuffix && (!hostnameSuffix.startsWith(".") || !hostnameSuffix.endsWith(".localhost"))) fail("hostnameSuffix must start with a dot and end in .localhost.", "hostnameSuffix");
+  if (hostnameSuffix && (!/^\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*localhost$/.test(hostnameSuffix) || hostnameSuffix.length > 230)) fail("hostnameSuffix must be a valid dot-prefixed .localhost suffix.", "hostnameSuffix");
   return {
     version: 1,
     ...(range(input.fallbackRange, "fallbackRange") ? { fallbackRange: range(input.fallbackRange, "fallbackRange") } : {}),

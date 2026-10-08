@@ -22,6 +22,19 @@ async function withListenerTools<T>(action: () => Promise<T>): Promise<T> {
 }
 
 describe("devfn CLI", () => {
+  it("rejects unavailable DNS-01 registration without changing machine state", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-domain-cli-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-state-"));
+    try {
+      await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({ version: 1, project: { id: "fixture" }, profiles: { default: {} } }));
+      let output = "";
+      expect(await runCli(["domains", "register", "dev.example.test", "--tls", "dns-01", "--trust", "--json", "--state-dir", stateDir],
+        { cwd, stdout: (text) => { output += text; }, stderr: () => undefined })).toBe(1);
+      expect(JSON.parse(output)).toMatchObject({ error: { code: "DEVFN_RUNTIME_INVALID" } });
+      await expect(access(path.join(stateDir, "domains.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await rm(cwd, { recursive: true, force: true }); await rm(stateDir, { recursive: true, force: true }); }
+  });
+
   it("rejects invalid tail counts before command dispatch", async () => {
     for (const value of ["nope", "-1", "1.5", "9007199254740992"]) {
       let stdout = "";

@@ -13,7 +13,7 @@ import {
   resolveDevFnManifestPath,
   trustProject,
 } from "@devfn/config";
-import { DevFnError, DevFnOrchestrator } from "@devfn/core";
+import { DevFnError, DevFnOrchestrator, readRegisteredDomains, registerDomain, resolveInstanceIdentity, unregisterDomain } from "@devfn/core";
 import { FilePortRegistry, renderPortInventory } from "@devfn/ports";
 import { defaultStateDir } from "@devfn/config";
 
@@ -29,6 +29,9 @@ interface ParsedArgs {
   output?: string;
   tail?: number;
   allowPublic: boolean;
+  tls?: string;
+  certificateFile?: string;
+  keyFile?: string;
 }
 
 export interface CliOptions { cwd?: string; env?: NodeJS.ProcessEnv; stdout?: (text: string) => void; stderr?: (text: string) => void }
@@ -47,6 +50,7 @@ Commands:
   doctor               Diagnose runtimes, Docker, ports, leases, and proxy
   ports [gc|report]    Inspect, reconcile, collect, or report port state
   url [name]           Print resolved local URLs
+  domains [list|register|unregister]  Manage machine-owned development domains
 
 Options:
   --profile <name>     Select a named profile
@@ -58,12 +62,15 @@ Options:
   --state-dir <path>   Override machine state (primarily for testing)
   --output <path>      Write a ports report
   --tail <count>       Limit log lines
+  --tls <mode>         Domain TLS: internal or certificate
+  --cert <path>        Certificate PEM for certificate TLS
+  --key <path>         Private key PEM for certificate TLS
 `;
 
 function parse(argv: readonly string[]): ParsedArgs {
   const positionals: string[] = [];
   const values: Record<string, string | boolean> = {};
-  const takesValue = new Set(["--profile", "--config", "--state-dir", "--output", "--tail"]);
+  const takesValue = new Set(["--profile", "--config", "--state-dir", "--output", "--tail", "--tls", "--cert", "--key"]);
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (!token.startsWith("--")) { positionals.push(token); continue; }
@@ -89,6 +96,9 @@ function parse(argv: readonly string[]): ParsedArgs {
     ...(typeof values["--state-dir"] === "string" ? { stateDir: values["--state-dir"] } : {}),
     ...(typeof values["--output"] === "string" ? { output: values["--output"] } : {}),
     ...(tail === undefined ? {} : { tail }),
+    ...(typeof values["--tls"] === "string" ? { tls: values["--tls"] } : {}),
+    ...(typeof values["--cert"] === "string" ? { certificateFile: values["--cert"] } : {}),
+    ...(typeof values["--key"] === "string" ? { keyFile: values["--key"] } : {}),
   };
 }
 
@@ -163,6 +173,21 @@ async function urlCommand(args: ParsedArgs, orchestrator: DevFnOrchestrator, loa
 }
 
 async function executeCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
+  if (args.command === "domains") {
+    const action = args.positionals[0] ?? "list";
+    const identity = await resolveInstanceIdentity(loaded.config.project.id, loaded.root);
+    if (action === "list") return { ok: true, domains: (await readRegisteredDomains(stateDir)).filter((domain) => domain.projectId === identity.projectId && domain.repositoryIdentity === identity.repositoryIdentity) };
+    const domain = args.positionals[1];
+    if (!domain || args.positionals.length !== 2) throw new DevFnError("DEVFN_RUNTIME_INVALID", "domains register/unregister requires exactly one domain.");
+    if (action === "register") {
+      if (args.tls !== "internal" && args.tls !== "certificate") throw new DevFnError("DEVFN_RUNTIME_INVALID", "--tls must be internal or certificate; DNS-01 requires a validated adapter and is unavailable.");
+      const registered = await registerDomain(stateDir, { domain, projectId: identity.projectId, repositoryIdentity: identity.repositoryIdentity,
+        tls: args.tls, ...(args.certificateFile ? { certificateFile: path.resolve(cwd, args.certificateFile) } : {}), ...(args.keyFile ? { keyFile: path.resolve(cwd, args.keyFile) } : {}) });
+      return { ok: true, domain: registered };
+    }
+    if (action === "unregister") { await unregisterDomain(stateDir, domain, identity.projectId, identity.repositoryIdentity); return { ok: true, domain, removed: true }; }
+    throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown domains action ${action}.`);
+  }
   const orchestrator = new DevFnOrchestrator();
   const lifecycle = { config: loaded.config, root: loaded.root, stateDir };
   const handlers: Record<string, () => Promise<unknown>> = {

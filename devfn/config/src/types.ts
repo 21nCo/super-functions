@@ -64,6 +64,12 @@ export interface ProfileSpec {
 export interface HostnameSpec {
   target: string;
   hostname?: string;
+  /** Machine-registered domain; a manifest cannot create the registration. */
+  domain?: string;
+  host?: string;
+  path?: string;
+  match?: "exact" | "prefix";
+  stripPrefix?: boolean;
   tls?: "off" | "internal";
   profiles?: string[];
 }

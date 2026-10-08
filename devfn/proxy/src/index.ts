@@ -5,11 +5,19 @@ import { promisify } from "node:util";
 
 import { withFileLock } from "@devfn/ports";
 import { matchesProcessIdentity, processBirthSignature, processExists } from "@devfn/processes";
+import { domainContains, DomainError, readRegisteredDomains, verifyCertificate, verifyLocalDns } from "./domains.js";
+export { DomainError, domainContains, normalizeDomain, readRegisteredDomains, registerDomain, unregisterDomain, verifyCertificate, verifyLocalDns, type RegisteredDomain } from "./domains.js";
 
 const execFileAsync = promisify(execFile);
 const PROXY_LOCK_TIMEOUT_MS = 30_000;
 
-export interface ProxyRoute { id: string; instanceId: string; hostname: string; targetHost: string; targetPort: number; tls: "off" | "internal"; updatedAt: string }
+export interface ProxyRoute {
+  id: string; instanceId: string; hostname: string; targetHost: string; targetPort: number;
+  tls: "off" | "internal" | "certificate"; updatedAt: string;
+  path?: string; match?: "exact" | "prefix"; stripPrefix?: boolean;
+  registeredDomain?: string; projectId?: string; repositoryIdentity?: string;
+  certificateFile?: string; keyFile?: string;
+}
 interface ProxyState { version: 1; routes: ProxyRoute[] }
 interface ProxyOwner { pid: number; birthSignature?: string }
 
@@ -26,14 +34,50 @@ export class ProxyError extends Error {
 }
 
 export function renderCaddyfile(routes: readonly ProxyRoute[]): string {
-  const lines = ["{", "  admin 127.0.0.1:2019", "}", ""];
-  for (const route of [...routes].sort((a, b) => a.hostname.localeCompare(b.hostname))) {
-    if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(route.hostname)) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Proxy hostname ${route.hostname} must be a concrete .localhost name.`);
-    if (route.targetHost !== "127.0.0.1" && route.targetHost !== "localhost" && route.targetHost !== "::1") throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Proxy target ${route.targetHost} must be loopback.`);
+  const lines = ["{", "  admin 127.0.0.1:2019", "  default_bind 127.0.0.1 [::1]", "  skip_install_trust", "  auto_https disable_redirects", "}", ""];
+  const hosts = new Map<string, ProxyRoute[]>();
+  const routeKeys = new Set<string>();
+  for (const route of routes) {
+    if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(route.hostname) || route.hostname.length > 253 ||
+      (!route.hostname.toLowerCase().endsWith(".localhost") && (!route.registeredDomain || !domainContains(route.registeredDomain, route.hostname)))) {
+      throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Proxy hostname ${route.hostname} must be a concrete .localhost or registered domain name.`);
+    }
+    if (route.targetHost !== "127.0.0.1" && route.targetHost !== "::1") throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Proxy target ${route.targetHost} must be a literal loopback address.`);
     if (!Number.isInteger(route.targetPort) || route.targetPort < 1 || route.targetPort > 65535) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Proxy target port ${route.targetPort} must be an integer between 1 and 65535.`);
-    const targetHost = route.targetHost === "::1" ? "[::1]" : route.targetHost;
-    lines.push(`${route.tls === "off" ? "http://" : ""}${route.hostname} {`, `  reverse_proxy ${targetHost}:${route.targetPort}`, ...(route.tls === "internal" ? ["  tls internal"] : []), "}", "");
+    const routePath = route.path ?? "/";
+    const match = route.match ?? "prefix";
+    if (!/^\/[A-Za-z0-9._~!$&'()+,;=:@/-]*$/.test(routePath) || routePath.includes("//") || routePath.split("/").some((part) => part === "." || part === "..") ||
+      !["exact", "prefix"].includes(match) || (route.stripPrefix && (match !== "prefix" || routePath === "/"))) {
+      throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Invalid proxy path for ${route.id}.`);
+    }
+    if (!["off", "internal", "certificate"].includes(route.tls) || (route.tls === "certificate" && (!route.certificateFile || !route.keyFile))) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Invalid TLS mode for ${route.id}.`);
+    const key = `${route.hostname.toLowerCase()}\0${match}\0${routePath}`;
+    if (routeKeys.has(key)) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Ambiguous route for ${route.hostname}${routePath}; path is already owned.`);
+    routeKeys.add(key);
+    const hostRoutes = hosts.get(route.hostname.toLowerCase()) ?? [];
+    if (hostRoutes.length && hostRoutes[0].tls !== route.tls) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Conflicting TLS modes for ${route.hostname}.`);
+    hostRoutes.push(route);
+    hosts.set(route.hostname.toLowerCase(), hostRoutes);
   }
+  for (const [hostname, hostRoutes] of [...hosts].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+    const tls = hostRoutes[0];
+    const tlsLine = tls.tls === "internal" ? ["  tls internal"] : tls.tls === "certificate" ? [`  tls ${JSON.stringify(tls.certificateFile)} ${JSON.stringify(tls.keyFile)}`] : [];
+    if (hostRoutes.length === 1 && (tls.path ?? "/") === "/" && (tls.match ?? "prefix") === "prefix") {
+      const targetHost = tls.targetHost === "::1" ? "[::1]" : tls.targetHost;
+      lines.push(`${tls.tls === "off" ? "http://" : ""}${hostname} {`, `  reverse_proxy ${targetHost}:${tls.targetPort}`, ...tlsLine, "}", "");
+      continue;
+    }
+    lines.push(`${tls.tls === "off" ? "http://" : ""}${hostname} {`, ...tlsLine, "  route {");
+    const ordered = [...hostRoutes].sort((a, b) => (a.match ?? "prefix") === (b.match ?? "prefix") ? (b.path ?? "/").length - (a.path ?? "/").length : (a.match ?? "prefix") === "exact" ? -1 : 1);
+    ordered.forEach((route, index) => {
+      const routePath = route.path ?? "/";
+      const targetHost = route.targetHost === "::1" ? "[::1]" : route.targetHost;
+      const matcher = routePath === "/" && (route.match ?? "prefix") === "prefix" ? "/*" : (route.match ?? "prefix") === "exact" ? routePath : `${routePath.replace(/\/$/, "")} ${routePath.replace(/\/$/, "")}/*`;
+      lines.push(`    @route${index} path ${matcher}`, `    handle @route${index} {`, ...(route.stripPrefix ? [`      uri strip_prefix ${routePath.replace(/\/$/, "")}`] : []), `      reverse_proxy ${targetHost}:${route.targetPort}`, "    }");
+    });
+    lines.push("    handle {", "      respond 404", "    }", "  }", "}", "");
+  }
+  if (hosts.size) lines.push("http:// {", "  respond 404", "}", "");
   return lines.join("\n");
 }
 
@@ -84,6 +128,20 @@ export class CaddyProxyController {
   }
 
   private async apply(next: ProxyState, recovering = false): Promise<void> {
+    const registrations = await readRegisteredDomains(this.stateDir);
+    for (const route of next.routes) {
+      if (!route.registeredDomain) continue;
+      const registration = registrations.find((item) => item.domain === route.registeredDomain);
+      if (!registration || !domainContains(registration.domain, route.hostname) || registration.projectId !== route.projectId ||
+        registration.repositoryIdentity !== route.repositoryIdentity || registration.tls !== route.tls) {
+        throw new DomainError("DEVFN_DOMAIN_UNREGISTERED", `Route ${route.hostname} has no matching machine domain registration.`);
+      }
+      await verifyLocalDns(route.hostname);
+      if (registration.tls === "certificate") {
+        if (registration.certificateFile !== route.certificateFile || registration.keyFile !== route.keyFile) throw new DomainError("DEVFN_DOMAIN_CERT_INVALID", `Certificate registration changed for ${route.hostname}.`);
+        await verifyCertificate(route.hostname, route.certificateFile, route.keyFile);
+      }
+    }
     if (!await this.available()) throw new ProxyError("DEVFN_PROXY_UNAVAILABLE", "Caddy is required for this profile but is unavailable.");
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
     const candidate = `${this.configPath}.candidate`;
@@ -172,14 +230,20 @@ export class CaddyProxyController {
   }
 
   public async upsert(routes: readonly Omit<ProxyRoute, "updatedAt">[]): Promise<ProxyRoute[]> {
+    if (routes.length === 0) return [];
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
     return await withFileLock(this.lockPath, async () => {
       const state = await this.read();
       const ids = new Set(routes.map((route) => route.id));
+      if (ids.size !== routes.length) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Duplicate route IDs in one update.");
+      if (routes.some((route) => state.routes.some((saved) => saved.id === route.id && saved.instanceId !== route.instanceId))) {
+        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "A route ID is already owned by another instance.");
+      }
+      const owners = new Set(routes.map((route) => route.instanceId));
+      if (owners.size !== 1) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "One update must contain routes for one instance.");
       const now = new Date().toISOString();
-      const nextRoutes = [...state.routes.filter((route) => !ids.has(route.id)), ...routes.map((route) => ({ ...route, updatedAt: now }))];
-      const duplicate = nextRoutes.find((route, index) => nextRoutes.findIndex((candidate) => candidate.hostname.toLowerCase() === route.hostname.toLowerCase()) !== index);
-      if (duplicate) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Hostname ${duplicate.hostname} is already owned by another DevFn route.`);
+      const nextRoutes = [...state.routes.filter((route) => !owners.has(route.instanceId)), ...routes.map((route) => ({ ...route, updatedAt: now }))];
+      renderCaddyfile(nextRoutes);
       await this.apply({ version: 1, routes: nextRoutes });
       return nextRoutes.filter((route) => ids.has(route.id));
     }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });

@@ -16,6 +16,7 @@ export interface ProjectIdentity {
 }
 
 export interface InstanceIdentity extends ProjectIdentity { instanceId: string }
+export interface RoutingIdentity extends InstanceIdentity { isPrimaryWorktree: boolean; readableWorktreeLabel: string }
 
 export interface LifecyclePlan {
   profile: string;

@@ -948,8 +948,8 @@ function selectedProxyHostnames(input: EndpointResolutionInput, config: DevFnCon
   if (!input.plan.proxy) return hostnames;
   for (const [name, hostname] of Object.entries(config.hostnames ?? {})) {
     if (hostname.profiles && !hostname.profiles.includes(input.plan.profile)) continue;
-    hostnames.add(resolveLocalHostname(hostname.hostname, name, config.project.id, input.ownerId, input.hostnameSuffix).toLowerCase());
-    if (hostname.hostname && !hostname.hostname.includes("{instance}")) {
+    if (!hostname.domain) hostnames.add(resolveLocalHostname(hostname.hostname, name, config.project.id, input.ownerId, input.hostnameSuffix).toLowerCase());
+    if (!hostname.domain && hostname.hostname && !hostname.hostname.includes("{instance}")) {
       hostnames.add(hostname.hostname.replaceAll("{project}", config.project.id).toLowerCase());
     }
     httpPorts.add(hostname.target);

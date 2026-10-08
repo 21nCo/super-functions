@@ -1,3 +1,3 @@
 # @devfn/proxy
 
-Maintains one lock-protected, DevFn-owned Caddy route registry. Generated configurations contain concrete `.localhost` routes and loopback targets only, are validated before reload, and never include a catch-all. If another Caddy owns the admin endpoint, DevFn refuses to replace its configuration.
+Maintains one lock-protected, DevFn-owned Caddy route registry. Generated configurations contain concrete `.localhost` or explicitly registered local-domain routes and loopback targets only, are validated before reload, and include only a denying HTTP fallback for unknown hosts. Caddy binds to IPv4 and IPv6 loopback and never installs its internal CA in a trust store. Registered domains are bound to a repository and project in machine state. Every selected registered hostname must resolve exclusively to loopback. If another Caddy owns the admin endpoint, DevFn refuses to replace its configuration.

@@ -10,6 +10,8 @@ npx @devfn/cli up --profile default
 npx @devfn/cli status --json
 npx @devfn/cli logs app
 npx @devfn/cli down
+npx @devfn/cli domains register dev.example.test --tls internal
+npx @devfn/cli domains list
 ```
 
 Profiles that declare public processes or ports require `--allow-public` on every start.

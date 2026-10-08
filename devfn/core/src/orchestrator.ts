@@ -8,13 +8,13 @@ import { ComposeController, composeProjectName, createComposeEnvironment, create
 import { defaultStateDir, isCredentialKey, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
-import { CaddyProxyController, type ProxyRoute } from "@devfn/proxy";
+import { CaddyProxyController, readRegisteredDomains, renderCaddyfile, verifyCertificate, verifyLocalDns, type ProxyRoute } from "@devfn/proxy";
 
-import { resolveInstanceIdentity } from "./identity.js";
+import { domainAliases, resolveInstanceIdentity } from "./identity.js";
 import { resolveEndpointTemplates, resolveLocalHostname } from "./endpoints.js";
 import { createPlan } from "./planner.js";
 import { readReceipt, secureRuntimeDirectory, writeEnvironmentOutputs, writeReceipt } from "./runtime.js";
-import { DevFnError, type CleanupResult, type InstanceIdentity, type LifecyclePlan, type LifecycleReceipt, type UpOptions } from "./types.js";
+import { DevFnError, type CleanupResult, type InstanceIdentity, type RoutingIdentity, type LifecyclePlan, type LifecycleReceipt, type UpOptions } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -165,20 +165,39 @@ export function resolveAllocationUrls(allocations: readonly PortAllocation[], ro
   const urls: Record<string, string> = {};
   for (const allocation of allocations) {
     const route = allocation.protocol === "tcp" ? routes.find((item) => item.targetPort === allocation.port) : undefined;
-    if (route) urls[allocation.service] = `${route.tls === "internal" ? "https" : "http"}://${route.hostname}`;
+    if (route) urls[allocation.service] = `${route.tls === "off" ? "http" : "https"}://${route.hostname}${route.path && route.path !== "/" ? route.path : ""}`;
     else if (allocation.protocol === "tcp" && httpPorts.has(allocation.service)) urls[allocation.service] = directUrls[allocation.service] ?? `http://127.0.0.1:${allocation.port}`;
   }
   return urls;
 }
 
-function selectedProxyRoutes(config: DevFnConfig, plan: LifecyclePlan, instanceId: string, ports: Readonly<Record<string, number>>, suffix: string): Array<Omit<ProxyRoute, "updatedAt">> {
+async function selectedProxyRoutes(config: DevFnConfig, plan: LifecyclePlan, identity: RoutingIdentity, ports: Readonly<Record<string, number>>, suffix: string, stateDir: string): Promise<Array<Omit<ProxyRoute, "updatedAt">>> {
   if (!plan.proxy) return [];
-  return Object.entries(config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile))
-    .map(([name, spec]) => ({
-      id: `${instanceId}:${name}`, instanceId,
-      hostname: resolveLocalHostname(spec.hostname, name, config.project.id, instanceId, suffix),
-      targetHost: "127.0.0.1", targetPort: ports[spec.target], tls: spec.tls ?? "off",
-    }));
+  const registrations = await readRegisteredDomains(stateDir);
+  const routes: Array<Omit<ProxyRoute, "updatedAt">> = [];
+  for (const [name, spec] of Object.entries(config.hostnames ?? {}).filter(([, value]) => !value.profiles || value.profiles.includes(plan.profile))) {
+    if (!plan.portNames.includes(spec.target) || !Number.isInteger(ports[spec.target])) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Selected route ${name} has no selected target port.`);
+    const common = { instanceId: identity.instanceId, targetHost: "127.0.0.1", targetPort: ports[spec.target],
+      ...(spec.path ? { path: spec.path } : {}), ...(spec.match ? { match: spec.match } : {}), ...(spec.stripPrefix ? { stripPrefix: true } : {}) };
+    if (!spec.domain) {
+      routes.push({ ...common, id: `${identity.instanceId}:${name}`, hostname: resolveLocalHostname(spec.hostname, name, config.project.id, identity.instanceId, suffix), tls: spec.tls ?? "off" });
+      continue;
+    }
+    const registration = registrations.find((item) => item.domain === spec.domain && item.projectId === config.project.id && item.repositoryIdentity === identity.repositoryIdentity);
+    if (!registration) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Domain ${spec.domain} is not registered to this repository and project.`);
+    let aliases: string[];
+    try { aliases = domainAliases(spec.host ?? name, spec.domain, identity); }
+    catch (error) { throw new DevFnError("DEVFN_RUNTIME_INVALID", `Route ${name}: ${error instanceof Error ? error.message : String(error)}`); }
+    for (const [index, hostname] of aliases.entries()) {
+      await verifyLocalDns(hostname);
+      if (registration.tls === "certificate") await verifyCertificate(hostname, registration.certificateFile, registration.keyFile);
+      routes.push({ ...common, id: `${identity.instanceId}:${name}:${index}`, hostname, tls: registration.tls,
+        registeredDomain: registration.domain, projectId: registration.projectId, repositoryIdentity: registration.repositoryIdentity,
+        ...(registration.certificateFile ? { certificateFile: registration.certificateFile, keyFile: registration.keyFile } : {}) });
+    }
+  }
+  renderCaddyfile(routes.map((route) => ({ ...route, updatedAt: "preflight" })));
+  return routes;
 }
 
 function receiptRoutesMatch(receipt: LifecycleReceipt, expected: readonly Omit<ProxyRoute, "updatedAt">[]): boolean {
@@ -187,8 +206,11 @@ function receiptRoutesMatch(receipt: LifecycleReceipt, expected: readonly Omit<P
   if (actual.size !== expected.length) return false;
   return expected.every((route) => {
     const saved = actual.get(route.id);
-    return saved?.instanceId === route.instanceId && saved.hostname === route.hostname &&
-      saved.targetHost === route.targetHost && saved.targetPort === route.targetPort && saved.tls === route.tls;
+    if (!saved) return false;
+    const current = saved as unknown as Record<string, unknown>;
+    const planned = route as unknown as Record<string, unknown>;
+    return new Set([...Object.keys(current).filter((key) => key !== "updatedAt"), ...Object.keys(planned)]).size === Object.keys(planned).length &&
+      Object.entries(planned).every(([key, value]) => current[key] === value);
   });
 }
 
@@ -261,8 +283,8 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
       allocation.host !== (config.ports?.[allocation.service]?.exposure === "public" ? "0.0.0.0" : "127.0.0.1"))) return false;
     const loadedPolicy = await loadDevFnPolicy(root, config.policy);
     resolved = await resolveWithComposeNetworks(config, plan, root, receipt.instanceId, ports, loadedPolicy?.policy.hostnameSuffix);
-    if (!receiptRoutesMatch(receipt, selectedProxyRoutes(config, plan, receipt.instanceId, ports,
-      loadedPolicy?.policy.hostnameSuffix ?? ".localhost"))) return false;
+    if (!receiptRoutesMatch(receipt, await selectedProxyRoutes(config, plan, await resolveInstanceIdentity(config.project.id, root), ports,
+      loadedPolicy?.policy.hostnameSuffix ?? ".localhost", receipt.stateDir ?? defaultStateDir()))) return false;
     if (receipt.startupFingerprints) {
       const current = await startupFingerprints(config, root, resolved);
       if (Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||
@@ -312,6 +334,7 @@ export class DevFnOrchestrator {
     // before state creation. Re-read it under the lifecycle lock after ports
     // are reserved because the Compose source can change between these steps.
     const preflightPorts = Object.fromEntries(plan.portNames.map((name) => [name, 1]));
+    await selectedProxyRoutes(options.config, plan, identity, preflightPorts, loadedPolicy?.policy.hostnameSuffix ?? ".localhost", requestedStateDir);
     if (await needsNetworkPreflight(options.config, plan, options.root, identity.instanceId, preflightPorts, loadedPolicy?.policy.hostnameSuffix)) {
       await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, preflightPorts, loadedPolicy?.policy.hostnameSuffix);
     } else {
@@ -323,7 +346,7 @@ export class DevFnOrchestrator {
     return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.upLocked(options, stateDir, identity, loadedPolicy), { timeoutMs: 30_000 });
   }
 
-  private async upLocked(options: UpOptions, stateDir: string, identity: InstanceIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>): Promise<LifecycleReceipt> {
+  private async upLocked(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>): Promise<LifecycleReceipt> {
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
     await this.prepareExisting(options, stateDir, identity, loadedPolicy, registry);
     await registry.recoverInterrupted(identity.instanceId);
@@ -338,7 +361,7 @@ export class DevFnOrchestrator {
     const policy = resolvePolicy(loadedPolicy?.policy ?? null, options.config.project.id);
     const suffix = loadedPolicy?.policy.hostnameSuffix ?? ".localhost";
     const profileHostnames = Object.entries(options.config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile));
-    const configuredHostnames = Object.fromEntries(profileHostnames.map(([name, spec]) => [spec.target, resolveLocalHostname(spec.hostname, name, options.config.project.id, identity.instanceId, suffix)]));
+    const configuredHostnames = Object.fromEntries(profileHostnames.filter(([, spec]) => !spec.domain).map(([name, spec]) => [spec.target, resolveLocalHostname(spec.hostname, name, options.config.project.id, identity.instanceId, suffix)]));
     const allocations = await registry.reserve({
       projectId: options.config.project.id,
       instanceId: identity.instanceId,
@@ -388,7 +411,7 @@ export class DevFnOrchestrator {
         await writeReceipt(receipt);
       }
       if (plan.proxy) {
-        const routes = selectedProxyRoutes(options.config, plan, identity.instanceId, ports, suffix);
+        const routes = await selectedProxyRoutes(options.config, plan, identity, ports, suffix, stateDir);
         receipt.routes = await proxy.upsert(routes);
       }
       receipt.urls = resolveAllocationUrls(allocations, receipt.routes, selectedHttpPorts(options.config, plan), resolved.directUrls);
