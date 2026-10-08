@@ -257,25 +257,22 @@ function selectedTokenValue(token: InterpolationToken, values: NodeJS.ProcessEnv
   return value ?? (missingAsEmpty ? "" : undefined);
 }
 
+function interpolationPiece(expression: string, index: number, values: NodeJS.ProcessEnv,
+  depth: number, maxBytes: number, missingAsEmpty: boolean): { value: string | undefined; next: number } {
+  if (expression[index] !== "$") return { value: expression[index], next: index + 1 };
+  if (expression[index + 1] === "$") return { value: "$", next: index + 2 };
+  const token = parseInterpolationToken(expression, index);
+  if (!token) return { value: expression[index + 1] === "{" ? undefined : "$", next: index + 1 };
+  return { value: selectedTokenValue(token, values, depth, maxBytes, missingAsEmpty), next: token.end };
+}
+
 function interpolatePieces(expression: string, values: NodeJS.ProcessEnv, depth: number, maxBytes: number,
   missingAsEmpty: boolean): string | undefined {
   const pieces: string[] = [];
   let bytes = 0;
   for (let index = 0; index < expression.length;) {
-    let piece: string | undefined;
-    if (expression[index] !== "$") piece = expression[index++];
-    else if (expression[index + 1] === "$") { piece = "$"; index += 2; }
-    else {
-      const token = parseInterpolationToken(expression, index);
-      if (!token) {
-        if (expression[index + 1] === "{") return undefined;
-        piece = "$";
-        index += 1;
-      } else {
-        piece = selectedTokenValue(token, values, depth, maxBytes, missingAsEmpty);
-        index = token.end;
-      }
-    }
+    const { value: piece, next } = interpolationPiece(expression, index, values, depth, maxBytes, missingAsEmpty);
+    index = next;
     if (piece === undefined) return undefined;
     bytes += Buffer.byteLength(piece);
     if (bytes > maxBytes) throw new Error("Compose interpolation exceeds the value limit");

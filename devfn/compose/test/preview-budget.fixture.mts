@@ -17,5 +17,14 @@ try {
   try { await selectedComposeEndpointReferences(spec, root, createComposeEnvironment(spec)); }
   catch { rejected = true; }
   if (!rejected) throw new Error("expanded Compose preview was not bounded");
-  process.stdout.write("bounded\n");
+  await writeFile(path.join(root, ".env"), "");
+  const chain = Array.from({ length: 4000 }, (_, index) =>
+    `A${index}=${index === 0 ? "ok" : `\${A${index - 1}}`}`).join("\n");
+  await writeFile(path.join(root, "runtime.env"), `${chain}\n`);
+  await writeFile(path.join(root, "compose.yaml"),
+    "services:\n  api:\n    image: busybox\n    env_file: [runtime.env]\n");
+  const started = Date.now();
+  const active = await selectedComposeEndpointReferences(spec, root, createComposeEnvironment(spec));
+  if (active.size || Date.now() - started > 3000) throw new Error("valid Compose alias chain exceeded the bounded control");
+  process.stdout.write("bounded and valid\n");
 } finally { await rm(root, { recursive: true, force: true }); }

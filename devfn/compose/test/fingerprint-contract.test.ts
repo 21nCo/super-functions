@@ -353,6 +353,22 @@ describe.skipIf(!live)("effective Compose startup fingerprint", () => {
     });
   }, 30_000);
 
+  it("accepts selected six MiB config and env_file literals within the ten MiB source budget", async () => {
+    const literal = "x".repeat(6 * 1024 * 1024);
+    await withComposeSource({
+      ".env": `APP_CONFIG=${literal}\n`,
+      "runtime.env": `DATA=${literal}\n`,
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const environment = createComposeEnvironment(spec);
+      await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
+      await writeFile(path.join(root, "compose.yaml"),
+        "services:\n  api:\n    image: busybox\n    env_file: [runtime.env]\n");
+      await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
+    });
+  }, 60_000);
+
   it("rejects a credential-derived selected resource path before Compose resolution", async () => {
     await withComposeSource({
       "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    file: ${API_TOKEN}\n",

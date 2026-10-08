@@ -293,7 +293,7 @@ it("bounds materialized preview aliases before exhausting a small Node heap", ()
     ["--max-old-space-size=128", "--import", "tsx", fixture],
     { encoding: "utf8", timeout: 5_000, maxBuffer: 1024 * 1024 });
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toBe("bounded\n");
+  expect(result.stdout).toBe("bounded and valid\n");
 }, 10_000);
 
 it.each([

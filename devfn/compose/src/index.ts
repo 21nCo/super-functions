@@ -263,7 +263,8 @@ async function boundedConfigFileBytes(file: string, remaining: number): Promise<
   return bytes;
 }
 
-interface ConfigEnvProvenance { value?: string; safeValue?: string; secretDerived: boolean; references: ReadonlySet<string> }
+interface ReferenceTrace { direct: ReadonlySet<string>; captured: readonly ReferenceTrace[] }
+interface ConfigEnvProvenance { value?: string; safeValue?: string; secretDerived: boolean; references: ReferenceTrace }
 type ConfigScope = Array<[string, string]>;
 const MAX_CONFIG_EXPANSION_BYTES = 10 * 1024 * 1024;
 
@@ -345,12 +346,27 @@ function configExpressionReferences(selection: ConfigSelection, expression: Conf
 }
 
 function capturedReferences(direct: ReadonlySet<string>,
-  lookup: (name: string) => ReadonlySet<string> | undefined): Set<string> {
-  const captured = new Set(direct);
+  lookup: (name: string) => ReferenceTrace | undefined): ReferenceTrace {
+  const captured: ReferenceTrace[] = [];
   for (const dependency of direct) {
-    for (const reference of lookup(dependency) ?? []) captured.add(reference);
+    const earlier = lookup(dependency);
+    if (earlier) captured.push(earlier);
   }
-  return captured;
+  return { direct, captured };
+}
+
+function collectedReferences(roots: Iterable<ReferenceTrace>): Set<string> {
+  const names = new Set<string>();
+  const seen = new Set<ReferenceTrace>();
+  const pending = [...roots];
+  while (pending.length) {
+    const trace = pending.pop()!;
+    if (seen.has(trace)) continue;
+    seen.add(trace);
+    for (const name of trace.direct) names.add(name);
+    pending.push(...trace.captured);
+  }
+  return names;
 }
 
 function previewConfigValue(selection: ConfigSelection, name: string, scopeLimit: number,
@@ -364,10 +380,6 @@ function previewConfigValue(selection: ConfigSelection, name: string, scopeLimit
   if (selection.resolving.has(identity)) return undefined;
   if (selection.preview.size + selection.resolving.size > 4096) {
     throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the reference count limit.");
-  }
-  selection.previewWork -= Buffer.byteLength(declaration.expression) + Buffer.byteLength(name) + 1;
-  if (selection.previewWork < 0) {
-    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the aggregate work limit.");
   }
   selection.resolving.add(identity);
   const { values } = configExpressionReferences(selection, { value: declaration.expression, dotenvQuotes: true },
@@ -408,7 +420,7 @@ function visitConfigReference(selection: ConfigSelection, name: string, scopeLim
 function selectEnvFileConfigDeclarations(selection: ConfigSelection,
   declarations: readonly (readonly [string, string])[], overridden: ReadonlySet<string>,
   scope: number, limit: number): void {
-  const prior = new Map<string, { value: string | undefined; references: Set<string> }>();
+  const prior = new Map<string, { value: string | undefined; references: ReferenceTrace }>();
   const effectiveValues: NodeJS.ProcessEnv = { ...selection.environment };
   const projectDefines = (name: string): boolean =>
     selectedConfigDeclaration(selection.scopes, selection.index, name, scope, limit) !== undefined;
@@ -420,18 +432,15 @@ function selectEnvFileConfigDeclarations(selection: ConfigSelection,
       Object.hasOwn(selection.environment, dependency) || projectDefines(dependency)
         ? undefined : prior.get(dependency)?.references);
     const value = simpleInterpolation(expression, values, 0, MAX_CONFIG_EXPANSION_BYTES, true);
-    selection.previewWork -= Buffer.byteLength(name) + Buffer.byteLength(expression)
-      + (value === undefined ? 0 : Buffer.byteLength(value));
+    selection.previewWork -= value === undefined ? 0 : Buffer.byteLength(value);
     if (selection.previewWork < 0) {
       throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the aggregate work limit.");
     }
     prior.set(name, { value, references });
     if (!Object.hasOwn(selection.environment, name) && !projectDefines(name)) effectiveValues[name] = value ?? "";
   }
-  for (const [name, entry] of prior) {
-    if (overridden.has(name)) continue;
-    for (const reference of entry.references) visitConfigReference(selection, reference, scope, limit, 0);
-  }
+  const active = collectedReferences([...prior].filter(([name]) => !overridden.has(name)).map(([, entry]) => entry.references));
+  for (const reference of active) visitConfigReference(selection, reference, scope, limit, 0);
 }
 
 function selectedConfigDeclarations(scopes: readonly ConfigScope[], expressions: readonly ConfigExpression[],
@@ -524,12 +533,13 @@ function configScopeProvenance(input: ConfigScopeInput): Map<string, ConfigEnvPr
 
 interface SelectedInterpolationState { values: NodeJS.ProcessEnv; safeValues: NodeJS.ProcessEnv;
   secretDerived: Set<string>; unknownValues: Set<string>;
-  references: ReadonlyMap<string, ReadonlySet<string>> }
+  references: ReadonlyMap<string, ReferenceTrace> }
 
-function assertActiveReferences(names: ReadonlySet<string>, references: (name: string) => ReadonlySet<string> | undefined,
+function assertActiveReferences(names: ReadonlySet<string>, references: (name: string) => ReferenceTrace | undefined,
   forbidden: ReadonlySet<string>): Set<string> {
   const pending = [...names];
   const checked = new Set<string>();
+  const seen = new Set<ReferenceTrace>();
   while (pending.length) {
     const name = pending.pop()!;
     if (forbidden.has(name)) {
@@ -537,7 +547,16 @@ function assertActiveReferences(names: ReadonlySet<string>, references: (name: s
     }
     if (checked.has(name)) continue;
     checked.add(name);
-    pending.push(...(references(name) ?? []));
+    const trace = references(name);
+    if (!trace) continue;
+    const traces = [trace];
+    while (traces.length) {
+      const current = traces.pop()!;
+      if (seen.has(current)) continue;
+      seen.add(current);
+      pending.push(...current.direct);
+      traces.push(...current.captured);
+    }
   }
   return checked;
 }
@@ -792,7 +811,7 @@ async function rawEnvFileValues(inventory: ComposeSourceInventory, service: stri
   }
 }
 
-interface EnvFileProvenance { references: Set<string>; secretDerived: boolean;
+interface EnvFileProvenance { references: ReferenceTrace; secretDerived: boolean;
   resolved?: string; safeValue?: string }
 
 interface EnvFileDeclarationContext {
@@ -810,10 +829,10 @@ function resolveEnvFileDeclaration(name: string, expression: string, context: En
   const direct = selectedInterpolationReferences(expression, known, { unknownValues, dotenvQuotes: true });
   const references = capturedReferences(direct, (reference) =>
     Object.hasOwn(interpolation.values, reference) ? undefined : selected.get(reference)?.references);
-  const secretDerived = secretNames.has(name) || isCredentialKey(name) || [...references].some((reference) =>
+  const secretDerived = secretNames.has(name) || isCredentialKey(name) || [...direct].some((reference) =>
     secretNames.has(reference) || isCredentialKey(reference) || interpolation.secretDerived.has(reference)
     || (!Object.hasOwn(interpolation.values, reference) && selected.get(reference)?.secretDerived));
-  const resolved = [...references].some((reference) => unknownValues.has(reference))
+  const resolved = [...direct].some((reference) => unknownValues.has(reference))
     ? undefined : simpleInterpolation(expression, known, 0, remaining, true);
   const safeResolved = resolved === undefined ? undefined : simpleInterpolation(expression, safeKnown, 0, remaining, true);
   const safeValue = secretNames.has(name) || isCredentialKey(name)
@@ -847,16 +866,16 @@ function selectedEnvFileState(declarations: readonly (readonly [string, string])
     }
     selected.set(name, entry);
   }
-  const references = new Set<string>();
+  const roots: ReferenceTrace[] = [];
   const secretDerived = new Set<string>();
   const safeValues = new Map<string, string | undefined>();
   for (const [name, entry] of selected) {
     if (overridden.has(name)) continue;
-    for (const reference of entry.references) references.add(reference);
+    roots.push(entry.references);
     if (entry.secretDerived) secretDerived.add(name);
     safeValues.set(name, entry.safeValue);
   }
-  return { references, secretDerived, safeValues };
+  return { references: collectedReferences(roots), secretDerived, safeValues };
 }
 
 function explicitServiceEnvironmentKeys(inventory: ComposeSourceInventory): Set<string> {
