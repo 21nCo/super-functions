@@ -67,9 +67,12 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("observes isolated Caddy exact, 
     expect(log).not.toContain("installing root certificate");
     expect(await request(httpPort, "app.localhost", "/api")).toMatchObject({ status: 200, body: "/api" });
     expect(await request(httpPort, "app.localhost", "/api/v1")).toMatchObject({ status: 200, body: "/v1" });
+    expect(await request(httpPort, "app.localhost", "/API/v1")).toMatchObject({ status: 200, body: "/v1" });
+    expect(() => renderCaddyfile([...routes, route("shadow", "app.localhost", exact.port, "off", "/API/", "prefix")])).toThrow(/Ambiguous route/);
     expect(await request(httpPort, "app.localhost", "/apix")).toMatchObject({ status: 404 });
     expect(await request(httpPort, "app.localhost", "/api%2fx")).toMatchObject({ status: 400 });
     expect(await request(httpPort, "unselected.localhost", "/api")).toMatchObject({ status: 404 });
+    expect(await request(httpPort, "secure.localhost", "/")).toMatchObject({ status: 404 });
     let tlsResponse: Awaited<ReturnType<typeof request>> | undefined;
     for (let attempt = 0; attempt < 30; attempt += 1) {
       tlsResponse = await request(httpsPort, "secure.localhost", "/", true).catch(() => undefined);

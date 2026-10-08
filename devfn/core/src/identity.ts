@@ -19,7 +19,8 @@ export async function resolveInstanceIdentity(projectId: string, root: string): 
   const instanceId = createHash("sha256").update(`${repositoryIdentity}\0${worktreePath}\0${projectId}`).digest("hex").slice(0, 12);
   const worktrees = await git(root, ["worktree", "list", "--porcelain"]);
   const primaryPath = worktrees?.match(/^worktree (.+)$/m)?.[1];
-  const isPrimaryWorktree = !primaryPath || await realpath(primaryPath).then((resolved) => resolved === worktreePath).catch(() => false);
+  // A failed or incomplete Git inventory cannot authorize the canonical alias.
+  const isPrimaryWorktree = primaryPath !== undefined && await realpath(primaryPath).then((resolved) => resolved === worktreePath).catch(() => false);
   const readable = path.basename(worktreePath).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "worktree";
   const suffix = createHash("sha256").update(worktreePath).digest("hex").slice(0, 6);
   const readableWorktreeLabel = `${readable.slice(0, 56)}-${suffix}`;

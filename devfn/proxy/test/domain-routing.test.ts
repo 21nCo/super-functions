@@ -68,6 +68,16 @@ describe("host/path Caddy configuration", () => {
     expect(output).not.toContain("path /api*");
     expect(output).toContain("respond 404");
     expect(() => renderCaddyfile([route("a", "/api", "prefix", 4101), route("b", "/api", "prefix", 4102)])).toThrow(/Ambiguous route/);
+    expect(() => renderCaddyfile([route("a", "/api", "prefix", 4101), route("b", "/API/", "prefix", 4102)])).toThrow(/Ambiguous route/);
+    expect(() => renderCaddyfile([route("a", "/api", "exact", 4101), route("b", "/API", "exact", 4102)])).toThrow(/Ambiguous route/);
+    expect(() => renderCaddyfile([route("a", "/api", "exact", 4101), route("b", "/api/", "exact", 4102)])).not.toThrow();
+  });
+
+  it("reserves an entire hostname for one instance even when paths differ", () => {
+    expect(() => renderCaddyfile([
+      { ...route("first", "/one", "exact", 4101), instanceId: "first" },
+      { ...route("second", "/two", "exact", 4102), instanceId: "second" },
+    ])).toThrow(/already owned by another instance/);
   });
 
   it("rejects malformed paths and nonloopback targets before Caddy reload", () => {

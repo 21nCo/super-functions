@@ -7,7 +7,7 @@ import { composeProjectName } from "@devfn/compose";
 import { checkReadinessNow, waitForReadiness } from "@devfn/processes";
 import { describe, expect, it, vi } from "vitest";
 
-import { createPlan, DevFnOrchestrator, resolveEndpointTemplates, resolveLocalHostname } from "../src/index.js";
+import { createPlan, DevFnOrchestrator, domainAliases, resolveEndpointTemplates, resolveLocalHostname } from "../src/index.js";
 
 const fixture = (): DevFnConfig => validateDevFnConfig({
   version: 1, project: { id: "fixture" },
@@ -1603,6 +1603,26 @@ describe("endpoint and template contract", () => {
     config.processes!.api.health = { type: "http", url: `http://${resolveLocalHostname(undefined, "api", "fixture", "owner", ".test.localhost")}/health` };
     expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 }, hostnameSuffix: ".test.localhost" }))
       .toThrow(/URL-only readiness cannot wait for a selected proxy route/);
+  });
+
+  it("uses the direct HTTP lease for registered TLS aliases and rejects URL-only waits", () => {
+    const config = fixture();
+    config.profiles.default.proxy = true;
+    config.hostnames = { api: { target: "api", domain: "dev.example.test", host: "api" } };
+    const routingIdentity = {
+      projectId: "fixture", repositoryRoot: "/fixture", repositoryIdentity: "/fixture", worktreePath: "/fixture",
+      instanceId: "owner", isPrimaryWorktree: true, readableWorktreeLabel: "primary-123456",
+    };
+    const [readable, canonical] = domainAliases("api", "dev.example.test", routingIdentity);
+    for (const hostname of [readable, canonical]) {
+      config.processes!.api.health = { type: "http", port: "api", url: `https://${hostname}/health?ready=1` };
+      const direct = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", routingIdentity,
+        ports: { api: 4101, worker: 4102 } });
+      expect(direct.nodes.api.healthUrl).toBe("http://127.0.0.1:4101/health?ready=1");
+      config.processes!.api.health = { type: "http", url: `https://${hostname}/health` };
+      expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", routingIdentity,
+        ports: { api: 4101, worker: 4102 } })).toThrow(/URL-only readiness cannot wait/);
+    }
   });
 
   it("rejects URL-only readiness on a selected proxy route before state creation", async () => {

@@ -10,6 +10,15 @@ import { domainAliases, resolveInstanceIdentity } from "../src/index.js";
 const execFileAsync = promisify(execFile);
 
 describe("instance identity", () => {
+  it("does not claim a canonical alias without a successful worktree inventory", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-no-git-"));
+    try {
+      const identity = await resolveInstanceIdentity("fixture", root);
+      expect(identity.isPrimaryWorktree).toBe(false);
+      expect(domainAliases("app", "dev.example.test", identity)).toHaveLength(1);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("gives the primary worktree a canonical alias and same-named worktrees distinct readable labels", async () => {
     const parent = await mkdtemp(path.join(tmpdir(), "devfn-aliases-"));
     const root = path.join(parent, "primary");

@@ -9,7 +9,8 @@ describe("Caddy route rendering", () => {
   it("renders explicit routes without a catch-all", () => {
     const output = renderCaddyfile([{ id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off", updatedAt: "now" }]);
     expect(output).toContain("http://app-i.localhost {\n  reverse_proxy 127.0.0.1:4100\n}");
-    expect(output).toContain("default_bind 127.0.0.1 [::1]");
+    expect(output).toContain("default_bind 127.0.0.1\n");
+    expect(renderCaddyfile([], true)).toContain("default_bind 127.0.0.1 [::1]");
     expect(output).toContain("skip_install_trust");
     expect(output).toContain("http:// {\n  respond 404\n}");
     expect(output).not.toContain(":80 {");
@@ -42,6 +43,34 @@ describe("Caddy route rendering", () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
     await writeFile(path.join(stateDir, "proxy-routes.json"), "{not-json");
     await expect(new CaddyProxyController(stateDir).routes()).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
+  });
+
+  it("removes another instance and recovers its removal when a retained domain loses DNS", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-domain-cleanup-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+    const originalPath = process.env.PATH;
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const retained = { id: "a", instanceId: "a", hostname: "a.invalid.test", targetHost: "127.0.0.1", targetPort: 4101,
+      tls: "internal" as const, registeredDomain: "invalid.test", projectId: "fixture", repositoryIdentity: stateDir, updatedAt: "now" };
+    const removed = { id: "b", instanceId: "b", hostname: "b.localhost", targetHost: "127.0.0.1", targetPort: 4102,
+      tls: "off" as const, updatedAt: "now" };
+    try {
+      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      const controller = new CaddyProxyController(stateDir);
+      await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [retained, removed] }));
+      await controller.removeInstance("b");
+      expect(await controller.routes()).toEqual([retained]);
+      await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [retained, removed] }));
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [retained] }));
+      expect(await controller.routes()).toEqual([retained]);
+      await expect(controller.upsert([retained])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_UNREGISTERED" });
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
+    }
   });
 
   it("replays and commits a valid route activation journal", async () => {

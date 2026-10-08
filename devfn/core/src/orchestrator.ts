@@ -54,14 +54,14 @@ function provisionalComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, ow
     [node.name, [`${composeProjectName(config.services![node.name].projectName ?? "devfn", ownerId)}_default`]]));
 }
 
-async function needsNetworkPreflight(config: DevFnConfig, plan: LifecyclePlan, root: string, ownerId: string,
+async function needsNetworkPreflight(config: DevFnConfig, plan: LifecyclePlan, root: string, identity: RoutingIdentity,
   ports: Record<string, number>, hostnameSuffix?: string): Promise<boolean> {
   // A selected sibling URL reference must fail before creating lifecycle state.
   // Without one, pure template validation is enough here; the locked pass
   // below still reads effective Compose networks before startup or publication.
   if (JSON.stringify(config).includes("{{env.DEVFN_URL_")) return true;
-  const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix,
-    composeNetworks: provisionalComposeNetworks(config, plan, ownerId) });
+  const provisional = resolveEndpointTemplates({ config, plan, ownerId: identity.instanceId, ports, hostnameSuffix, routingIdentity: identity,
+    composeNetworks: provisionalComposeNetworks(config, plan, identity.instanceId) });
   const deadline = Date.now() + 20_000;
   for (const node of plan.nodes) {
     if (node.kind !== "service") continue;
@@ -73,11 +73,12 @@ async function needsNetworkPreflight(config: DevFnConfig, plan: LifecyclePlan, r
   return false;
 }
 
-async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, root: string, ownerId: string, ports: Record<string, number>, hostnameSuffix?: string): Promise<ReturnType<typeof resolveEndpointTemplates>> {
+async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, root: string, identity: RoutingIdentity, ports: Record<string, number>, hostnameSuffix?: string): Promise<ReturnType<typeof resolveEndpointTemplates>> {
   // Validate literals before calling Docker. Provisional defaults are used only
   // for that read-only validation; the result is never published or started.
+  const ownerId = identity.instanceId;
   const provisionalNetworks = provisionalComposeNetworks(config, plan, ownerId);
-  const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks: provisionalNetworks });
+  const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, routingIdentity: identity, composeNetworks: provisionalNetworks });
   const composeNetworks: Record<string, string[]> = {};
   const composeReferences: Record<string, Set<string>> = {};
   const deadline = Date.now() + 20_000;
@@ -89,7 +90,7 @@ async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePl
     composeNetworks[node.name] = await effectiveComposeServiceNetworks({ ...spec, env: provisional.nodes[node.name].environment }, root, ownerId, environment, deadline, references);
     composeReferences[node.name] = references;
   }
-  return resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks, composeReferences });
+  return resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, routingIdentity: identity, composeNetworks, composeReferences });
 }
 
 function compareCodepoint(left: string, right: string): number {
@@ -282,8 +283,9 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     if (receipt.allocations.some((allocation) => allocation.protocol !== (config.ports?.[allocation.service]?.protocol ?? "tcp") ||
       allocation.host !== (config.ports?.[allocation.service]?.exposure === "public" ? "0.0.0.0" : "127.0.0.1"))) return false;
     const loadedPolicy = await loadDevFnPolicy(root, config.policy);
-    resolved = await resolveWithComposeNetworks(config, plan, root, receipt.instanceId, ports, loadedPolicy?.policy.hostnameSuffix);
-    if (!receiptRoutesMatch(receipt, await selectedProxyRoutes(config, plan, await resolveInstanceIdentity(config.project.id, root), ports,
+    const identity = await resolveInstanceIdentity(config.project.id, root);
+    resolved = await resolveWithComposeNetworks(config, plan, root, identity, ports, loadedPolicy?.policy.hostnameSuffix);
+    if (!receiptRoutesMatch(receipt, await selectedProxyRoutes(config, plan, identity, ports,
       loadedPolicy?.policy.hostnameSuffix ?? ".localhost", receipt.stateDir ?? defaultStateDir()))) return false;
     if (receipt.startupFingerprints) {
       const current = await startupFingerprints(config, root, resolved);
@@ -335,10 +337,10 @@ export class DevFnOrchestrator {
     // are reserved because the Compose source can change between these steps.
     const preflightPorts = Object.fromEntries(plan.portNames.map((name) => [name, 1]));
     await selectedProxyRoutes(options.config, plan, identity, preflightPorts, loadedPolicy?.policy.hostnameSuffix ?? ".localhost", requestedStateDir);
-    if (await needsNetworkPreflight(options.config, plan, options.root, identity.instanceId, preflightPorts, loadedPolicy?.policy.hostnameSuffix)) {
-      await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, preflightPorts, loadedPolicy?.policy.hostnameSuffix);
+    if (await needsNetworkPreflight(options.config, plan, options.root, identity, preflightPorts, loadedPolicy?.policy.hostnameSuffix)) {
+      await resolveWithComposeNetworks(options.config, plan, options.root, identity, preflightPorts, loadedPolicy?.policy.hostnameSuffix);
     } else {
-      resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports: preflightPorts,
+      resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, routingIdentity: identity, ports: preflightPorts,
         hostnameSuffix: loadedPolicy?.policy.hostnameSuffix, composeNetworks: provisionalComposeNetworks(options.config, plan, identity.instanceId) });
     }
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
@@ -372,7 +374,7 @@ export class DevFnOrchestrator {
     });
     const ports = Object.fromEntries(allocations.map((item) => [item.service, item.port]));
     let resolved: ReturnType<typeof resolveEndpointTemplates>;
-    try { resolved = await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, ports, suffix); }
+    try { resolved = await resolveWithComposeNetworks(options.config, plan, options.root, identity, ports, suffix); }
     catch (error) {
       await registry.release({ invocationId, errorCode: "DEVFN_ENDPOINT_RESOLUTION_FAILED" });
       throw error;
@@ -434,7 +436,7 @@ export class DevFnOrchestrator {
     }
   }
 
-  private async prepareExisting(options: UpOptions, stateDir: string, identity: InstanceIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>, registry: FilePortRegistry): Promise<void> {
+  private async prepareExisting(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>, registry: FilePortRegistry): Promise<void> {
     const existing = await readReceipt(options.config, options.root, identity.instanceId);
     if (existing && existing.state !== "stopped") {
       assertReceiptStateDir(existing, stateDir);
@@ -450,7 +452,7 @@ export class DevFnOrchestrator {
       const replacementPlan = createPlan(options.config, options.profile);
       const existingPorts = Object.fromEntries(existing.allocations.map((allocation) => [allocation.service, allocation.port]));
       const replacementPorts = Object.fromEntries(replacementPlan.portNames.map((name) => [name, existingPorts[name] ?? 1]));
-      const replacement = await resolveWithComposeNetworks(options.config, replacementPlan, options.root, identity.instanceId, replacementPorts, loadedPolicy?.policy.hostnameSuffix);
+      const replacement = await resolveWithComposeNetworks(options.config, replacementPlan, options.root, identity, replacementPorts, loadedPolicy?.policy.hostnameSuffix);
       await startupFingerprints(options.config, options.root, replacement);
       const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
       if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });

@@ -4,7 +4,8 @@ import { isCredentialKey, validateDevFnConfig, type DevFnConfig, type HealthChec
 import { createProcessEnvironment, resolveHttpReadinessUrl } from "@devfn/processes";
 import { composeProjectName, createComposeEnvironment } from "@devfn/compose";
 
-import { DevFnError, type LifecyclePlan } from "./types.js";
+import { domainAliases } from "./identity.js";
+import { DevFnError, type LifecyclePlan, type RoutingIdentity } from "./types.js";
 
 export interface EndpointResolutionInput {
   config: DevFnConfig;
@@ -14,6 +15,8 @@ export interface EndpointResolutionInput {
   ports: Readonly<Record<string, number>>;
   /** Effective policy suffix for selected local proxy hostnames. */
   hostnameSuffix?: string;
+  /** Resolved worktree identity for registered-domain aliases. */
+  routingIdentity?: RoutingIdentity;
   /** Effective Compose network names for each selected service. Required for sibling DNS wiring. */
   composeNetworks?: Readonly<Record<string, readonly string[]>>;
   /** Selected raw Compose interpolation references, before Compose substitutes missing values. */
@@ -948,7 +951,10 @@ function selectedProxyHostnames(input: EndpointResolutionInput, config: DevFnCon
   if (!input.plan.proxy) return hostnames;
   for (const [name, hostname] of Object.entries(config.hostnames ?? {})) {
     if (hostname.profiles && !hostname.profiles.includes(input.plan.profile)) continue;
-    if (!hostname.domain) hostnames.add(resolveLocalHostname(hostname.hostname, name, config.project.id, input.ownerId, input.hostnameSuffix).toLowerCase());
+    if (hostname.domain) {
+      if (!input.routingIdentity) invalid(`hostnames.${name}`, "registered route requires resolved worktree identity.");
+      for (const alias of domainAliases(hostname.host ?? name, hostname.domain, input.routingIdentity)) hostnames.add(alias.toLowerCase());
+    } else hostnames.add(resolveLocalHostname(hostname.hostname, name, config.project.id, input.ownerId, input.hostnameSuffix).toLowerCase());
     if (!hostname.domain && hostname.hostname && !hostname.hostname.includes("{instance}")) {
       hostnames.add(hostname.hostname.replaceAll("{project}", config.project.id).toLowerCase());
     }

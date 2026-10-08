@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import net from "node:net";
 import { promisify } from "node:util";
 
 import { withFileLock } from "@devfn/ports";
@@ -33,10 +34,11 @@ export class ProxyError extends Error {
   }
 }
 
-export function renderCaddyfile(routes: readonly ProxyRoute[]): string {
-  const lines = ["{", "  admin 127.0.0.1:2019", "  default_bind 127.0.0.1 [::1]", "  skip_install_trust", "  auto_https disable_redirects", "}", ""];
+export function renderCaddyfile(routes: readonly ProxyRoute[], ipv6Loopback = false): string {
+  const lines = ["{", "  admin 127.0.0.1:2019", `  default_bind 127.0.0.1${ipv6Loopback ? " [::1]" : ""}`, "  skip_install_trust", "  auto_https disable_redirects", "}", ""];
   const hosts = new Map<string, ProxyRoute[]>();
   const routeKeys = new Set<string>();
+  const hostOwners = new Map<string, string>();
   for (const route of routes) {
     if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(route.hostname) || route.hostname.length > 253 ||
       (!route.hostname.toLowerCase().endsWith(".localhost") && (!route.registeredDomain || !domainContains(route.registeredDomain, route.hostname)))) {
@@ -51,7 +53,14 @@ export function renderCaddyfile(routes: readonly ProxyRoute[]): string {
       throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Invalid proxy path for ${route.id}.`);
     }
     if (!["off", "internal", "certificate"].includes(route.tls) || (route.tls === "certificate" && (!route.certificateFile || !route.keyFile))) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Invalid TLS mode for ${route.id}.`);
-    const key = `${route.hostname.toLowerCase()}\0${match}\0${routePath}`;
+    const hostname = route.hostname.toLowerCase();
+    const owner = hostOwners.get(hostname);
+    if (owner !== undefined && owner !== route.instanceId) throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", `Proxy hostname ${route.hostname} is already owned by another instance.`);
+    hostOwners.set(hostname, route.instanceId);
+    // Caddy path matchers ignore case. Prefix /api and /api/ also render
+    // identical matchers, so both must have one canonical ownership key.
+    const canonicalPath = (match === "prefix" ? routePath.replace(/\/$/, "") || "/" : routePath).toLowerCase();
+    const key = `${hostname}\0${match}\0${canonicalPath}`;
     if (routeKeys.has(key)) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Ambiguous route for ${route.hostname}${routePath}; path is already owned.`);
     routeKeys.add(key);
     const hostRoutes = hosts.get(route.hostname.toLowerCase()) ?? [];
@@ -79,6 +88,18 @@ export function renderCaddyfile(routes: readonly ProxyRoute[]): string {
   }
   if (hosts.size) lines.push("http:// {", "  respond 404", "}", "");
   return lines.join("\n");
+}
+
+async function ipv6LoopbackAvailable(): Promise<boolean> {
+  const server = net.createServer();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "::1", resolve);
+    });
+    return true;
+  } catch { return false; }
+  finally { if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve())); }
 }
 
 export async function proxyOwnerStatus(owner: ProxyOwner): Promise<"active" | "dead" | "identity-mismatch"> {
@@ -121,15 +142,20 @@ export class CaddyProxyController {
   private async read(): Promise<ProxyState> {
     const pending = await this.readState(this.pendingPath);
     if (pending) {
-      await this.apply(pending, true);
+      const previous = await this.readState(this.statePath);
+      await this.apply(pending, true, previous?.routes ?? []);
       return pending;
     }
     return await this.readState(this.statePath) ?? { version: 1, routes: [] };
   }
 
-  private async apply(next: ProxyState, recovering = false): Promise<void> {
-    const registrations = await readRegisteredDomains(this.stateDir);
-    for (const route of next.routes) {
+  private async apply(next: ProxyState, recovering = false, previous: readonly ProxyRoute[] = []): Promise<void> {
+    const changed = next.routes.filter((route) => {
+      const saved = previous.find((item) => item.id === route.id);
+      return !saved || JSON.stringify({ ...saved, updatedAt: undefined }) !== JSON.stringify({ ...route, updatedAt: undefined });
+    });
+    const registrations = changed.some((route) => route.registeredDomain) ? await readRegisteredDomains(this.stateDir) : [];
+    for (const route of changed) {
       if (!route.registeredDomain) continue;
       const registration = registrations.find((item) => item.domain === route.registeredDomain);
       if (!registration || !domainContains(registration.domain, route.hostname) || registration.projectId !== route.projectId ||
@@ -145,7 +171,7 @@ export class CaddyProxyController {
     if (!await this.available()) throw new ProxyError("DEVFN_PROXY_UNAVAILABLE", "Caddy is required for this profile but is unavailable.");
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
     const candidate = `${this.configPath}.candidate`;
-    await writeFile(candidate, renderCaddyfile(next.routes), { encoding: "utf8", mode: 0o600 });
+    await writeFile(candidate, renderCaddyfile(next.routes, await ipv6LoopbackAvailable()), { encoding: "utf8", mode: 0o600 });
     try { await execFileAsync("caddy", ["validate", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
     catch (error) { await rm(candidate, { force: true }); throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Caddy rejected the generated route configuration.", { cause: error instanceof Error ? error.message : String(error) }); }
     let owner: ProxyOwner | null;
@@ -244,7 +270,9 @@ export class CaddyProxyController {
       const now = new Date().toISOString();
       const nextRoutes = [...state.routes.filter((route) => !owners.has(route.instanceId)), ...routes.map((route) => ({ ...route, updatedAt: now }))];
       renderCaddyfile(nextRoutes);
-      await this.apply({ version: 1, routes: nextRoutes });
+      // Every explicitly selected route is activated again. Only routes from
+      // other instances are exempt from fresh DNS and certificate checks.
+      await this.apply({ version: 1, routes: nextRoutes }, false, state.routes.filter((route) => !owners.has(route.instanceId)));
       return nextRoutes.filter((route) => ids.has(route.id));
     }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
   }
@@ -254,7 +282,7 @@ export class CaddyProxyController {
     await withFileLock(this.lockPath, async () => {
       const state = await this.read();
       const routes = state.routes.filter((route) => route.instanceId !== instanceId);
-      if (routes.length !== state.routes.length) await this.apply({ version: 1, routes });
+      if (routes.length !== state.routes.length) await this.apply({ version: 1, routes }, false, state.routes);
     }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
   }
 
