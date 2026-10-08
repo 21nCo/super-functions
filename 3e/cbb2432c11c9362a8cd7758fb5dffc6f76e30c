@@ -1,0 +1,27 @@
+devfn/config/src/schema.ts
+  s_da789ce5ba707a::t_40e1fc84372c78 381-387,445
+devfn/config/test/domain-routes.test.ts
+  s_da789ce5ba707a::t_9363c3d0e3cff4 20-31
+devfn/proxy/README.md
+  s_da789ce5ba707a::t_4df43668ccf480 3
+devfn/proxy/src/domains.ts
+  s_da789ce5ba707a::t_df9de7cfc60b8b 44,46-52,54
+devfn/proxy/test/domain-routing.test.ts
+  s_da789ce5ba707a::t_71723177aba231 24-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3ecbb2432c11c9362a8cd7758fb5dffc6f76e30c",
+  "prompts": {},
+  "sessions": {
+    "s_da789ce5ba707a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d28491b4-e76f-4f97-be48-03c2d443b549",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
