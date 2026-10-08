@@ -197,6 +197,23 @@ describe("endpoint and template contract", () => {
     expect(resolved.nodes.api.healthUrl).toBe("http://127.0.0.1:4101/health?ready=1");
   });
 
+  it("rejects startup probes through a stripped published prefix for process and Compose", () => {
+    for (const kind of ["process", "service"] as const) {
+      const config = directProxyHealthFixture(kind);
+      config.hostnames!.api = { target: "api", hostname: "api.localhost", path: "/api", match: "prefix", stripPrefix: true };
+      if (kind === "process") config.processes!.api.health = { type: "http", port: "api", url: "http://api.localhost/api/ready" };
+      else config.services!.api.health = { type: "http", port: "api", url: "http://api.localhost/api/ready" };
+      expect(() => resolveDirectProxyHealth(config, 4101)).toThrow(/upstream direct path/);
+      if (kind === "process") config.processes!.api.health.url = "http://api.localhost/apix/ready";
+      else config.services!.api.health.url = "http://api.localhost/apix/ready";
+      expect(resolveDirectProxyHealth(config, 4101).nodes.api.healthUrl).toBe("http://127.0.0.1:4101/apix/ready");
+      config.hostnames!.ready = { target: "api", hostname: "api.localhost", path: "/api/ready", match: "exact" };
+      if (kind === "process") config.processes!.api.health.url = "http://api.localhost/api/ready";
+      else config.services!.api.health.url = "http://api.localhost/api/ready";
+      expect(resolveDirectProxyHealth(config, 4101).nodes.api.healthUrl).toBe("http://127.0.0.1:4101/api/ready");
+    }
+  });
+
   it("uses upstream HTTP for an HTTPS proxy route and retains direct HTTPS elsewhere", () => {
     const config = fixture();
     config.profiles.default.proxy = true;

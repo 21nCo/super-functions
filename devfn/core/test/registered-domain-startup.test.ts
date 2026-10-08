@@ -20,9 +20,9 @@ vi.mock("@devfn/proxy", async (importOriginal) => {
 import { validateDevFnConfig } from "@devfn/config";
 import { processBirthSignature } from "@devfn/processes";
 import { proxyListenerPorts, registerDomain } from "@devfn/proxy";
-import { DevFnOrchestrator, resolveInstanceIdentity } from "../src/index.js";
+import { DevFnOrchestrator, domainAliases, resolveInstanceIdentity, writeReceipt } from "../src/index.js";
 
-it("publishes a registered primary-worktree alias in a ready orchestrator receipt", async () => {
+it.each(["internal", "certificate"] as const)("keeps a registered %s route ready through status and retry", async (tls) => {
   const parent = await mkdtemp(path.join(tmpdir(), "devfn-registered-up-"));
   const root = path.join(parent, "repo");
   const stateDir = path.join(parent, "state");
@@ -42,7 +42,12 @@ const server = createServer((_request, response) => response.end("ok"));
 server.listen(Number(process.env.DEVFN_PORT_APP), "127.0.0.1");\n`);
     const identity = await resolveInstanceIdentity("fixture", root);
     expect(identity.isPrimaryWorktree).toBe(true);
-    await registerDomain(stateDir, { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: identity.repositoryIdentity, tls: "internal" },
+    const certificateFile = path.join(parent, "cert.pem");
+    const keyFile = path.join(parent, "key.pem");
+    if (tls === "certificate") execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
+      "-days", "1", "-subj", "/CN=unrelated.test", "-addext", `subjectAltName=${domainAliases("app", "dev.example.test", identity).map((alias) => `DNS:${alias}`).join(",")}`], { stdio: "ignore" });
+    await registerDomain(stateDir, { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: identity.repositoryIdentity, tls,
+      ...(tls === "certificate" ? { certificateFile, keyFile } : {}) },
       (async () => [{ address: "127.0.0.1", family: 4 }]) as never);
     const birthSignature = await processBirthSignature(process.pid);
     if (!birthSignature) throw new Error("Fixture process has no birth signature.");
@@ -55,6 +60,18 @@ server.listen(Number(process.env.DEVFN_PORT_APP), "127.0.0.1");\n`);
     const port = proxyListenerPorts().httpsPort;
     expect(receipt.urls.app).toBe(`https://${receipt.routes[0].hostname}${port === 443 ? "" : `:${port}`}`);
     expect(await readFile(path.join(stateDir, "Caddyfile"), "utf8")).toContain("app.dev.example.test");
+    if (tls === "certificate") expect(receipt.routes[0].certificateDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready", urls: receipt.urls });
+    await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+    if (tls === "internal") {
+      receipt.urls.app = `https://${receipt.routes[0].hostname}${port === 443 ? ":8443" : ""}`;
+      await writeReceipt(receipt);
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+      const refreshed = await orchestrator.up({ config, root, stateDir });
+      expect(refreshed.invocationId).not.toBe(receipt.invocationId);
+      expect(refreshed.urls.app).toBe(`https://${refreshed.routes[0].hostname}${port === 443 ? "" : `:${port}`}`);
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready", urls: refreshed.urls });
+    }
     expect((await orchestrator.down({ config, root, stateDir })).state).toBe("stopped");
   } finally {
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);

@@ -217,7 +217,9 @@ function receiptRoutesMatch(receipt: LifecycleReceipt, expected: readonly Omit<P
     if (!saved) return false;
     const current = saved as unknown as Record<string, unknown>;
     const planned = route as unknown as Record<string, unknown>;
-    return new Set([...Object.keys(current).filter((key) => key !== "updatedAt"), ...Object.keys(planned)]).size === Object.keys(planned).length &&
+    if (current.certificateDigest !== undefined &&
+      (route.tls !== "certificate" || typeof current.certificateDigest !== "string" || !/^[a-f0-9]{64}$/.test(current.certificateDigest))) return false;
+    return new Set([...Object.keys(current).filter((key) => key !== "updatedAt" && key !== "certificateDigest"), ...Object.keys(planned)]).size === Object.keys(planned).length &&
       Object.entries(planned).every(([key, value]) => current[key] === value);
   });
 }
@@ -294,6 +296,9 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     resolved = await resolveWithComposeNetworks(config, plan, root, identity, ports, loadedPolicy?.policy.hostnameSuffix);
     if (!receiptRoutesMatch(receipt, await selectedProxyRoutes(config, plan, identity, ports,
       loadedPolicy?.policy.hostnameSuffix ?? ".localhost", receipt.stateDir ?? defaultStateDir(), false))) return false;
+    const currentUrls = resolveAllocationUrls(receipt.allocations, receipt.routes, selectedHttpPorts(config, plan), resolved.directUrls);
+    if (Object.keys(currentUrls).length !== Object.keys(receipt.urls).length ||
+      Object.entries(currentUrls).some(([name, url]) => receipt.urls[name] !== url)) return false;
     if (receipt.startupFingerprints) {
       const current = await startupFingerprints(config, root, resolved);
       if (Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||
