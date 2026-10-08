@@ -21,6 +21,8 @@ describe("registered local domains", () => {
     await expect(verifyLocalDns("api.example.test", resolver([]) as never)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
     await expect(verifyLocalDns("api.example.test", resolver(["127.0.0.1", "192.0.2.1"]) as never)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
     await expect(verifyLocalDns("api.example.test", resolver(["::1", "127.2.3.4"]) as never)).resolves.toBeUndefined();
+    await expect(verifyLocalDns("api.example.test", (() => new Promise(() => {})) as never, 20))
+      .rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
   });
 
   it("fails closed on corrupt machine state", async () => {

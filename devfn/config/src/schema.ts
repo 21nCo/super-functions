@@ -378,7 +378,13 @@ function validateReferences(config: DevFnConfig): void {
     }
   }
   for (const [name, spec] of Object.entries(config.hostnames ?? {})) {
-    if (spec.domain) continue;
+    if (spec.domain) {
+      const label = spec.host ?? name;
+      if (label.length > 54 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)) {
+        fail(`hostnames.${name} requires a registered-domain host label of at most 54 DNS-safe characters.`, `hostnames.${name}${spec.host ? ".host" : ""}`);
+      }
+      continue;
+    }
     const expanded = (spec.hostname ?? `${name}-{instance}.localhost`).replaceAll("{instance}", "instance").replaceAll("{project}", config.project.id);
     if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(expanded)) fail(`hostnames.${name}.hostname resolves to an invalid .localhost hostname for project ${config.project.id}.`, `hostnames.${name}.hostname`);
   }
@@ -436,7 +442,7 @@ export function validateDevFnPolicy(value: unknown): DevFnPolicy {
     return input.ports.map((item, index) => policyEntry(item, `ports[${index}]`));
   })();
   const hostnameSuffix = optionalString(input.hostnameSuffix, "hostnameSuffix");
-  if (hostnameSuffix && (!/^\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*localhost$/.test(hostnameSuffix) || hostnameSuffix.length > 230)) fail("hostnameSuffix must be a valid dot-prefixed .localhost suffix.", "hostnameSuffix");
+  if (hostnameSuffix && (!/^\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*localhost$/i.test(hostnameSuffix) || hostnameSuffix.length > 230)) fail("hostnameSuffix must be a valid dot-prefixed .localhost suffix.", "hostnameSuffix");
   return {
     version: 1,
     ...(range(input.fallbackRange, "fallbackRange") ? { fallbackRange: range(input.fallbackRange, "fallbackRange") } : {}),

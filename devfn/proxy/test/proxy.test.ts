@@ -89,6 +89,38 @@ describe("Caddy route rendering", () => {
     }
   });
 
+  it("releases the shared lock after a stalled domain lookup so a sibling can stop", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-dns-lock-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+    const originalPath = process.env.PATH;
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const sibling = { id: "sibling", instanceId: "sibling", hostname: "sibling.localhost", targetHost: "127.0.0.1", targetPort: 4101, tls: "off" as const };
+    const stalled = { id: "stalled", instanceId: "stalled", hostname: "stalled.dev.example.test", targetHost: "127.0.0.1", targetPort: 4102,
+      tls: "internal" as const, registeredDomain: "dev.example.test", projectId: "fixture", repositoryIdentity: stateDir };
+    try {
+      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+      await writeFile(path.join(stateDir, "domains.json"), JSON.stringify({ version: 1, domains: [
+        { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: stateDir, tls: "internal" },
+      ] }));
+      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      let signalLookup!: () => void;
+      const lookupStarted = new Promise<void>((resolve) => { signalLookup = resolve; });
+      const controller = new CaddyProxyController(stateDir, (async () => { signalLookup(); return await new Promise(() => {}); }) as never, 50);
+      await controller.upsert([sibling]);
+      const activation = controller.upsert([stalled]);
+      await lookupStarted;
+      const cleanup = controller.removeInstance("sibling");
+      await expect(activation).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
+      await expect(cleanup).resolves.toBeUndefined();
+      expect(await controller.routes()).toEqual([]);
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
+    }
+  });
+
   it("an empty owner selection recovers pending state and removes only that owner's routes", async () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-empty-"));
     const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));

@@ -17,4 +17,16 @@ it("rejects ambiguous URL paths and deceptive localhost policy suffixes", () => 
   expect(() => validateDevFnConfig(config({ path: "/api%2fadmin" }))).toThrow(/unambiguous/);
   expect(() => validateDevFnConfig(config({ path: "/api", match: "exact", stripPrefix: true }))).toThrow(/prefix/);
   expect(() => validateDevFnPolicy({ version: 1, hostnameSuffix: ".localhost.evil.test" })).toThrow(/localhost/);
+  expect(validateDevFnPolicy({ version: 1, hostnameSuffix: ".Corp.localhost" }).hostnameSuffix).toBe(".Corp.localhost");
+  expect(validateDevFnPolicy({ version: 1, hostnameSuffix: ".LOCALHOST" }).hostnameSuffix).toBe(".LOCALHOST");
+  expect(() => validateDevFnPolicy({ version: 1, hostnameSuffix: ".Corp.localhost.evil.test" })).toThrow(/localhost/);
+});
+
+it("validates inferred registered-domain labels while loading the manifest", () => {
+  const withKey = (key: string, host?: string) => ({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    profiles: { default: { proxy: true } }, hostnames: { [key]: { target: "app", domain: "dev.example.test", ...(host ? { host } : {}) } } });
+  expect(() => validateDevFnConfig(withKey("a".repeat(54)))).not.toThrow();
+  expect(() => validateDevFnConfig(withKey("a".repeat(55)))).toThrow(/host label/);
+  expect(() => validateDevFnConfig(withKey("api_v2"))).toThrow(expect.objectContaining({ path: "hostnames.api_v2" }));
+  expect(() => validateDevFnConfig(withKey("api_v2", "api"))).not.toThrow();
 });

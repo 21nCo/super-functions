@@ -41,10 +41,17 @@ function loopback(address: string): boolean {
   return false;
 }
 
-export async function verifyLocalDns(hostname: string, resolve: typeof lookup = lookup): Promise<void> {
+export async function verifyLocalDns(hostname: string, resolve: typeof lookup = lookup, timeoutMs = 5_000): Promise<void> {
   let answers: Array<{ address: string; family: number }>;
-  try { answers = await resolve(hostname, { all: true, verbatim: true }); }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    answers = await Promise.race([
+      resolve(hostname, { all: true, verbatim: true }),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("DNS lookup timed out.")), timeoutMs); }),
+    ]);
+  }
   catch { throw new DomainError("DEVFN_DOMAIN_DNS_INVALID", `DNS resolution failed for ${hostname}.`); }
+  finally { if (timer) clearTimeout(timer); }
   if (answers.length === 0 || answers.some((answer) => !loopback(answer.address))) {
     throw new DomainError("DEVFN_DOMAIN_DNS_INVALID", `Every resolved address for ${hostname} must be loopback.`);
   }

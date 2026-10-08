@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import net from "node:net";
+import { lookup } from "node:dns/promises";
 import { promisify } from "node:util";
 
 import { withFileLock } from "@devfn/ports";
@@ -116,7 +117,7 @@ export class CaddyProxyController {
   private readonly lockPath: string;
   private readonly ownerPath: string;
 
-  public constructor(private readonly stateDir: string) {
+  public constructor(private readonly stateDir: string, private readonly resolveDns: typeof lookup = lookup, private readonly dnsTimeoutMs = 5_000) {
     this.statePath = path.join(stateDir, "proxy-routes.json");
     this.pendingPath = path.join(stateDir, "proxy-routes.pending.json");
     this.configPath = path.join(stateDir, "Caddyfile");
@@ -167,19 +168,19 @@ export class CaddyProxyController {
       return !saved || JSON.stringify({ ...saved, updatedAt: undefined }) !== JSON.stringify({ ...route, updatedAt: undefined });
     });
     const registrations = changed.some((route) => route.registeredDomain) ? await readRegisteredDomains(this.stateDir) : [];
-    for (const route of changed) {
-      if (!route.registeredDomain) continue;
+    await Promise.all(changed.map(async (route) => {
+      if (!route.registeredDomain) return;
       const registration = registrations.find((item) => item.domain === route.registeredDomain);
       if (!registration || !domainContains(registration.domain, route.hostname) || registration.projectId !== route.projectId ||
         registration.repositoryIdentity !== route.repositoryIdentity || registration.tls !== route.tls) {
         throw new DomainError("DEVFN_DOMAIN_UNREGISTERED", `Route ${route.hostname} has no matching machine domain registration.`);
       }
-      await verifyLocalDns(route.hostname);
+      await verifyLocalDns(route.hostname, this.resolveDns, this.dnsTimeoutMs);
       if (registration.tls === "certificate") {
         if (registration.certificateFile !== route.certificateFile || registration.keyFile !== route.keyFile) throw new DomainError("DEVFN_DOMAIN_CERT_INVALID", `Certificate registration changed for ${route.hostname}.`);
         await verifyCertificate(route.hostname, route.certificateFile, route.keyFile);
       }
-    }
+    }));
     if (!await this.available()) throw new ProxyError("DEVFN_PROXY_UNAVAILABLE", "Caddy is required for this profile but is unavailable.");
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
     const candidate = `${this.configPath}.candidate`;
