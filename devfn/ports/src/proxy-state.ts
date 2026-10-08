@@ -10,7 +10,7 @@ export interface PersistedProxyRoute {
   certificateFile?: string; keyFile?: string; certificateDigest?: string;
 }
 
-const hostnamePattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const hostnamePattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
 const routePathPattern = /^\/[A-Za-z0-9._~!$&'()+,;=:@/-]*$/;
 const nonempty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
@@ -39,9 +39,11 @@ export function parsePersistedProxyRoutes(value: unknown): PersistedProxyRoute[]
       (route.stripPrefix === true && (match !== "prefix" || routePath === "/"))) throw new Error("Invalid proxy path.");
     if (route.registeredDomain !== undefined &&
       (!nonempty(route.registeredDomain) || !hostnamePattern.test(route.registeredDomain) ||
-        !(route.hostname === route.registeredDomain || route.hostname.endsWith(`.${route.registeredDomain}`)) ||
+        route.registeredDomain !== route.registeredDomain.toLowerCase() ||
+        !(route.hostname.toLowerCase() === route.registeredDomain.toLowerCase() ||
+          route.hostname.toLowerCase().endsWith(`.${route.registeredDomain.toLowerCase()}`)) ||
         !nonempty(route.projectId) || !nonempty(route.repositoryIdentity))) throw new Error("Invalid registered route.");
-    if (!route.hostname.endsWith(".localhost") && route.registeredDomain === undefined) throw new Error("Unregistered route hostname.");
+    if (!route.hostname.toLowerCase().endsWith(".localhost") && route.registeredDomain === undefined) throw new Error("Unregistered route hostname.");
     if (route.tls === "certificate") {
       if (!nonempty(route.certificateFile) || !path.isAbsolute(route.certificateFile) ||
         !nonempty(route.keyFile) || !path.isAbsolute(route.keyFile)) throw new Error("Invalid certificate route.");

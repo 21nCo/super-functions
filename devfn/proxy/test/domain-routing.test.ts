@@ -19,6 +19,8 @@ describe("registered local domains", () => {
     expect(domainContains("dev.example.test", "api.dev.example.test")).toBe(true);
     expect(domainContains("dev.example.test", "api.dev.example.test.evil.test")).toBe(false);
     expect(domainContains("dev.example.test", "apidev.example.test")).toBe(false);
+    expect(domainContains("dev.example.test", "Api.Dev.Example.Test")).toBe(true);
+    expect(domainContains("dev.example.test", "Api.Dev.Example.Test.evil.test")).toBe(false);
     const resolver = (addresses: string[]) => async () => addresses.map((address) => ({ address, family: address.includes(":") ? 6 : 4 }));
     await expect(verifyLocalDns("api.example.test", resolver([]) as never)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
     await expect(verifyLocalDns("api.example.test", resolver(["127.0.0.1", "192.0.2.1"]) as never)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
@@ -65,6 +67,24 @@ describe("registered local domains", () => {
           await expect(unregisterDomain(stateDir, "dev.example.test", "fixture", stateDir)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_INVALID" });
           expect((await readRegisteredDomains(stateDir)).map((item) => item.domain)).toEqual(["dev.example.test"]);
         }
+        await rm(path.join(stateDir, file));
+      }
+      await unregisterDomain(stateDir, "dev.example.test", "fixture", stateDir);
+      expect(await readRegisteredDomains(stateDir)).toEqual([]);
+    } finally { await rm(stateDir, { recursive: true, force: true }); }
+  });
+
+  it("keeps a registration for mixed-case active and pending route names", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-case-"));
+    const resolve = (async () => [{ address: "127.0.0.1", family: 4 }]) as never;
+    const route = { id: "mixed", instanceId: "owner", hostname: "App.Dev.Example.Test", registeredDomain: "dev.example.test",
+      projectId: "fixture", repositoryIdentity: stateDir, targetHost: "127.0.0.1", targetPort: 4100,
+      tls: "internal", updatedAt: "now" };
+    try {
+      await registerDomain(stateDir, { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: stateDir, tls: "internal" }, resolve);
+      for (const file of ["proxy-routes.json", "proxy-routes.pending.json"]) {
+        await writeFile(path.join(stateDir, file), JSON.stringify({ version: 1, routes: [route] }));
+        await expect(unregisterDomain(stateDir, "dev.example.test", "fixture", stateDir)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_IN_USE" });
         await rm(path.join(stateDir, file));
       }
       await unregisterDomain(stateDir, "dev.example.test", "fixture", stateDir);
@@ -142,10 +162,10 @@ describe("registered local domains", () => {
       const route = (id: string, hostname: string) => ({ id, instanceId: "main", hostname, targetHost: "127.0.0.1", targetPort: 4100,
         tls: "certificate" as const, registeredDomain: registration.domain, projectId: registration.projectId,
         repositoryIdentity: registration.repositoryIdentity, certificateFile, keyFile });
-      await controller.upsert([route("readable", "app-main.dev.example.test"), route("canonical", "app.dev.example.test")]);
+      await controller.upsert([route("readable", "App-Main.dev.example.test"), route("canonical", "app.dev.example.test")]);
       await expect(unregisterDomain(stateDir, registration.domain, "fixture", repo)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_IN_USE" });
       await expect(controller.upsert([route("uncovered", "app-child.dev.example.test")])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
-      expect((await controller.routes()).map((item) => item.hostname).sort()).toEqual(["app-main.dev.example.test", "app.dev.example.test"]);
+      expect((await controller.routes()).map((item) => item.hostname).sort()).toEqual(["App-Main.dev.example.test", "app.dev.example.test"]);
       expect(await readFile(path.join(stateDir, "Caddyfile"), "utf8")).not.toContain("app-child.dev.example.test");
       await controller.removeInstance("main");
       await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [{

@@ -35,7 +35,9 @@ export function normalizeDomain(value: string): string {
 }
 
 export function domainContains(domain: string, hostname: string): boolean {
-  return hostname === domain || hostname.endsWith(`.${domain}`);
+  const canonicalDomain = domain.toLowerCase();
+  const canonicalHostname = hostname.toLowerCase();
+  return canonicalHostname === canonicalDomain || canonicalHostname.endsWith(`.${canonicalDomain}`);
 }
 
 function loopback(address: string): boolean {

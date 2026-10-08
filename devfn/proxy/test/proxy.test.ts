@@ -45,6 +45,37 @@ describe("Caddy route rendering", () => {
     await expect(new CaddyProxyController(stateDir).routes()).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
   });
 
+  it("reads mixed-case localhost routes through active and pending state while a sibling changes", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-case-state-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+    const originalPath = process.env.PATH;
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const retained = { id: "retained", instanceId: "first", hostname: "App.LOCALHOST", targetHost: "127.0.0.1",
+      targetPort: 4101, tls: "off" as const, updatedAt: "now" };
+    const sibling = { id: "sibling", instanceId: "second", hostname: "Other.localhost", targetHost: "127.0.0.1",
+      targetPort: 4102, tls: "off" as const, updatedAt: "now" };
+    try {
+      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [retained] }));
+      const controller = new CaddyProxyController(stateDir);
+      expect(await controller.routes()).toEqual([retained]);
+      await expect(controller.upsert([{ ...sibling, id: "collision", hostname: "app.localhost" }]))
+        .rejects.toMatchObject({ code: "DEVFN_PROXY_OWNERSHIP_CONFLICT" });
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [retained, sibling] }));
+      expect(await controller.routes()).toEqual([retained, sibling]);
+      await controller.upsert([sibling]);
+      await controller.removeInstance("second");
+      expect(await controller.routes()).toEqual([retained]);
+      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes).toEqual([retained]);
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
+    }
+  });
+
   it("removes another instance and recovers its removal when a retained domain loses DNS", async () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-domain-cleanup-"));
     const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));

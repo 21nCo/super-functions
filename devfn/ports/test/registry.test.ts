@@ -34,6 +34,31 @@ describe("FilePortRegistry", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
+  it("reclaims an abandoned listener claim beside a mixed-case route owned by another instance", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-abandoned-case-route-"));
+    const port = 18450;
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => port + 1, async () => true);
+    try {
+      await registry.reserve({ projectId: "app", instanceId: "abandoned", invocationId: "old", profile: "default",
+        requests: [{ name: "api", spec: { preferred: port + 1 } }], proxyListenerPorts: [port] });
+      await registry.updateInvocation("old", { state: "starting" });
+      const state = JSON.parse(await readFile(registry.filePath, "utf8"));
+      state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
+      state.allocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
+      await writeFile(registry.filePath, JSON.stringify(state));
+      await writeFile(path.join(dir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [{
+        id: "sibling", instanceId: "sibling", hostname: "Sibling.localhost", targetHost: "127.0.0.1",
+        targetPort: port + 2, tls: "off", updatedAt: "now",
+      }] }));
+      await registry.reconcile();
+      await registry.gc();
+      expect((await registry.read()).invocations).toEqual([]);
+      const allocation = await registry.reserve({ projectId: "app", instanceId: "legacy", invocationId: "legacy", profile: "default",
+        requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] });
+      expect(allocation[0].port).toBe(port);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
   it("retains a ready proxy claim while an owned route or live Caddy owner remains", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-ready-proxy-"));
     const file = path.join(dir, "registry.json");
