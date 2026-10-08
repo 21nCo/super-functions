@@ -813,4 +813,129 @@ configs:
       expect(await fingerprint("10")).toBe(overridden);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
+
+  it("keeps an env_file alias of a credential out of the receipt digest", async () => {
+    await withComposeSource({
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
+      "service.env": "API_TOKEN=private-one\nPUBLIC_VALUE=${API_TOKEN}\nMODE=one\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, "service.env"), "API_TOKEN=private-two\nPUBLIC_VALUE=${API_TOKEN}\nMODE=one\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, "service.env"), "API_TOKEN=private-two\nPUBLIC_VALUE=${API_TOKEN}\nMODE=two\n");
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("tracks credential provenance through project dotenv aliases", async () => {
+    await withComposeSource({
+      ".env": "API_TOKEN=guessable-one\nPUBLIC_VALUE=${API_TOKEN}\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    command: 'echo ${PUBLIC_VALUE}'\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, ".env"), "API_TOKEN=guessable-two\nPUBLIC_VALUE=${API_TOKEN}\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: 'changed ${PUBLIC_VALUE}'\n");
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("tracks credential provenance through ordered env_file branches", async () => {
+    await withComposeSource({
+      ".env": "API_TOKEN=guessable-one\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
+      "service.env": "ACTIVATE=yes\nALIAS=${ACTIVATE:+${API_TOKEN}}\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, ".env"), "API_TOKEN=guessable-two\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, "service.env"), "ACTIVATE=\nALIAS=${ACTIVATE:+${API_TOKEN}}\n");
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("tracks a literal service override of a credential-derived env_file key", async () => {
+    await withComposeSource({
+      ".env": "API_TOKEN=guessable-one\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n    environment:\n      PUBLIC_VALUE: one\n",
+      "service.env": "PUBLIC_VALUE=${API_TOKEN}\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, ".env"), "API_TOKEN=guessable-two\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, "compose.yaml"),
+        "services:\n  api:\n    image: busybox\n    env_file: service.env\n    environment:\n      PUBLIC_VALUE: two\n");
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("keeps project interpolation distinct from an env_file secret with the same key", async () => {
+    await withComposeSource({
+      ".env": "ACTIVATE=one\nAPI_TOKEN=guessable-one\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
+      "service.env": "ACTIVATE=${API_TOKEN}\nPUBLIC=${ACTIVATE}\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, ".env"), "ACTIVATE=one\nAPI_TOKEN=guessable-two\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, ".env"), "ACTIVATE=two\nAPI_TOKEN=guessable-two\n");
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("selects an env_file path after an overwritten missing dotenv declaration", async () => {
+    await withComposeSource({
+      ".env": "DIR=${MISSING}\nDIR=service\nFILE_PATH=${DIR}.env\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: ${FILE_PATH}\n",
+      "service.env": "MODE=one\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, "service.env"), "MODE=two\n");
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("tracks multiline and escaped ordinary config content", async () => {
+    await withComposeSource({
+      ".env": "APP_CONFIG=\"first\\nline\"\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, ".env"), "APP_CONFIG=\"second\\nline\"\n");
+      expect(await fingerprint()).not.toBe(first);
+      await writeFile(path.join(root, ".env"), "APP_CONFIG=\"left\\nright\"\n");
+      const escaped = await fingerprint();
+      await writeFile(path.join(root, ".env"), "APP_CONFIG='left\\nright'\n");
+      expect(await fingerprint()).not.toBe(escaped);
+      await writeFile(path.join(root, ".env"), "APP_CONFIG='first\nline'\n");
+      const multiline = await fingerprint();
+      await writeFile(path.join(root, ".env"), "APP_CONFIG='first\nchanged'\n");
+      expect(await fingerprint()).not.toBe(multiline);
+    });
+  }, 30_000);
+
+  it("accepts an unset config variable as the empty Compose value", async () => {
+    await withComposeSource({
+      ".env": "APP_CONFIG=${UNSET}\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      await expect(fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec)))
+        .resolves.toMatch(/^[a-f0-9]{64}$/);
+    });
+  }, 30_000);
 });

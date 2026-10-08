@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, it } from "vitest";
 
 import { createScopedPathInterpolator, readComposeEnvDefinitions } from "../src/path-interpolation.js";
-import { selectedComposeEndpointReferences } from "../src/index.js";
+import { createComposeEnvironment, selectedComposeEndpointReferences } from "../src/index.js";
 
 async function withDotenv(content: string, check: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-path-contract-"));
@@ -18,6 +18,20 @@ it("uses the declaration that supplied a selected path, before later reassignmen
   await withDotenv("DIR=service\nFILE_PATH=${DIR}.env\nDIR=${HOME}\n", async (root) => {
     const interpolate = createScopedPathInterpolator({ HOME: "/private" }, Date.now() + 5_000, new Set(["HOME"]));
     expect(await interpolate(["${FILE_PATH}"], root)).toEqual(["service.env"]);
+  });
+});
+
+it("ignores an overwritten missing declaration before the selected path", async () => {
+  await withDotenv("DIR=${MISSING}\nDIR=service\nFILE_PATH=${DIR}.env\n", async (root) => {
+    const interpolate = createScopedPathInterpolator({}, Date.now() + 5_000, new Set());
+    await expect(interpolate(["${FILE_PATH}"], root)).resolves.toEqual(["service.env"]);
+  });
+});
+
+it("ignores an overwritten path alias that no longer supplies the selected file", async () => {
+  await withDotenv("C=x\nFILE_PATH=${C}/a.env\nFILE_PATH=b.env\n", async (root) => {
+    const interpolate = createScopedPathInterpolator({}, Date.now() + 5_000, new Set());
+    await expect(interpolate(["${FILE_PATH}"], root)).resolves.toEqual(["b.env"]);
   });
 });
 
@@ -86,6 +100,69 @@ it("checks generated URLs only when their value reaches the selected Compose bra
     expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set());
     await writeFile(path.join(root, ".env"), "ACTIVATE=yes\n");
     expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set(["DEVFN_URL_WEB"]));
+  });
+});
+
+it("uses ordered env_file assignments when selecting a generated URL branch", async () => {
+  await withDotenv("", async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    const source = path.join(root, "compose.yaml");
+    const envFile = path.join(root, "service.env");
+    await writeFile(source, "services:\n  api:\n    image: busybox\n    env_file: service.env\n");
+    await writeFile(envFile, "SWITCH=yes\nUPSTREAM=${SWITCH:+${DEVFN_URL_WEB}}\n");
+    const environment = createComposeEnvironment(spec, { DEVFN_URL_WEB: "http://web:8080" });
+    expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set(["DEVFN_URL_WEB"]));
+    await writeFile(envFile, "SWITCH=\nUPSTREAM=${SWITCH:+${DEVFN_URL_WEB}}\n");
+    expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set());
+  });
+});
+
+it("ignores an env_file URL reference replaced by a literal service value", async () => {
+  await withDotenv("", async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    await writeFile(path.join(root, "compose.yaml"),
+      "services:\n  api:\n    image: busybox\n    env_file: service.env\n    environment:\n      UPSTREAM: fixed\n");
+    await writeFile(path.join(root, "service.env"), "UPSTREAM=${DEVFN_URL_WEB}\n");
+    const environment = createComposeEnvironment(spec, { DEVFN_URL_WEB: "http://web:8080" });
+    expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set());
+  });
+});
+
+it("gives project dotenv values precedence over service env_file interpolation context", async () => {
+  await withDotenv("ACTIVATE=yes\n", async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    const envFile = path.join(root, "service.env");
+    await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    env_file: service.env\n");
+    const environment = createComposeEnvironment(spec, { DEVFN_URL_WEB: "http://web:8080" });
+    await writeFile(envFile, "ACTIVATE=\nUPSTREAM=${ACTIVATE:+${DEVFN_URL_WEB}}\n");
+    expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set(["DEVFN_URL_WEB"]));
+    await writeFile(path.join(root, ".env"), "ACTIVATE=\n");
+    await writeFile(envFile, "ACTIVATE=yes\nUPSTREAM=${ACTIVATE:+${DEVFN_URL_WEB}}\n");
+    expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set());
+  });
+});
+
+it("treats an unset dotenv interpolation as a declared empty value during preflight", async () => {
+  await withDotenv("X=${UNSET}\n", async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    await writeFile(path.join(root, "compose.yaml"),
+      "services:\n  api:\n    image: busybox\n    command: '${X+${HOME}}'\n");
+    await expect(selectedComposeEndpointReferences(spec, root, createComposeEnvironment(spec)))
+      .rejects.toThrow(/Unable to inspect selected Compose endpoint references/);
+  });
+});
+
+it("bounds cumulative selected dotenv expansion before Compose preflight", async () => {
+  const seed = "x".repeat(1024 * 1024);
+  await withDotenv(`A0=${seed}\nA1=${"${A0}${A0}"}\nA2=${"${A1}${A1}"}\nA3=${"${A2}${A2}"}\nMODE=okay\n`, async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: '${A3}'\n");
+    const started = Date.now();
+    await expect(selectedComposeEndpointReferences(spec, root, createComposeEnvironment(spec)))
+      .rejects.toThrow(/Unable to inspect selected Compose endpoint references/);
+    expect(Date.now() - started).toBeLessThan(3_000);
+    await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: '${MODE}'\n");
+    await expect(selectedComposeEndpointReferences(spec, root, createComposeEnvironment(spec))).resolves.toEqual(new Set());
   });
 });
 

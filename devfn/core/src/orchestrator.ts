@@ -114,7 +114,8 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
         kind: "process", command: resolveAdapterCommand(spec), cwd: processSpec.cwd ?? ".",
         exposure: processSpec.exposure ?? "local", ports: processSpec.ports ?? [],
         environment: declaredEnvironment,
-        inheritedEnvironment: Object.entries(createProcessEnvironment(spec)).filter(([key]) => !Object.hasOwn(node.environment, key))
+        inheritedEnvironment: Object.entries(createProcessEnvironment(spec))
+          .filter(([key]) => processSpec.envAllowlist?.includes(key) && !Object.hasOwn(node.environment, key))
           .sort(([a], [b]) => compareCodepoint(a, b))
           .map(([key, value]) => [key, secretNames.has(key) || isCredentialKey(key) ? "<secret-channel>" : value]),
         envAllowlist: [...(processSpec.envAllowlist ?? [])].sort(compareCodepoint), secretEnv: [...(processSpec.secretEnv ?? [])].sort(compareCodepoint),

@@ -285,6 +285,49 @@ configs:
     }
   }, 60_000);
 
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("keeps ordered env_file credential branches private across replacement", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-ordered-envfile-lifecycle-"));
+    const stateDir = path.join(root, "state");
+    const source = path.join(root, "compose.yaml");
+    const envFile = path.join(root, "service.env");
+    const spec = "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n    env_file: service.env\n";
+    await writeFile(source, spec);
+    await writeFile(envFile, "ACTIVATE=yes\nALIAS=${ACTIVATE:+${API_TOKEN}}\nMODE=one\n");
+    await writeFile(path.join(root, ".env"), "API_TOKEN=guessable-one\n");
+    const config = validateDevFnConfig({ version: 1, project: { id: "ordered-envfile-fixture" },
+      services: { api: { adapter: "compose", service: "api" } }, profiles: { default: { services: ["api"] } } });
+    const orchestrator = new DevFnOrchestrator();
+    let lastId: string | undefined;
+    try {
+      const first = await orchestrator.up({ config, root, stateDir });
+      lastId = first.services[0].containerIds[0];
+      const containerEnv = async (id: string): Promise<string[]> => JSON.parse((await execFileAsync("docker",
+        ["inspect", "--format", "{{json .Config.Env}}", id])).stdout) as string[];
+      expect(await containerEnv(lastId)).toContain("ALIAS=guessable-one");
+      await writeFile(path.join(root, ".env"), "API_TOKEN=guessable-two\n");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+      expect(JSON.stringify(await readReceipt(config, root, first.instanceId))).not.toContain("guessable-one");
+      expect(JSON.stringify(await readReceipt(config, root, first.instanceId))).not.toContain("guessable-two");
+      await writeFile(envFile, "ACTIVATE=yes\nALIAS=${ACTIVATE:+${API_TOKEN}}\nMODE=two\n");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const next = await orchestrator.up({ config, root, stateDir });
+      lastId = next.services[0].containerIds[0];
+      expect(next.invocationId).not.toBe(first.invocationId);
+      expect(await containerEnv(lastId)).toEqual(expect.arrayContaining(["ALIAS=guessable-two", "MODE=two"]));
+      await writeFile(source, "services:\n  api: [invalid\n");
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toThrow();
+      expect((await readReceipt(config, root, next.instanceId))?.invocationId).toBe(next.invocationId);
+      expect((await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", lastId])).stdout.trim()).toBe("true");
+    } finally {
+      await writeFile(source, spec).catch(() => undefined);
+      await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+      if (lastId) await execFileAsync("docker", ["inspect", lastId]).then(
+        () => { throw new Error("Fixture container survived cleanup"); }, () => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("keeps an owned Compose container running when a replacement source is invalid", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-replacement-"));
     const stateDir = path.join(root, "state");
@@ -427,6 +470,33 @@ networks:
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("rejects quoted and env_file selected sibling URLs before state creation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-raw-disjoint-networks-"));
+    const stateDir = path.join(root, "state");
+    const config = validateDevFnConfig({
+      version: 1, project: { id: "raw-disjoint-networks-fixture" }, ports: { web: {} },
+      services: {
+        web: { adapter: "compose", service: "web", ports: { web: 8080 }, health: { type: "http", port: "web" } },
+        consumer: { adapter: "compose", service: "consumer", dependsOn: ["web"] },
+      },
+      profiles: { default: { services: ["consumer"] } },
+    });
+    try {
+      const common = "services:\n  web:\n    image: busybox\n    networks: [blue]\n  consumer:\n    image: busybox\n    networks: [green]\n";
+      const networks = "networks:\n  blue: {}\n  green: {}\n";
+      for (const selected of [
+        { service: "    environment:\n      UPSTREAM: \"'${DEVFN_URL_WEB}'\"\n", env: "" },
+        { service: "    env_file: service.env\n", env: "ACTIVATE=yes\nUPSTREAM=${ACTIVATE:+${DEVFN_URL_WEB}}\n" },
+      ]) {
+        await writeFile(path.join(root, "compose.yaml"), `${common}${selected.service}${networks}`);
+        await writeFile(path.join(root, "service.env"), selected.env);
+        await expect(new DevFnOrchestrator().up({ config, root, stateDir }))
+          .rejects.toThrow(/no shared effective Compose network/);
+        await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
   it("starts a public native process with explicit HOST only after authorization", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-public-host-"));
     const stateDir = path.join(root, "state");
@@ -522,6 +592,14 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(observation).toMatchObject({ port: String(receipt.allocations[0].port), url: `http://127.0.0.1:${receipt.allocations[0].port}`, host: "127.0.0.1", devfnHost: "127.0.0.1", mode: "node", profileOnly: "first", inheritedSecretPresent: true });
       expect(observation.argv).toEqual([observation.url, "literal $HOME `id` ; & |", "127.0.0.1", "127.0.0.1"]);
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      const originalTmpdir = process.env.TMPDIR;
+      try {
+        process.env.TMPDIR = root;
+        expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      } finally {
+        if (originalTmpdir === undefined) delete process.env.TMPDIR;
+        else process.env.TMPDIR = originalTmpdir;
+      }
       if (withProxy) {
         const hostname = config.hostnames!.native;
         hostname.tls = hostname.tls === "off" ? "internal" : "off";
