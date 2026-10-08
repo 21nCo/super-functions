@@ -8,7 +8,7 @@ import { ComposeController, composeProjectName, createComposeEnvironment, create
 import { defaultStateDir, isCredentialKey, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
-import { CaddyProxyController, readRegisteredDomains, renderCaddyfile, verifyCertificate, verifyLocalDns, type ProxyRoute } from "@devfn/proxy";
+import { CaddyProxyController, proxyListenerPorts, readRegisteredDomains, renderCaddyfile, verifyCertificate, verifyLocalDns, type ProxyRoute } from "@devfn/proxy";
 
 import { domainAliases, resolveInstanceIdentity } from "./identity.js";
 import { resolveEndpointTemplates, resolveLocalHostname } from "./endpoints.js";
@@ -164,9 +164,13 @@ export function hasRecordedProcessOwner(allocations: readonly PortAllocation[], 
 
 export function resolveAllocationUrls(allocations: readonly PortAllocation[], routes: readonly ProxyRoute[], httpPorts: ReadonlySet<string>, directUrls: Readonly<Record<string, string>> = {}): Record<string, string> {
   const urls: Record<string, string> = {};
+  const listenerPorts = proxyListenerPorts();
   for (const allocation of allocations) {
     const route = allocation.protocol === "tcp" ? routes.find((item) => item.targetPort === allocation.port) : undefined;
-    if (route) urls[allocation.service] = `${route.tls === "off" ? "http" : "https"}://${route.hostname}${route.path && route.path !== "/" ? route.path : ""}`;
+    if (route) {
+      const port = route.tls === "off" ? listenerPorts.httpPort : listenerPorts.httpsPort;
+      urls[allocation.service] = `${route.tls === "off" ? "http" : "https"}://${route.hostname}${port === (route.tls === "off" ? 80 : 443) ? "" : `:${port}`}${route.path && route.path !== "/" ? route.path : ""}`;
+    }
     else if (allocation.protocol === "tcp" && httpPorts.has(allocation.service)) urls[allocation.service] = directUrls[allocation.service] ?? `http://127.0.0.1:${allocation.port}`;
   }
   return urls;

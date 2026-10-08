@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { hasRecordedProcessOwner, resolveAllocationUrls, selectOwnershipListeners, verifyOwnedLoopbackListeners } from "../src/index.js";
 import type { ListenerInfo, PortAllocation } from "@devfn/ports";
 import type { ProxyRoute } from "@devfn/proxy";
+import { proxyListenerPorts } from "@devfn/proxy";
 
 describe("orchestrator listener ownership", () => {
   it("keeps unrelated host listeners while suppressing Docker proxy duplicates", () => {
@@ -27,7 +28,8 @@ describe("orchestrator listener ownership", () => {
     const allocation = { service: "web", protocol: "tcp", port: 4100 } as PortAllocation;
     const udp = { service: "socket", protocol: "udp", port: 4100 } as PortAllocation;
     const route = { hostname: "web.localhost", targetPort: 4100, tls: "off" } as ProxyRoute;
-    expect(resolveAllocationUrls([allocation, udp], [route], new Set())).toEqual({ web: "http://web.localhost" });
+    const { httpPort } = proxyListenerPorts();
+    expect(resolveAllocationUrls([allocation, udp], [route], new Set())).toEqual({ web: `http://web.localhost${httpPort === 80 ? "" : `:${httpPort}`}` });
   });
 
   it("keeps a direct HTTPS URL in the public receipt when no route is installed", () => {

@@ -1,10 +1,12 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { X509Certificate } from "node:crypto";
 
 import { processBirthSignature } from "@devfn/processes";
+import { withFileLock } from "@devfn/ports";
 import { CaddyProxyController, domainContains, readRegisteredDomains, registerDomain, renderCaddyfile, unregisterDomain, verifyCertificate, verifyLocalDns } from "../src/index.js";
 
 const route = (id: string, pathValue: string, match: "exact" | "prefix", targetPort: number, stripPrefix = false) => ({
@@ -48,6 +50,28 @@ describe("registered local domains", () => {
     } finally { await rm(stateDir, { recursive: true, force: true }); await rm(repo, { recursive: true, force: true }); }
   });
 
+  it("waits for an in-flight proxy mutation before registering or unregistering domains", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-lock-"));
+    const resolve = (async () => [{ address: "127.0.0.1", family: 4 }]) as never;
+    const entry = (domain: string) => ({ domain, projectId: "fixture", repositoryIdentity: stateDir, tls: "internal" as const });
+    try {
+      await registerDomain(stateDir, entry("first.example.test"), resolve);
+      let signalLocked!: () => void;
+      const locked = new Promise<void>((resolveLocked) => { signalLocked = resolveLocked; });
+      const holder = withFileLock(path.join(stateDir, "proxy.lock"), async () => {
+        signalLocked();
+        await new Promise((resolveWait) => setTimeout(resolveWait, 10_500));
+      });
+      await locked;
+      const register = registerDomain(stateDir, entry("second.example.test"), resolve);
+      const unregister = unregisterDomain(stateDir, "first.example.test", "fixture", stateDir);
+      await holder;
+      await expect(register).resolves.toMatchObject({ domain: "second.example.test" });
+      await expect(unregister).resolves.toBeUndefined();
+      expect((await readRegisteredDomains(stateDir)).map((item) => item.domain)).toEqual(["second.example.test"]);
+    } finally { await rm(stateDir, { recursive: true, force: true }); }
+  }, 15_000);
+
   it("requires a valid matching certificate that covers the generated host", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "devfn-cert-"));
     const certificateFile = path.join(directory, "cert.pem");
@@ -56,6 +80,14 @@ describe("registered local domains", () => {
       execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
         "-days", "1", "-subj", "/CN=*.dev.example.test", "-addext", "subjectAltName=DNS:*.dev.example.test"], { stdio: "ignore" });
       await expect(verifyCertificate("app-fixture.dev.example.test", certificateFile, keyFile)).resolves.toBeUndefined();
+      const certificate = new X509Certificate(await readFile(certificateFile));
+      const now = vi.spyOn(Date, "now");
+      try {
+        now.mockReturnValue(Date.parse(certificate.validFrom) - 1);
+        await expect(verifyCertificate("app-fixture.dev.example.test", certificateFile, keyFile)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
+        now.mockReturnValue(Date.parse(certificate.validTo));
+        await expect(verifyCertificate("app-fixture.dev.example.test", certificateFile, keyFile)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
+      } finally { now.mockRestore(); }
       await expect(verifyCertificate("app.other.example.test", certificateFile, keyFile)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
       await expect(verifyCertificate("app-fixture.dev.example.test", certificateFile, certificateFile)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
       execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
@@ -105,6 +137,57 @@ describe("registered local domains", () => {
       if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
       await rm(stateDir, { recursive: true, force: true }); await rm(repo, { recursive: true, force: true });
       await rm(toolsDir, { recursive: true, force: true });
+    }
+  });
+
+  it("retains activated certificate material while a sibling stops after the source disappears", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-cert-liveness-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-cert-tools-"));
+    const originalPath = process.env.PATH;
+    const certificateFile = path.join(stateDir, "source.crt.pem");
+    const keyFile = path.join(stateDir, "source.key.pem");
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const resolve = (async () => [{ address: "127.0.0.1", family: 4 }]) as never;
+    try {
+      execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
+        "-days", "1", "-subj", "/CN=a.dev.example.test", "-addext", "subjectAltName=DNS:a.dev.example.test"], { stdio: "ignore" });
+      const registration = await registerDomain(stateDir, { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: stateDir,
+        tls: "certificate", certificateFile, keyFile }, resolve);
+      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      const controller = new CaddyProxyController(stateDir, resolve);
+      const retained = { id: "a", instanceId: "a", hostname: "a.dev.example.test", targetHost: "127.0.0.1", targetPort: 4101,
+        tls: "certificate" as const, registeredDomain: "dev.example.test", projectId: "fixture", repositoryIdentity: registration.repositoryIdentity, certificateFile, keyFile };
+      const sibling = { id: "b", instanceId: "b", hostname: "b.localhost", targetHost: "127.0.0.1", targetPort: 4102, tls: "off" as const };
+      await controller.upsert([retained]);
+      await controller.upsert([sibling]);
+      const digest = (await controller.routes()).find((route) => route.id === "a")?.certificateDigest;
+      expect(digest).toMatch(/^[a-f0-9]{64}$/);
+      if (process.platform !== "win32") {
+        expect((await stat(path.join(stateDir, "certificates"))).mode & 0o777).toBe(0o700);
+        expect((await stat(path.join(stateDir, "certificates", `${digest}.key.pem`))).mode & 0o777).toBe(0o600);
+      }
+      await rm(certificateFile); await rm(keyFile);
+      await controller.removeInstance("b");
+      expect((await controller.routes()).map((route) => route.id)).toEqual(["a"]);
+      const config = await readFile(path.join(stateDir, "Caddyfile"), "utf8");
+      expect(config).toContain(path.join(stateDir, "certificates", `${digest}.crt.pem`));
+      expect(config).not.toContain(certificateFile);
+      if (process.env.DEVFN_REAL_PROXY === "1") {
+        execFileSync("caddy", ["validate", "--config", path.join(stateDir, "Caddyfile"), "--adapter", "caddyfile"],
+          { env: { ...process.env, PATH: originalPath }, stdio: "pipe" });
+      }
+      await expect(controller.upsert([retained])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
+      expect((await controller.routes()).map((route) => route.id)).toEqual(["a"]);
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: (await controller.routes()).filter((route) => route.id !== "a") }));
+      await controller.routes();
+      expect(await controller.routes()).toEqual([]);
+      await expect(readFile(path.join(stateDir, "certificates", `${digest}.key.pem`))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
     }
   });
 });

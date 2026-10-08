@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import net from "node:net";
 import { lookup } from "node:dns/promises";
@@ -12,6 +13,9 @@ export { DomainError, domainContains, normalizeDomain, readRegisteredDomains, re
 
 const execFileAsync = promisify(execFile);
 const PROXY_LOCK_TIMEOUT_MS = 30_000;
+const DEFAULT_LISTENER_PORTS = process.platform === "darwin" ? { httpPort: 8080, httpsPort: 8443 } : { httpPort: 80, httpsPort: 443 };
+
+export function proxyListenerPorts(): { httpPort: number; httpsPort: number } { return { ...DEFAULT_LISTENER_PORTS }; }
 
 export interface ProxyRoute {
   id: string; instanceId: string; hostname: string; targetHost: string; targetPort: number;
@@ -19,6 +23,8 @@ export interface ProxyRoute {
   path?: string; match?: "exact" | "prefix"; stripPrefix?: boolean;
   registeredDomain?: string; projectId?: string; repositoryIdentity?: string;
   certificateFile?: string; keyFile?: string;
+  /** Private, immutable copy of the certificate used by an activated route. */
+  certificateDigest?: string;
 }
 interface ProxyState { version: 1; routes: ProxyRoute[] }
 interface ProxyOwner { pid: number; birthSignature?: string }
@@ -35,8 +41,8 @@ export class ProxyError extends Error {
   }
 }
 
-export function renderCaddyfile(routes: readonly ProxyRoute[], ipv6Loopback = false): string {
-  const lines = ["{", "  admin 127.0.0.1:2019", `  default_bind 127.0.0.1${ipv6Loopback ? " [::1]" : ""}`, "  skip_install_trust", "  auto_https disable_redirects", "}", ""];
+export function renderCaddyfile(routes: readonly ProxyRoute[], ipv6Loopback = false, ports = proxyListenerPorts()): string {
+  const lines = ["{", "  admin 127.0.0.1:2019", `  http_port ${ports.httpPort}`, `  https_port ${ports.httpsPort}`, `  default_bind 127.0.0.1${ipv6Loopback ? " [::1]" : ""}`, "  skip_install_trust", "  auto_https disable_redirects", "}", ""];
   const hosts = new Map<string, ProxyRoute[]>();
   const routeKeys = new Set<string>();
   const hostOwners = new Map<string, string>();
@@ -53,7 +59,8 @@ export function renderCaddyfile(routes: readonly ProxyRoute[], ipv6Loopback = fa
       !["exact", "prefix"].includes(match) || (route.stripPrefix && (match !== "prefix" || routePath === "/"))) {
       throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Invalid proxy path for ${route.id}.`);
     }
-    if (!["off", "internal", "certificate"].includes(route.tls) || (route.tls === "certificate" && (!route.certificateFile || !route.keyFile))) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Invalid TLS mode for ${route.id}.`);
+    if (!["off", "internal", "certificate"].includes(route.tls) || (route.tls === "certificate" && (!route.certificateFile || !route.keyFile)) ||
+      (route.certificateDigest !== undefined && (route.tls !== "certificate" || !/^[a-f0-9]{64}$/.test(route.certificateDigest)))) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Invalid TLS mode for ${route.id}.`);
     const hostname = route.hostname.toLowerCase();
     const owner = hostOwners.get(hostname);
     if (owner !== undefined && owner !== route.instanceId) throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", `Proxy hostname ${route.hostname} is already owned by another instance.`);
@@ -75,7 +82,7 @@ export function renderCaddyfile(routes: readonly ProxyRoute[], ipv6Loopback = fa
     if (hostRoutes.length === 1 && (tls.path ?? "/") === "/" && (tls.match ?? "prefix") === "prefix") {
       const targetHost = tls.targetHost === "::1" ? "[::1]" : tls.targetHost;
       lines.push(`${tls.tls === "off" ? "http://" : ""}${hostname} {`, `  reverse_proxy ${targetHost}:${tls.targetPort}`, ...tlsLine, "}", "");
-      if (tls.tls !== "off") lines.push(`http://${hostname} {`, "  redir https://{host}{uri} 308", "}", "");
+      if (tls.tls !== "off") lines.push(`http://${hostname} {`, `  redir https://{host}${ports.httpsPort === 443 ? "" : `:${ports.httpsPort}`}{uri} 308`, "}", "");
       continue;
     }
     lines.push(`${tls.tls === "off" ? "http://" : ""}${hostname} {`, ...tlsLine, "  route {");
@@ -87,7 +94,7 @@ export function renderCaddyfile(routes: readonly ProxyRoute[], ipv6Loopback = fa
       lines.push(`    @route${index} path ${matcher}`, `    handle @route${index} {`, ...(route.stripPrefix ? [`      uri strip_prefix ${routePath.replace(/\/$/, "")}`] : []), `      reverse_proxy ${targetHost}:${route.targetPort}`, "    }");
     });
     lines.push("    handle {", "      respond 404", "    }", "  }", "}", "");
-    if (tls.tls !== "off") lines.push(`http://${hostname} {`, "  redir https://{host}{uri} 308", "}", "");
+    if (tls.tls !== "off") lines.push(`http://${hostname} {`, `  redir https://{host}${ports.httpsPort === 443 ? "" : `:${ports.httpsPort}`}{uri} 308`, "}", "");
   }
   if (hosts.size) lines.push("http:// {", "  respond 404", "}", "");
   return lines.join("\n");
@@ -116,6 +123,7 @@ export class CaddyProxyController {
   private readonly configPath: string;
   private readonly lockPath: string;
   private readonly ownerPath: string;
+  private readonly certificateDir: string;
 
   public constructor(private readonly stateDir: string, private readonly resolveDns: typeof lookup = lookup, private readonly dnsTimeoutMs = 5_000) {
     this.statePath = path.join(stateDir, "proxy-routes.json");
@@ -123,6 +131,48 @@ export class CaddyProxyController {
     this.configPath = path.join(stateDir, "Caddyfile");
     this.lockPath = path.join(stateDir, "proxy.lock");
     this.ownerPath = path.join(stateDir, "proxy-owner.json");
+    this.certificateDir = path.join(stateDir, "certificates");
+  }
+
+  private certificatePaths(digest: string): { certificateFile: string; keyFile: string } {
+    return { certificateFile: path.join(this.certificateDir, `${digest}.crt.pem`), keyFile: path.join(this.certificateDir, `${digest}.key.pem`) };
+  }
+
+  private async snapshotCertificate(route: ProxyRoute, validate: boolean): Promise<string> {
+    try {
+      const [certificate, key] = await Promise.all([readFile(route.certificateFile!), readFile(route.keyFile!)]);
+      const digest = createHash("sha256").update(certificate).update("\0").update(key).digest("hex");
+      const target = this.certificatePaths(digest);
+      await mkdir(this.certificateDir, { recursive: true, mode: 0o700 });
+      const directory = await lstat(this.certificateDir);
+      if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error("Certificate snapshot directory is not private.");
+      await chmod(this.certificateDir, 0o700);
+      for (const [destination, content] of [[target.certificateFile, certificate], [target.keyFile, key]] as const) {
+        const temp = `${destination}.${process.pid}.${randomUUID()}.tmp`;
+        try { await writeFile(temp, content, { mode: 0o600 }); await rename(temp, destination); }
+        finally { await rm(temp, { force: true }); }
+      }
+      if (validate) await verifyCertificate(route.hostname, target.certificateFile, target.keyFile);
+      return digest;
+    } catch (error) {
+      if (error instanceof DomainError) throw error;
+      throw new DomainError("DEVFN_DOMAIN_CERT_INVALID", `Certificate material is unavailable for ${route.hostname}.`);
+    }
+  }
+
+  private async pruneCertificateSnapshots(routes: readonly ProxyRoute[]): Promise<void> {
+    const directory = await lstat(this.certificateDir).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    });
+    if (!directory) return;
+    if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error("Certificate snapshot directory is invalid.");
+    const keep = new Set(routes.flatMap((route) => route.certificateDigest ? Object.values(this.certificatePaths(route.certificateDigest)) : []));
+    for (const name of await readdir(this.certificateDir)) {
+      if (!/^[a-f0-9]{64}\.(?:crt|key)\.pem$/.test(name)) continue;
+      const file = path.join(this.certificateDir, name);
+      if (!keep.has(file)) await rm(file, { force: true });
+    }
   }
 
   public async available(): Promise<boolean> {
@@ -159,7 +209,9 @@ export class CaddyProxyController {
         return committed;
       }
     }
-    return await this.readState(this.statePath) ?? { version: 1, routes: [] };
+    const committed = await this.readState(this.statePath) ?? { version: 1, routes: [] };
+    await this.pruneCertificateSnapshots(committed.routes).catch(() => undefined);
+    return committed;
   }
 
   private async apply(next: ProxyState, recovering = false, previous: readonly ProxyRoute[] = [], rejectPending = false): Promise<void> {
@@ -182,9 +234,15 @@ export class CaddyProxyController {
       }
     }));
     if (!await this.available()) throw new ProxyError("DEVFN_PROXY_UNAVAILABLE", "Caddy is required for this profile but is unavailable.");
+    for (const route of next.routes) {
+      if (route.tls !== "certificate" || route.certificateDigest) continue;
+      route.certificateDigest = await this.snapshotCertificate(route, changed.includes(route));
+    }
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
     const candidate = `${this.configPath}.candidate`;
-    await writeFile(candidate, renderCaddyfile(next.routes, await ipv6LoopbackAvailable()), { encoding: "utf8", mode: 0o600 });
+    const renderedRoutes = next.routes.map((route) => route.certificateDigest
+      ? { ...route, ...this.certificatePaths(route.certificateDigest) } : route);
+    await writeFile(candidate, renderCaddyfile(renderedRoutes, await ipv6LoopbackAvailable()), { encoding: "utf8", mode: 0o600 });
     try { await execFileAsync("caddy", ["validate", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
     catch (error) { await rm(candidate, { force: true }); throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Caddy rejected the generated route configuration.", { cause: error instanceof Error ? error.message : String(error) }); }
     let owner: ProxyOwner | null;
@@ -269,6 +327,7 @@ export class CaddyProxyController {
     // must never replace the last committed route state after Caddy recovers.
     if (rejectPending) await rm(this.pendingPath, { force: true });
     else await rename(this.pendingPath, this.statePath);
+    await this.pruneCertificateSnapshots(next.routes).catch(() => undefined);
   }
 
   public async upsert(routes: readonly Omit<ProxyRoute, "updatedAt">[], instanceId?: string): Promise<ProxyRoute[]> {
@@ -285,7 +344,7 @@ export class CaddyProxyController {
         throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "A route ID is already owned by another instance.");
       }
       const now = new Date().toISOString();
-      const nextRoutes = [...state.routes.filter((route) => route.instanceId !== selectedOwner), ...routes.map((route) => ({ ...route, updatedAt: now }))];
+      const nextRoutes = [...state.routes.filter((route) => route.instanceId !== selectedOwner), ...routes.map(({ certificateDigest: _ignored, ...route }) => ({ ...route, updatedAt: now }))];
       renderCaddyfile(nextRoutes);
       if (routes.length === 0 && nextRoutes.length === state.routes.length) return [];
       // Every explicitly selected route is activated again. Only routes from

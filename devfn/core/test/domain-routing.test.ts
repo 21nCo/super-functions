@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { expect, it } from "vitest";
 
 import { processBirthSignature } from "@devfn/processes";
-import { CaddyProxyController, registerDomain } from "@devfn/proxy";
+import { CaddyProxyController, proxyListenerPorts, registerDomain } from "@devfn/proxy";
 import { validateDevFnConfig } from "@devfn/config";
 import { DevFnOrchestrator, domainAliases, resolveAllocationUrls, resolveInstanceIdentity } from "../src/index.js";
 
@@ -83,10 +83,11 @@ it("keeps registered-domain aliases and routes isolated across two Git worktrees
     expect((await proxy.routes()).map((route) => route.hostname).sort()).toEqual([...mainAliases, ...childAliases].sort());
     const allocation = (instanceId: string, port: number) => ({ id: instanceId, projectId: "fixture", instanceId, service: "app", protocol: "tcp" as const,
       host: "127.0.0.1", port, invocationId: "fixture", state: "active" as const, source: "exact" as const, createdAt: "now", updatedAt: "now" });
+    const tlsPort = proxyListenerPorts().httpsPort === 443 ? "" : `:${proxyListenerPorts().httpsPort}`;
     expect(resolveAllocationUrls([allocation(main.instanceId, 4101)], await proxy.routes(), new Set(["app"])).app)
-      .toBe(`https://${mainAliases[0]}`);
+      .toBe(`https://${mainAliases[0]}${tlsPort}`);
     expect(resolveAllocationUrls([allocation(child.instanceId, 4102)], await proxy.routes(), new Set(["app"])).app)
-      .toBe(`https://${childAliases[0]}`);
+      .toBe(`https://${childAliases[0]}${tlsPort}`);
     await expect(proxy.upsert([{ ...second[0], hostname: mainAliases[0] }])).rejects.toThrow(/already owned/);
     expect((await proxy.routes()).map((route) => route.hostname).sort()).toEqual([...mainAliases, ...childAliases].sort());
     await proxy.removeInstance(main.instanceId);

@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { validateDevFnConfig } from "@devfn/config";
-import { proxyOwnerStatus } from "@devfn/proxy";
+import { proxyListenerPorts, proxyOwnerStatus } from "@devfn/proxy";
 import { describe, expect, it } from "vitest";
 
 import { DevFnOrchestrator, readReceipt, resolveInstanceIdentity, resolveLocalHostname, writeReceipt } from "../src/index.js";
@@ -755,7 +755,10 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
         expect(await readFile(receipt.environmentOutputs[0], "utf8")).not.toContain("synthetic-sentinel");
         expect(await readFile(receipt.processes[0].logPath, "utf8")).not.toContain("synthetic-sentinel");
       }
-      if (withProxy) expect(receipt.urls.native).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname(undefined, "native", "endpoint-fixture", owner, ".test.localhost")}`);
+      if (withProxy) {
+        const port = withTls ? proxyListenerPorts().httpsPort : proxyListenerPorts().httpPort;
+        expect(receipt.urls.native).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname(undefined, "native", "endpoint-fixture", owner, ".test.localhost")}${port === (withTls ? 443 : 80) ? "" : `:${port}`}`);
+      }
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       config.profiles.default.environment = { MODE: "profile", PROFILE_ONLY: "second" };
@@ -919,7 +922,10 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
         const log = await execFileAsync("docker", ["logs", service.containerIds[0]]);
         expect(log.stdout + log.stderr).not.toContain("synthetic-sentinel");
       }
-      if (withProxy) expect(receipt.urls.web).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname("web.localhost", "web", "compose-endpoint-fixture", owner)}`);
+      if (withProxy) {
+        const port = withTls ? proxyListenerPorts().httpsPort : proxyListenerPorts().httpPort;
+        expect(receipt.urls.web).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname("web.localhost", "web", "compose-endpoint-fixture", owner)}${port === (withTls ? 443 : 80) ? "" : `:${port}`}`);
+      }
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       config.services!.web.env!.MODE = "service-next";

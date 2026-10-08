@@ -6,6 +6,8 @@ import path from "node:path";
 
 import { withFileLock } from "@devfn/ports";
 
+const PROXY_LOCK_TIMEOUT_MS = 30_000;
+
 export interface RegisteredDomain {
   domain: string;
   projectId: string;
@@ -136,7 +138,7 @@ export async function registerDomain(stateDir: string, entry: RegisteredDomain, 
     }
     await writeDomains(stateDir, [...domains, canonical]);
     return canonical;
-  });
+  }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
 }
 
 export async function unregisterDomain(stateDir: string, domain: string, projectId: string, repositoryIdentity: string): Promise<void> {
@@ -155,5 +157,5 @@ export async function unregisterDomain(stateDir: string, domain: string, project
       if (routes.routes?.some((route) => route.registeredDomain === domain)) throw new DomainError("DEVFN_DOMAIN_IN_USE", `Domain ${domain} still has active routes.`);
     }
     await writeDomains(stateDir, domains.filter((item) => item.domain !== domain));
-  });
+  }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
 }
