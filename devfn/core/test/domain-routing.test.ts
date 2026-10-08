@@ -8,40 +8,72 @@ import { expect, it } from "vitest";
 import { processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController, proxyListenerPorts, registerDomain } from "@devfn/proxy";
 import { validateDevFnConfig } from "@devfn/config";
+import { FilePortRegistry } from "@devfn/ports";
 import { DevFnOrchestrator, domainAliases, resolveAllocationUrls, resolveInstanceIdentity } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 
-it("protects Caddy listener ports before startup, including sibling profiles and UDP", async () => {
+it("protects Caddy listener ports for selected proxy routes while preserving no-proxy v0.1 ports", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-listener-reservation-"));
   const { httpPort, httpsPort } = proxyListenerPorts();
   try {
-    for (const [name, preferred, exact, protocol, proxy] of [
+    for (const [name, preferred, exact, protocol, proxy] of ([
       ["exact", httpsPort, true, "tcp", true],
       ["preferred", httpPort, false, "tcp", true],
-      ["sibling", httpsPort, false, "udp", false],
-    ] as const) {
+      ["no-proxy-exact", httpsPort, true, "udp", false],
+      ["no-proxy-preferred", httpPort, false, "tcp", false],
+    ] as const).filter((item) => item[4] || process.platform === "darwin")) {
       const stateDir = path.join(root, name);
       const started = path.join(root, `${name}.started`);
       const config = validateDevFnConfig({ version: 1, project: { id: name },
         ports: { app: { preferred, exact, protocol } },
         processes: { app: { adapter: "command", command: [process.execPath, "-e", "require('node:fs').writeFileSync(process.argv[1], 'started'); process.exit(7)", started], ports: ["app"] } },
-        profiles: { default: { processes: ["app"], proxy } } });
+        profiles: { default: { processes: ["app"], proxy } },
+        ...(proxy ? { hostnames: { app: { target: "app" } } } : {}) });
       await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toMatchObject({
-        code: exact ? "DEVFN_PORT_CONFLICT" : "DEVFN_START_FAILED",
+        code: proxy && exact ? "DEVFN_PORT_CONFLICT" : "DEVFN_START_FAILED",
       });
-      if (exact) {
+      if (proxy && exact) {
         await expect(access(started)).rejects.toMatchObject({ code: "ENOENT" });
         const registry = JSON.parse(await readFile(path.join(stateDir, "registry.json"), "utf8")) as { allocations: unknown[]; invocations: unknown[] };
         expect(registry.allocations).toHaveLength(0);
         expect(registry.invocations).toHaveLength(0);
       } else {
-        const registry = JSON.parse(await readFile(path.join(stateDir, "registry.json"), "utf8")) as { allocations: Array<{ port: number; protocol: string }> };
+        const registry = JSON.parse(await readFile(path.join(stateDir, "registry.json"), "utf8")) as {
+          allocations: Array<{ port: number; protocol: string }>; invocations: Array<{ state: string; proxyListenerPorts?: number[] }> };
         expect(registry.allocations).toHaveLength(1);
-        expect(registry.allocations[0].port).not.toBe(preferred);
+        expect(registry.allocations[0].port === preferred).toBe(!proxy);
         expect(registry.allocations[0].protocol).toBe(protocol);
+        if (proxy) {
+          expect(registry.invocations[0]).toMatchObject({ state: "failed", proxyListenerPorts: [httpPort, httpsPort] });
+          const released = await new FilePortRegistry(path.join(stateDir, "registry.json"), undefined, async () => true).reserve({ projectId: name, instanceId: "later-sibling", invocationId: "later-sibling", profile: "default",
+            requests: [{ name: "listener", spec: { preferred: httpPort, exact: true } }] });
+          expect(released[0].port).toBe(httpPort);
+        }
       }
     }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it("rejects proxy activation behind a sibling listener lease before changing either lifecycle", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-sibling-"));
+  const stateDir = path.join(root, "machine-state");
+  const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+  const port = proxyListenerPorts().httpPort;
+  const started = path.join(root, "started");
+  const config = validateDevFnConfig({ version: 1, project: { id: "proxy-fixture" },
+    ports: { app: {} }, processes: { app: { adapter: "command", command: [process.execPath, "-e", "require('node:fs').writeFileSync(process.argv[1], 'started')", started], ports: ["app"] } },
+    profiles: { default: { processes: ["app"], proxy: true } }, hostnames: { app: { target: "app" } } });
+  try {
+    await registry.reserve({ projectId: "sibling", instanceId: "sibling-id", invocationId: "sibling-run", profile: "default",
+      requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] });
+    const before = await registry.read();
+    await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+    await expect(access(started)).rejects.toMatchObject({ code: "ENOENT" });
+    const after = await registry.read();
+    expect(after.allocations).toEqual(before.allocations);
+    expect(after.invocations).toEqual(before.invocations);
+    await expect(access(path.join(stateDir, "proxy-routes.json"))).rejects.toMatchObject({ code: "ENOENT" });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

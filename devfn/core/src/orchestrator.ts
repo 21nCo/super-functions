@@ -362,9 +362,12 @@ export class DevFnOrchestrator {
 
   private async upLocked(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>): Promise<LifecycleReceipt> {
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    const plan = createPlan(options.config, options.profile);
+    const profileHostnames = Object.entries(options.config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile));
+    const listenerPorts = plan.proxy && profileHostnames.length ? Object.values(proxyListenerPorts()) : [];
+    if (listenerPorts.length) await registry.assertProxyListenerAvailable(listenerPorts, identity.instanceId);
     await this.prepareExisting(options, stateDir, identity, loadedPolicy, registry);
     await registry.recoverInterrupted(identity.instanceId);
-    const plan = createPlan(options.config, options.profile);
     const publicNodes = plan.nodes.filter((node) => node.kind === "process" && options.config.processes?.[node.name]?.exposure === "public").map((node) => node.name);
     const publicPorts = plan.portNames.filter((name) => options.config.ports?.[name]?.exposure === "public");
     if ((publicNodes.length || publicPorts.length) && !options.allowPublic) {
@@ -374,7 +377,6 @@ export class DevFnOrchestrator {
     const runtimeDir = await secureRuntimeDirectory(options.config, options.root, identity.instanceId);
     const policy = resolvePolicy(loadedPolicy?.policy ?? null, options.config.project.id);
     const suffix = loadedPolicy?.policy.hostnameSuffix ?? ".localhost";
-    const profileHostnames = Object.entries(options.config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile));
     const configuredHostnames = Object.fromEntries(profileHostnames.filter(([, spec]) => !spec.domain).map(([name, spec]) => [spec.target, resolveLocalHostname(spec.hostname, name, options.config.project.id, identity.instanceId, suffix)]));
     const allocations = await registry.reserve({
       projectId: options.config.project.id,
@@ -383,10 +385,10 @@ export class DevFnOrchestrator {
       profile: plan.profile,
       requests: plan.portNames.map((name) => ({ name, spec: options.config.ports?.[name] ?? {}, ...(configuredHostnames[name] ? { hostname: configuredHostnames[name] } : {}) })),
       ...policy,
-      // Caddy's HTTP/HTTPS ports belong to the machine-wide proxy even when
-      // this profile does not start it. Reserve both protocols so a sibling
-      // can activate HTTP/3 without colliding with an existing DevFn lease.
-      protectedPorts: new Set([...policy.protectedPorts, ...Object.values(proxyListenerPorts())]),
+      // A selected proxy route claims both listener ports across protocols.
+      // The registry excludes active claims from sibling reservations while
+      // keeping no-proxy v0.1 allocations unchanged until Caddy is requested.
+      ...(listenerPorts.length ? { proxyListenerPorts: listenerPorts } : {}),
     });
     const ports = Object.fromEntries(allocations.map((item) => [item.service, item.port]));
     let resolved: ReturnType<typeof resolveEndpointTemplates>;

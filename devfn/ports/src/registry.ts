@@ -78,8 +78,19 @@ export class FilePortRegistry {
   public async reserve(input: ReservationInput): Promise<PortAllocation[]> {
     return await this.transaction(async (state) => {
       const now = new Date().toISOString();
+      const proxyPorts = new Set(input.proxyListenerPorts ?? []);
+      for (const port of proxyPorts) {
+        const conflict = state.allocations.find((item) => active(item) && item.port === port);
+        if (conflict) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${port} is leased by ${conflict.instanceId}/${conflict.service}.`,
+          { port, instanceId: conflict.instanceId, service: conflict.service });
+      }
       const occupied = new Set(state.allocations.filter(active).map((item) => occupancyKey(item.port, item.protocol)));
-      for (const value of [...(input.protectedPorts ?? []), ...(input.excludedPorts ?? [])]) {
+      for (const invocation of state.invocations) {
+        if (["planning", "starting", "ready"].includes(invocation.state)) {
+          for (const port of invocation.proxyListenerPorts ?? []) proxyPorts.add(port);
+        }
+      }
+      for (const value of [...(input.protectedPorts ?? []), ...(input.excludedPorts ?? []), ...proxyPorts]) {
         occupied.add(occupancyKey(value, "tcp"));
         occupied.add(occupancyKey(value, "udp"));
       }
@@ -198,8 +209,19 @@ export class FilePortRegistry {
         });
       }
       state.allocations.push(...planned);
-      state.invocations.push({ id: input.invocationId, projectId: input.projectId, instanceId: input.instanceId, profile: input.profile, state: "planning", createdAt: now, updatedAt: now });
+      state.invocations.push({ id: input.invocationId, projectId: input.projectId, instanceId: input.instanceId, profile: input.profile, state: "planning", createdAt: now, updatedAt: now,
+        ...(input.proxyListenerPorts?.length ? { proxyListenerPorts: [...input.proxyListenerPorts] } : {}) });
       return planned;
+    });
+  }
+
+  public async assertProxyListenerAvailable(ports: readonly number[], exceptInstanceId: string): Promise<void> {
+    await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
+    await withFileLock(this.lockPath, async () => {
+      const state = await this.read();
+      const conflict = state.allocations.find((item) => active(item) && item.instanceId !== exceptInstanceId && ports.includes(item.port));
+      if (conflict) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${conflict.port} is leased by ${conflict.instanceId}/${conflict.service}.`,
+        { port: conflict.port, instanceId: conflict.instanceId, service: conflict.service });
     });
   }
 

@@ -42,6 +42,7 @@ export interface RegistryInvocation {
   createdAt: string;
   updatedAt: string;
   errorCode?: string;
+  proxyListenerPorts?: number[];
 }
 
 export interface RegistryState {
@@ -67,6 +68,7 @@ export interface ReservationInput {
   preferredRange?: [number, number];
   protectedPorts?: Set<number>;
   excludedPorts?: Set<number>;
+  proxyListenerPorts?: readonly number[];
 }
 
 export interface ListenerInfo {

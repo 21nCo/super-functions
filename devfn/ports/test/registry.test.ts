@@ -7,6 +7,49 @@ import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, renderPolicyI
 import { inspectContainerRunning } from "../src/registry.js";
 
 describe("FilePortRegistry", () => {
+  it("claims proxy listeners atomically across TCP and UDP and releases failed claims", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-proxy-"));
+    const port = 18443;
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => port + 1, async () => true);
+    const request = (instanceId: string, invocationId: string, protocol: "tcp" | "udp", exact = true) =>
+      registry.reserve({ projectId: "app", instanceId, invocationId, profile: "default", requests: [{ name: "api", spec: { preferred: port, exact, protocol } }] });
+    expect((await request("legacy", "legacy-exact", "tcp"))[0]).toMatchObject({ port, source: "exact" });
+    await registry.release({ invocationId: "legacy-exact" });
+    expect((await request("legacy", "legacy-preferred", "udp", false))[0]).toMatchObject({ port, source: "preferred" });
+    await expect(registry.reserve({ projectId: "app", instanceId: "proxy", invocationId: "blocked", profile: "default",
+      requests: [], proxyListenerPorts: [port] })).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+    expect((await registry.read()).invocations.map((item) => item.id)).not.toContain("blocked");
+    await registry.release({ invocationId: "legacy-preferred" });
+    expect((await request("legacy", "legacy-stable", "udp", false))[0]).toMatchObject({ port, source: "stable" });
+    await registry.release({ invocationId: "legacy-stable" });
+    await registry.reserve({ projectId: "app", instanceId: "proxy", invocationId: "proxy-starting", profile: "default",
+      requests: [], proxyListenerPorts: [port] });
+    await expect(request("sibling", "blocked-tcp", "tcp")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+    await expect(request("sibling", "blocked-udp", "udp")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+    expect((await registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: "reallocated", profile: "default",
+      requests: [{ name: "api", spec: { preferred: port, protocol: "udp", range: [port, port + 1] } }] }))[0].port).toBe(port + 1);
+    await registry.release({ invocationId: "reallocated" });
+    await registry.recoverInterrupted("proxy");
+    expect((await request("legacy", "recovered", "tcp"))[0].port).toBe(port);
+  });
+
+  it("serializes a proxy claim against a concurrent sibling listener reservation", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-proxy-race-"));
+    const file = path.join(dir, "registry.json");
+    const port = 18444;
+    const proxy = new FilePortRegistry(file, async () => port + 1, async () => true);
+    const sibling = new FilePortRegistry(file, async () => port + 1, async () => true);
+    const results = await Promise.allSettled([
+      proxy.reserve({ projectId: "app", instanceId: "proxy", invocationId: "proxy", profile: "default", requests: [], proxyListenerPorts: [port] }),
+      sibling.reserve({ projectId: "app", instanceId: "sibling", invocationId: "sibling", profile: "default",
+        requests: [{ name: "udp", spec: { preferred: port, exact: true, protocol: "udp" } }] }),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")[0]).toMatchObject({ reason: { code: "DEVFN_PORT_CONFLICT" } });
+    const state = await proxy.read();
+    expect(state.invocations).toHaveLength(1);
+    expect(state.allocations.some((allocation) => allocation.port === port)).toBe(state.invocations[0].instanceId === "sibling");
+  });
   it("gives concurrent worktrees distinct deterministic allocations", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
     const registry = new FilePortRegistry(path.join(dir, "registry.json"));
