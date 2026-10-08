@@ -19,6 +19,27 @@ const fixture = (): DevFnConfig => validateDevFnConfig({
   profiles: { default: { processes: ["worker"], environment: { MODE: "profile", BASE: "{{env.DEVFN_URL_API}}" } } },
 });
 
+function directProxyHealthFixture(kind: "process" | "service"): DevFnConfig {
+  const config = fixture();
+  config.profiles.default.proxy = true;
+  config.hostnames = { api: { target: "api", hostname: "api.localhost", tls: "internal" } };
+  const health = { type: "http" as const, port: "api", url: "https://api.localhost/health?ready=1" };
+  if (kind === "process") config.processes!.api.health = health;
+  else {
+    config.processes = {};
+    config.services = { api: { adapter: "compose", service: "api", ports: { api: 8080 }, health } };
+    config.profiles.default.processes = [];
+    config.profiles.default.services = ["api"];
+    config.profiles.default.environment = {};
+  }
+  return config;
+}
+
+function resolveDirectProxyHealth(config: DevFnConfig, port: number) {
+  return resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner",
+    ports: { api: port, worker: 4102 }, composeNetworks: { api: ["fixture_default"] } });
+}
+
 type TemplateConsumer = "profile" | "process-env" | "command" | "script" | "health" | "compose-health";
 
 function configureTemplateConsumer(source: TemplateConsumer, value: string, options: { argv?: string[]; script?: string; field?: string } = {}): DevFnConfig {
@@ -48,6 +69,15 @@ async function expectCredentialArgvRejected(vectors: string[][], root: string, s
     expect(failure).not.toContain(marker);
     await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
   }
+}
+
+function expectOrdinaryCommandPreserved(command: string[], secretKey: string): void {
+  const ordinary = fixture();
+  ordinary.processes!.worker.command = command;
+  ordinary.processes!.worker.envAllowlist = [secretKey];
+  ordinary.processes!.worker.secretEnv = [secretKey];
+  expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner",
+    ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(command);
 }
 
 describe("endpoint and template contract", () => {
@@ -184,18 +214,7 @@ describe("endpoint and template contract", () => {
   it("keeps the leased port when HTTPS proxy readiness becomes direct HTTP", () => {
     for (const port of [443, 4101]) {
       for (const kind of ["process", "service"] as const) {
-        const config = fixture();
-        config.profiles.default.proxy = true;
-        config.hostnames = { api: { target: "api", hostname: "api.localhost", tls: "internal" } };
-        if (kind === "process") config.processes!.api.health = { type: "http", port: "api", url: "https://api.localhost/health?ready=1" };
-        else {
-          config.processes = {};
-          config.services = { api: { adapter: "compose", service: "api", ports: { api: 8080 }, health: { type: "http", port: "api", url: "https://api.localhost/health?ready=1" } } };
-          config.profiles.default.processes = [];
-          config.profiles.default.services = ["api"];
-          config.profiles.default.environment = {};
-        }
-        const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: port, worker: 4102 }, composeNetworks: { api: ["fixture_default"] } });
+        const resolved = resolveDirectProxyHealth(directProxyHealthFixture(kind), port);
         expect(resolved.nodes.api.healthUrl).toBe(`http://127.0.0.1:${port}/health?ready=1`);
         expect(resolved.directUrls.api).toBe(`http://127.0.0.1:${port}`);
       }
@@ -211,18 +230,7 @@ describe("endpoint and template contract", () => {
     }) as typeof fetch;
     try {
       for (const port of [443, 4101]) for (const kind of ["process", "service"] as const) {
-        const config = fixture();
-        config.profiles.default.proxy = true;
-        config.hostnames = { api: { target: "api", hostname: "api.localhost", tls: "internal" } };
-        if (kind === "process") config.processes!.api.health = { type: "http", port: "api", url: "https://api.localhost/health?ready=1" };
-        else {
-          config.processes = {};
-          config.services = { api: { adapter: "compose", service: "api", ports: { api: 8080 }, health: { type: "http", port: "api", url: "https://api.localhost/health?ready=1" } } };
-          config.profiles.default.processes = [];
-          config.profiles.default.services = ["api"];
-          config.profiles.default.environment = {};
-        }
-        const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: port, worker: 4102 }, composeNetworks: { api: ["fixture_default"] } });
+        const resolved = resolveDirectProxyHealth(directProxyHealthFixture(kind), port);
         const health = { type: "http" as const, url: resolved.nodes.api.healthUrl!, timeoutMs: 1000 };
         const input = { health, ports: { api: port }, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true };
         await waitForReadiness(input);
@@ -500,11 +508,7 @@ describe("endpoint and template contract", () => {
     ];
     try {
       await expectCredentialArgvRejected(vectors, root, stateDir, marker);
-      const ordinary = fixture();
-      ordinary.processes!.worker.command = ["curl", "-sHX-Request-Id: fixture", "-sdpage=2", "-b", "page=2"];
-      ordinary.processes!.worker.envAllowlist = ["API_TOKEN2"];
-      ordinary.processes!.worker.secretEnv = ["API_TOKEN2"];
-      expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(ordinary.processes!.worker.command);
+      expectOrdinaryCommandPreserved(["curl", "-sHX-Request-Id: fixture", "-sdpage=2", "-b", "page=2"], "API_TOKEN2");
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 
@@ -522,11 +526,7 @@ describe("endpoint and template contract", () => {
         ["--data-raw", `{"payload":{"pass\\u0077ord":"${marker}"`],
       ];
       await expectCredentialArgvRejected(vectors, root, stateDir, marker);
-      const ordinary = fixture();
-      ordinary.processes!.worker.command = ["curl", "-vHX-Request-Id: fixture", "--data-raw", '{"page":2', "literal $HOME `id` ; & |"];
-      ordinary.processes!.worker.envAllowlist = ["GITHUBTOKEN"];
-      ordinary.processes!.worker.secretEnv = ["GITHUBTOKEN"];
-      expect(resolveEndpointTemplates({ config: ordinary, plan: createPlan(ordinary), ownerId: "owner", ports: { api: 4101, worker: 4102 } }).nodes.worker.command).toEqual(ordinary.processes!.worker.command);
+      expectOrdinaryCommandPreserved(["curl", "-vHX-Request-Id: fixture", "--data-raw", '{"page":2', "literal $HOME `id` ; & |"], "GITHUBTOKEN");
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 20_000);
 

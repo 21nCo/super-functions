@@ -94,6 +94,64 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
 }, 60_000);
 
 describe("real local startup fixtures", () => {
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("replaces environment-backed config drift while retaining duration-secret rotation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-config-lifecycle-"));
+    const stateDir = path.join(root, "state");
+    const previousDelay = process.env.DELAY;
+    const previousConfig = process.env.APP_CONFIG;
+    const source = `services:
+  api:
+    image: busybox
+    command: [sleep, '3600']
+    stop_grace_period: \${DELAY}
+    configs:
+      - {source: settings, target: /app/settings.txt}
+configs:
+  settings: {environment: APP_CONFIG}
+`;
+    const config = validateDevFnConfig({ version: 1, project: { id: "config-lifecycle-fixture" },
+      services: { api: { adapter: "compose", service: "api", envAllowlist: ["DELAY", "APP_CONFIG"], secretEnv: ["DELAY"] } },
+      profiles: { default: { services: ["api"] } } });
+    const orchestrator = new DevFnOrchestrator();
+    const containers = new Set<string>();
+    let projectName: string | undefined;
+    try {
+      process.env.DELAY = "10s";
+      process.env.APP_CONFIG = "one";
+      await writeFile(path.join(root, "compose.yaml"), source);
+      const first = await orchestrator.up({ config, root, stateDir });
+      projectName = first.services[0].projectName;
+      containers.add(first.services[0].containerIds[0]);
+      expect((await execFileAsync("docker", ["exec", first.services[0].containerIds[0], "cat", "/app/settings.txt"])).stdout).toBe("one");
+      process.env.DELAY = "20s";
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+      expect(JSON.stringify(await readReceipt(config, root, first.instanceId))).not.toContain("20s");
+      process.env.APP_CONFIG = "two";
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const second = await orchestrator.up({ config, root, stateDir });
+      containers.add(second.services[0].containerIds[0]);
+      expect(second.services[0].containerIds[0]).not.toBe(first.services[0].containerIds[0]);
+      await expect(execFileAsync("docker", ["inspect", first.services[0].containerIds[0]])).rejects.toThrow();
+      expect((await execFileAsync("docker", ["exec", second.services[0].containerIds[0], "cat", "/app/settings.txt"])).stdout).toBe("two");
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api: [invalid\n");
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toThrow();
+      expect((await readReceipt(config, root, second.instanceId))?.invocationId).toBe(second.invocationId);
+      expect((await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", second.services[0].containerIds[0]])).stdout.trim()).toBe("true");
+    } finally {
+      await writeFile(path.join(root, "compose.yaml"), source).catch(() => undefined);
+      await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+      if (previousDelay === undefined) delete process.env.DELAY; else process.env.DELAY = previousDelay;
+      if (previousConfig === undefined) delete process.env.APP_CONFIG; else process.env.APP_CONFIG = previousConfig;
+      for (const id of containers) await execFileAsync("docker", ["inspect", id]).then(
+        () => { throw new Error("Fixture container survived cleanup"); }, () => undefined);
+      if (projectName) await execFileAsync("docker", ["network", "rm", `${projectName}_default`]).catch((error: Error) => {
+        if (!error.message.includes("not found")) throw error;
+      });
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 90_000);
+
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("keeps nested include secret rotation ready and replaces ordinary drift", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-leaf-lifecycle-"));
     const stateDir = path.join(root, "state");
@@ -104,7 +162,7 @@ describe("real local startup fixtures", () => {
       profiles: { default: { services: ["api"] } } });
     const orchestrator = new DevFnOrchestrator();
     const leafSource = "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n    environment:\n      CUSTOM: ${CUSTOM}\n      MODE: ${MODE}\n";
-    let lastContainer: string | undefined;
+    const observedContainers = new Set<string>();
     try {
       delete process.env.CUSTOM;
       await mkdir(leaf, { recursive: true });
@@ -114,7 +172,7 @@ describe("real local startup fixtures", () => {
       await writeFile(path.join(leaf, ".env"), "CUSTOM=private-one\n");
       await writeFile(path.join(leaf, "compose.yaml"), leafSource);
       const first = await orchestrator.up({ config, root, stateDir });
-      lastContainer = first.services[0].containerIds[0];
+      observedContainers.add(first.services[0].containerIds[0]);
       const inspect = async (id: string) => JSON.parse((await execFileAsync("docker", ["inspect", "--format", "{{json .Config.Env}}", id])).stdout) as string[];
       expect(await inspect(first.services[0].containerIds[0])).toEqual(expect.arrayContaining(["CUSTOM=private-one", "MODE=one"]));
       await writeFile(path.join(leaf, ".env"), "CUSTOM=private-two\n");
@@ -124,7 +182,8 @@ describe("real local startup fixtures", () => {
       await writeFile(path.join(root, "child", "scope.env"), "MODE=two\n");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
       const second = await orchestrator.up({ config, root, stateDir });
-      lastContainer = second.services[0].containerIds[0];
+      observedContainers.add(second.services[0].containerIds[0]);
+      await expect(execFileAsync("docker", ["inspect", first.services[0].containerIds[0]])).rejects.toThrow();
       expect(second.invocationId).not.toBe(first.invocationId);
       expect(await inspect(second.services[0].containerIds[0])).toEqual(expect.arrayContaining(["CUSTOM=private-two", "MODE=two"]));
       await writeFile(path.join(leaf, "compose.yaml"), "services:\n  api: [invalid\n");
@@ -136,8 +195,10 @@ describe("real local startup fixtures", () => {
       await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
       if (oldCustom === undefined) delete process.env.CUSTOM;
       else process.env.CUSTOM = oldCustom;
-      if (lastContainer) await execFileAsync("docker", ["inspect", lastContainer]).then(
-        () => { throw new Error("Fixture container survived cleanup"); }, () => undefined);
+      for (const container of observedContainers) {
+        await execFileAsync("docker", ["inspect", container]).then(
+          () => { throw new Error("Fixture container survived cleanup"); }, () => undefined);
+      }
       await rm(root, { recursive: true, force: true });
     }
   }, 60_000);

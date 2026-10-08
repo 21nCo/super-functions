@@ -734,6 +734,17 @@ function rejectSchemeRelativeUserinfo(value: string, field: string): void {
   }
 }
 
+function scanSpecialSchemeAuthority(value: string, lower: string, start: number, field: string): number {
+  let index = start;
+  while (value[index] === "/" || value[index] === "\\") index += 1;
+  while (index < value.length && !/[\s\\/?#<>"'`{}|]/.test(value[index])) {
+    if (value[index] === "@") invalid(field, "credential-bearing URL must use the secret channel.");
+    if (specialSchemeLength(lower, index)) return index;
+    index += 1;
+  }
+  return index + 1;
+}
+
 function rejectSpecialSchemeUserinfo(value: string, lower: string, field: string): void {
   // WHATWG normalizes special-scheme URLs with no `//`, and treats a
   // backslash before the authority as a slash. Inspect that authority too:
@@ -742,17 +753,8 @@ function rejectSpecialSchemeUserinfo(value: string, lower: string, field: string
   while (index < value.length) {
     const schemeLength = specialSchemeLength(lower, index);
     if (!schemeLength) { index += 1; continue; }
-    index += schemeLength;
-    while (value[index] === "/" || value[index] === "\\") index += 1;
-    // A nested scheme starts a new candidate. Advancing the outer cursor
-    // rather than rescanning its suffix keeps repeated prefixes linear.
-    let nested = false;
-    while (index < value.length && !/[\s\\/?#<>"'`{}|]/.test(value[index])) {
-      if (value[index] === "@") invalid(field, "credential-bearing URL must use the secret channel.");
-      if (specialSchemeLength(lower, index)) { nested = true; break; }
-      index += 1;
-    }
-    if (!nested) index += 1;
+    // Returning at a nested scheme leaves its prefix for the outer cursor.
+    index = scanSpecialSchemeAuthority(value, lower, index + schemeLength, field);
   }
 }
 

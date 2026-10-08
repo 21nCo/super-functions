@@ -12,6 +12,36 @@ const execFileAsync = promisify(execFile);
 const MOCK_COMPOSE_HASH = "a".repeat(64);
 
 describe("ComposeController", () => {
+  it("merges unique Compose resources by effective target across short and long forms", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-unique-resources-"));
+    try {
+      await writeFile(path.join(root, "base.yaml"), `services:
+  base:
+    image: busybox
+    volumes: ['\${HOME:-./parent}:/data', './keep:/keep']
+    configs: [first, keep]
+    devices: ['/dev/one:/dev/fixture:rwm', '/dev/keep:/dev/keep']
+    ports:
+      - {target: 80, published: '8080', host_ip: 127.0.0.1, protocol: tcp, x-marker: old}
+`);
+      const source = path.join(root, "compose.yaml");
+      await writeFile(source, `services:
+  api:
+    extends: {file: base.yaml, service: base}
+    volumes: ['./safe:/data']
+    configs: [{source: second, target: /first}]
+    devices: ['/dev/two:/dev/fixture:rwm']
+    ports:
+      - {target: 80, published: '8080', host_ip: 127.0.0.1, protocol: tcp, x-marker: new}
+`);
+      const service = (await assertComposeSourceGraphBounded(source, "api", async (names) => names)).service;
+      expect(service?.volumes).toEqual(["./safe:/data", "./keep:/keep"]);
+      expect(service?.configs).toEqual([{ source: "second", target: "/first" }, "keep"]);
+      expect(service?.devices).toEqual(["/dev/two:/dev/fixture:rwm", "/dev/keep:/dev/keep"]);
+      expect(service?.ports).toEqual([{ target: 80, published: "8080", host_ip: "127.0.0.1", protocol: "tcp", "x-marker": "new" }]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("retains inherited unique mounts in bounded source inventory", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-inherited-mounts-"));
     try {
