@@ -554,6 +554,8 @@ configs:
       `DIR${index}=../scope${index + 1}\nNEXT${index}=\${MISSING${index}:-\${DIR${index}}/compose.yaml}\n` },
     { kind: "quoted-name", depth: 24, definition: (index: number) =>
       `NEXT${index}=../scope${index + 1}/com'pose.yaml\n`, childFile: "com'pose.yaml" },
+    { kind: "literal-dollar", depth: 24, definition: (index: number) =>
+      `NEXT${index}=../scope${index + 1}/compose$.yaml\n`, childFile: "compose$.yaml" },
   ])("resolves distinct $kind dotenv include paths without serial Compose probes", async ({ depth, definition, childFile }) => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-path-depth-"));
     try {

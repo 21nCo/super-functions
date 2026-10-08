@@ -92,10 +92,11 @@ export async function readComposeEnvDefinitions(file: string): Promise<EnvDefini
   found.declarations = [];
   const lines = content.split(/\r?\n/);
   if (lines[0]?.codePointAt(0) === 0xfeff) lines[0] = lines[0].slice(1);
-  for (let index = 0; index < lines.length; index += 1) {
+  let index = 0;
+  while (index < lines.length) {
     const continued = continuedEnvDefinition(lines, index, parseEnvDefinition(lines[index]));
     const entry = continued.entry;
-    index = continued.lastLine;
+    index = continued.lastLine + 1;
     if (!entry) continue;
     const [name, value] = entry;
     found.declarations.push([name, value]);
@@ -266,9 +267,14 @@ function interpolatePieces(expression: string, values: NodeJS.ProcessEnv, depth:
     else if (expression[index + 1] === "$") { piece = "$"; index += 2; }
     else {
       const token = parseInterpolationToken(expression, index);
-      if (!token) return undefined;
-      piece = selectedTokenValue(token, values, depth, maxBytes, missingAsEmpty);
-      index = token.end;
+      if (!token) {
+        if (expression[index + 1] === "{") return undefined;
+        piece = "$";
+        index += 1;
+      } else {
+        piece = selectedTokenValue(token, values, depth, maxBytes, missingAsEmpty);
+        index = token.end;
+      }
     }
     if (piece === undefined) return undefined;
     bytes += Buffer.byteLength(piece);
@@ -302,14 +308,7 @@ export function simpleInterpolation(expression: string, values: NodeJS.ProcessEn
     return expression;
   }
   if (expression.startsWith("'") && expression.endsWith("'")) {
-    const quoted = expression.slice(1, -1);
-    let literal = "";
-    for (let index = 0; index < quoted.length; index += 1) {
-      if (quoted[index] === "\\" && quoted[index + 1] === "'") index += 1;
-      literal += quoted[index];
-    }
-    if (Buffer.byteLength(literal) > maxBytes) throw new Error("Compose interpolation exceeds the value limit");
-    return literal;
+    return decodeSingleQuoted(expression.slice(1, -1), maxBytes);
   }
   if (expression.startsWith('"') && expression.endsWith('"')) {
     const inner = decodeDoubleQuoted(expression.slice(1, -1));
@@ -318,6 +317,16 @@ export function simpleInterpolation(expression: string, values: NodeJS.ProcessEn
     return interpolatePieces(inner, values, depth + 1, maxBytes, missingAsEmpty);
   }
   return interpolatePieces(expression, values, depth, maxBytes, missingAsEmpty);
+}
+
+function decodeSingleQuoted(quoted: string, maxBytes: number): string {
+  let literal = "";
+  for (let index = 0; index < quoted.length; index += 1) {
+    if (quoted[index] === "\\" && quoted[index + 1] === "'") index += 1;
+    literal += quoted[index];
+  }
+  if (Buffer.byteLength(literal) > maxBytes) throw new Error("Compose interpolation exceeds the value limit");
+  return literal;
 }
 
 interface NeededPathDeclarations { names: Set<string>; declarations: Set<string> }
@@ -379,7 +388,9 @@ function neededVariables(paths: string[], definitions: Awaited<ReturnType<typeof
     }
     const supplied = Object.hasOwn(environment, name);
     const selected = supplied ? undefined : selectedDeclaration(definitions, index, name, scopeLimit, declarationLimit);
-    const visitKey = supplied ? `host:${name}` : selected ? `${selected.scope}:${selected.index}` : `missing:${name}`;
+    let visitKey = `missing:${name}`;
+    if (supplied) visitKey = `host:${name}`;
+    else if (selected) visitKey = `${selected.scope}:${selected.index}`;
     if (visited.has(visitKey)) return;
     visited.add(visitKey);
     if (visited.size > 4096) throw new Error("Compose path interpolation exceeds the reference count limit");
@@ -407,6 +418,18 @@ function recordEvaluatedValue(local: Record<string, string>, name: string, value
   local[name] = boundedPathValue(value);
 }
 
+function scopedDeclarationValue(literal: string, values: NodeJS.ProcessEnv,
+  unresolved: ReadonlySet<string>): string | undefined {
+  const dependsOnUnresolved = [...pathInterpolationNames(dotenvDependencyExpression(literal))]
+    .some((dependency) => unresolved.has(dependency));
+  let value: string | undefined;
+  if (!dependsOnUnresolved) {
+    value = /^[A-Za-z0-9_./-]+$/.test(literal) ? literal : simpleInterpolation(literal, values);
+  }
+  if (value === undefined) selectedInterpolationReferences(literal, values, { strictMissing: true, dotenvQuotes: true });
+  return value;
+}
+
 async function evaluateScope(definition: Awaited<ReturnType<typeof scopeDefinitions>>[number],
   scopeIndex: number, needed: NeededPathDeclarations, prior: NodeJS.ProcessEnv, deadline: number,
   budget: { remaining: number }): Promise<Record<string, string>> {
@@ -417,14 +440,8 @@ async function evaluateScope(definition: Awaited<ReturnType<typeof scopeDefiniti
   for (const [index, [name, literal]] of declarations.entries()) {
     if (Date.now() > deadline) throw new Error("Compose source validation exceeded the aggregate time budget");
     if (!needed.declarations.has(`${scopeIndex}:${index}`) || Object.hasOwn(prior, name)) continue;
-    const dependsOnUnresolved = [...pathInterpolationNames(dotenvDependencyExpression(literal))]
-      .some((dependency) => unresolved.has(dependency));
-    let value: string | undefined;
-    if (!dependsOnUnresolved) {
-      value = /^[A-Za-z0-9_./-]+$/.test(literal) ? literal : simpleInterpolation(literal, values);
-    }
+    const value = scopedDeclarationValue(literal, values, unresolved);
     if (value === undefined) {
-      selectedInterpolationReferences(literal, values, { strictMissing: true, dotenvQuotes: true });
       unresolved.add(name);
       delete local[name];
       delete values[name];

@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { assertEnvironmentKeyCasing, isCredentialKey, resolveContainedPath, type ComposeServiceSpec } from "@devfn/config";
 import { waitForReadiness } from "@devfn/processes";
 import { createScopedPathInterpolator, readComposeEnvDefinitions, selectedInterpolationReferences, simpleInterpolation } from "./path-interpolation.js";
-import { assertComposeSourceGraphBounded, composeInterpolationEnvFiles, normalizeComposeRawService, pathInterpolationNames, reconcileComposeUniqueResources, type ComposeSourceInventory } from "./source-files.js";
+import { assertComposeSourceGraphBounded, composeInterpolationEnvFiles, normalizeComposeRawService, reconcileComposeUniqueResources, type ComposeSourceInventory } from "./source-files.js";
 
 const execFileAsync = promisify(execFile);
 const MINIMUM_COMPOSE_VERSION = [2, 24, 4] as const;
@@ -334,13 +334,23 @@ function assertConfigSelectionBudget(selection: ConfigSelection, depth: number):
 }
 
 function configExpressionReferences(selection: ConfigSelection, expression: ConfigExpression,
-  scopeLimit: number, declarationLimit: number, depth: number): { names: Set<string>; values: NodeJS.ProcessEnv } {
-  const values: NodeJS.ProcessEnv = { ...selection.environment };
+  scopeLimit: number, declarationLimit: number, depth: number,
+  supplied?: NodeJS.ProcessEnv): { names: Set<string>; values: NodeJS.ProcessEnv } {
+  const values: NodeJS.ProcessEnv = supplied ?? { ...selection.environment };
   const names = selectedInterpolationReferences(expression.value, values, {
     dotenvQuotes: expression.dotenvQuotes, includeConditions: true,
     lookup: (name) => previewConfigValue(selection, name, scopeLimit, declarationLimit, depth + 1),
   });
   return { names, values };
+}
+
+function capturedReferences(direct: ReadonlySet<string>,
+  lookup: (name: string) => ReadonlySet<string> | undefined): Set<string> {
+  const captured = new Set(direct);
+  for (const dependency of direct) {
+    for (const reference of lookup(dependency) ?? []) captured.add(reference);
+  }
+  return captured;
 }
 
 function previewConfigValue(selection: ConfigSelection, name: string, scopeLimit: number,
@@ -364,6 +374,10 @@ function previewConfigValue(selection: ConfigSelection, name: string, scopeLimit
     declaration.scope, declaration.index, depth);
   const value = simpleInterpolation(declaration.expression, values, 0, MAX_CONFIG_EXPANSION_BYTES, true);
   selection.resolving.delete(identity);
+  selection.previewWork -= value === undefined ? 0 : Buffer.byteLength(value);
+  if (selection.previewWork < 0) {
+    throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the aggregate work limit.");
+  }
   selection.preview.set(identity, value);
   return value;
 }
@@ -391,8 +405,38 @@ function visitConfigReference(selection: ConfigSelection, name: string, scopeLim
   for (const dependency of names) visitConfigReference(selection, dependency, declaration.scope, declaration.index, depth + 1);
 }
 
+function selectEnvFileConfigDeclarations(selection: ConfigSelection,
+  declarations: readonly (readonly [string, string])[], overridden: ReadonlySet<string>,
+  scope: number, limit: number): void {
+  const prior = new Map<string, { value: string | undefined; references: Set<string> }>();
+  const effectiveValues: NodeJS.ProcessEnv = { ...selection.environment };
+  const projectDefines = (name: string): boolean =>
+    selectedConfigDeclaration(selection.scopes, selection.index, name, scope, limit) !== undefined;
+  for (const [name, expression] of declarations) {
+    assertConfigSelectionBudget(selection, 0);
+    const { names, values } = configExpressionReferences(selection, { value: expression, dotenvQuotes: true },
+      scope, limit, 0, effectiveValues);
+    const references = capturedReferences(names, (dependency) =>
+      Object.hasOwn(selection.environment, dependency) || projectDefines(dependency)
+        ? undefined : prior.get(dependency)?.references);
+    const value = simpleInterpolation(expression, values, 0, MAX_CONFIG_EXPANSION_BYTES, true);
+    selection.previewWork -= Buffer.byteLength(name) + Buffer.byteLength(expression)
+      + (value === undefined ? 0 : Buffer.byteLength(value));
+    if (selection.previewWork < 0) {
+      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the aggregate work limit.");
+    }
+    prior.set(name, { value, references });
+    if (!Object.hasOwn(selection.environment, name) && !projectDefines(name)) effectiveValues[name] = value ?? "";
+  }
+  for (const [name, entry] of prior) {
+    if (overridden.has(name)) continue;
+    for (const reference of entry.references) visitConfigReference(selection, reference, scope, limit, 0);
+  }
+}
+
 function selectedConfigDeclarations(scopes: readonly ConfigScope[], expressions: readonly ConfigExpression[],
-  environment: NodeJS.ProcessEnv, deadline: number): Set<string> {
+  environment: NodeJS.ProcessEnv, deadline: number,
+  envFileDeclarations: readonly (readonly [string, string])[] = [], overridden = new Set<string>()): Set<string> {
   const selection: ConfigSelection = { scopes, index: configDeclarationIndex(scopes), environment, deadline,
     selected: new Set(), visited: new Set(), preview: new Map(), resolving: new Set(),
     remainingWork: MAX_CONFIG_EXPANSION_BYTES, previewWork: MAX_CONFIG_EXPANSION_BYTES };
@@ -402,6 +446,7 @@ function selectedConfigDeclarations(scopes: readonly ConfigScope[], expressions:
     const { names } = configExpressionReferences(selection, expression, scope, limit, 0);
     for (const name of names) visitConfigReference(selection, name, scope, limit, 0);
   }
+  selectEnvFileConfigDeclarations(selection, envFileDeclarations, overridden, scope, limit);
   return selection.selected;
 }
 
@@ -430,6 +475,8 @@ function credentialSafeValue(name: string, value: string | undefined, secretName
 function appendConfigDeclaration(name: string, expression: string, context: ConfigDeclarationContext): void {
   const { knownValues, safeKnownValues, local, prior, secretNames, budget, unknownValues } = context;
   const dependencies = selectedInterpolationReferences(expression, knownValues, { dotenvQuotes: true, unknownValues });
+  const captured = capturedReferences(dependencies, (dependency) =>
+    (local.get(dependency) ?? prior.get(dependency))?.references);
   const secretDerived = secretNames.has(name) || isCredentialKey(name) || [...dependencies].some((key) =>
     secretNames.has(key) || isCredentialKey(key) || local.get(key)?.secretDerived || prior.get(key)?.secretDerived);
   const unresolvedDependency = [...dependencies].some((key) => unknownValues.has(key));
@@ -440,7 +487,7 @@ function appendConfigDeclaration(name: string, expression: string, context: Conf
     ? credentialSafeValue(name, value, secretNames) : safeEvaluated;
   if (value !== undefined) budget.remaining -= Buffer.byteLength(value);
   if (budget.remaining < 0) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the aggregate byte limit.");
-  local.set(name, { value, safeValue, secretDerived, references: dependencies });
+  local.set(name, { value, safeValue, secretDerived, references: captured });
   if (value === undefined) { unknownValues.add(name); knownValues[name] = ""; safeKnownValues[name] = ""; }
   else { unknownValues.delete(name); knownValues[name] = value; safeKnownValues[name] = safeValue ?? ""; }
 }
@@ -497,12 +544,13 @@ function assertActiveReferences(names: ReadonlySet<string>, references: (name: s
 
 async function selectedComposeInterpolationValues(inventory: ComposeSourceInventory,
   environment: NodeJS.ProcessEnv, secretNames: ReadonlySet<string>,
-  extraExpressions: readonly string[], forbidden: ReadonlySet<string>, deadline: number): Promise<SelectedInterpolationState> {
+  envFileDeclarations: readonly (readonly [string, string])[], forbidden: ReadonlySet<string>, deadline: number): Promise<SelectedInterpolationState> {
   const scopes = await configScopeDeclarations(inventory.interpolationScopes);
-  const expressions: ConfigExpression[] = extraExpressions.map((value) => ({ value, dotenvQuotes: true }));
+  const expressions: ConfigExpression[] = [];
   interpolationExpressions(inventory.service, expressions);
   if (inventory.service) interpolationExpressions(selectedComposeResources(inventory.resources, inventory.service), expressions);
-  const selected = selectedConfigDeclarations(scopes, expressions, environment, deadline);
+  const selected = selectedConfigDeclarations(scopes, expressions, environment, deadline,
+    envFileDeclarations, explicitServiceEnvironmentKeys(inventory));
   const definitions = new Map<string, ConfigEnvProvenance>();
   const budget = { remaining: MAX_CONFIG_EXPANSION_BYTES };
   for (const [index, declarations] of scopes.entries()) {
@@ -759,7 +807,9 @@ interface EnvFileDeclarationContext {
 
 function resolveEnvFileDeclaration(name: string, expression: string, context: EnvFileDeclarationContext): EnvFileProvenance {
   const { known, safeKnown, unknownValues, remaining, secretNames, interpolation, selected } = context;
-  const references = selectedInterpolationReferences(expression, known, { unknownValues, dotenvQuotes: true });
+  const direct = selectedInterpolationReferences(expression, known, { unknownValues, dotenvQuotes: true });
+  const references = capturedReferences(direct, (reference) =>
+    Object.hasOwn(interpolation.values, reference) ? undefined : selected.get(reference)?.references);
   const secretDerived = secretNames.has(name) || isCredentialKey(name) || [...references].some((reference) =>
     secretNames.has(reference) || isCredentialKey(reference) || interpolation.secretDerived.has(reference)
     || (!Object.hasOwn(interpolation.values, reference) && selected.get(reference)?.secretDerived));
@@ -857,9 +907,8 @@ async function selectedComposeSourceState(spec: ComposeServiceSpec, root: string
   await assertSelectedResourcePaths(inventory, scopedPaths);
   const rawEnvDeclarations = inventory.service?.env_file === undefined
     ? [] : await rawEnvFileValues(inventory, spec.service, scopedPaths);
-  const extraExpressions = rawEnvDeclarations.map(([, expression]) => expression);
   const interpolation = await selectedComposeInterpolationValues(inventory, environment,
-    new Set(spec.secretEnv ?? []), extraExpressions, implicit, deadline);
+    new Set(spec.secretEnv ?? []), rawEnvDeclarations, implicit, deadline);
   if (inventory.service?.env_file !== undefined) {
     assertSelectedEnvFileReferences(inventory, spec, interpolation.values, interpolation.unknownValues);
   }

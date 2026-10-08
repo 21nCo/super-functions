@@ -1,6 +1,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 
 import { createScopedPathInterpolator, readComposeEnvDefinitions, simpleInterpolation } from "../src/path-interpolation.js";
@@ -178,6 +180,50 @@ it("rejects a transitive inherited host reference in selected dotenv input", asy
   });
 });
 
+it("keeps inherited host provenance captured before an active alias is reassigned", async () => {
+  await withDotenv("A=${HOME}\nB=${A}\nA=safe\nC=${A}\n", async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    await writeFile(path.join(root, "compose.yaml"),
+      "services:\n  api:\n    image: busybox\n    command: '${B}${C}'\n");
+    const supplied = { ...createComposeEnvironment(spec), HOME: "/private" };
+    await expect(selectedComposeEndpointReferences(spec, root, supplied))
+      .rejects.toThrow(/Unable to inspect selected Compose endpoint references/);
+    const declared = { ...spec, envAllowlist: ["HOME"] };
+    await expect(selectedComposeEndpointReferences(declared, root,
+      { ...createComposeEnvironment(declared), HOME: "/private" }))
+      .resolves.toEqual(new Set());
+  });
+});
+
+it("keeps inherited host provenance through a self-referential reassignment", async () => {
+  await withDotenv("A=${HOME}\nA=${A}\n", async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    await writeFile(path.join(root, "compose.yaml"),
+      "services:\n  api:\n    image: busybox\n    command: '${A}'\n");
+    await expect(selectedComposeEndpointReferences(spec, root,
+      { ...createComposeEnvironment(spec), HOME: "/private" }))
+      .rejects.toThrow(/Unable to inspect selected Compose endpoint references/);
+  });
+});
+
+it("discovers a project alias selected by an ordered service env_file condition", async () => {
+  await withDotenv("ALIAS=${DEVFN_URL_API}\n", async (root) => {
+    const spec = { adapter: "compose" as const, service: "api" };
+    await writeFile(path.join(root, "compose.yaml"),
+      "services:\n  api:\n    image: busybox\n    env_file: service.env\n");
+    const envFile = path.join(root, "service.env");
+    const environment = createComposeEnvironment(spec, { DEVFN_URL_API: "http://127.0.0.1:4101" });
+    await writeFile(envFile, "ACTIVATE=yes\nUPSTREAM=${ACTIVATE:+${ALIAS}}\n");
+    await expect(selectedComposeEndpointReferences(spec, root, environment))
+      .resolves.toEqual(new Set(["DEVFN_URL_API"]));
+    await writeFile(envFile, "ACTIVATE=\nUPSTREAM=${ACTIVATE:+${ALIAS}}\n");
+    await expect(selectedComposeEndpointReferences(spec, root, environment)).resolves.toEqual(new Set());
+    await writeFile(envFile, "ACTIVATE=yes\nCHAIN=${ALIAS}\nUPSTREAM=${ACTIVATE:+${CHAIN}}\n");
+    await expect(selectedComposeEndpointReferences(spec, root, environment))
+      .resolves.toEqual(new Set(["DEVFN_URL_API"]));
+  });
+});
+
 it("uses ordered env_file assignments when selecting a generated URL branch", async () => {
   await withDotenv("", async (root) => {
     const spec = { adapter: "compose" as const, service: "api" };
@@ -240,6 +286,15 @@ it("bounds cumulative selected dotenv expansion before Compose preflight", async
     await expect(selectedComposeEndpointReferences(spec, root, createComposeEnvironment(spec))).resolves.toEqual(new Set());
   });
 });
+
+it("bounds materialized preview aliases before exhausting a small Node heap", () => {
+  const fixture = fileURLToPath(new URL("./preview-budget.fixture.mts", import.meta.url));
+  const result = spawnSync(process.execPath,
+    ["--max-old-space-size=128", "--import", "tsx", fixture],
+    { encoding: "utf8", timeout: 5_000, maxBuffer: 1024 * 1024 });
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toBe("bounded\n");
+}, 10_000);
 
 it.each([
   ["missing", "FILE_PATH=${MISSING}.env\n"],

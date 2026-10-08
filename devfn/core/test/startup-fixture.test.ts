@@ -362,6 +362,12 @@ configs:
         .rejects.toMatchObject({ code: "DEVFN_COMPOSE_START_FAILED" });
       expect((await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", containerId])).stdout.trim()).toBe("true");
       expect((await readReceipt(config, root, receipt.instanceId))?.invocationId).toBe(receipt.invocationId);
+      await writeFile(path.join(root, ".env"), "A=${HOME}\nB=${A}\nA=safe\nC=${A}\n");
+      await writeFile(source, "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n    environment:\n      MODE: ${B}${C}\n");
+      await expect(orchestrator.up({ config, root, stateDir }))
+        .rejects.toMatchObject({ code: "DEVFN_COMPOSE_START_FAILED" });
+      expect((await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", containerId])).stdout.trim()).toBe("true");
+      expect((await readReceipt(config, root, receipt.instanceId))?.invocationId).toBe(receipt.invocationId);
       await writeFile(path.join(root, ".env"), "SET=yes\nALIAS=${HOME}\n");
       await writeFile(source, "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n    environment:\n      MODE: ${SET:-${ALIAS}}\n");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
@@ -518,11 +524,14 @@ networks:
       const common = "services:\n  web:\n    image: busybox\n    networks: [blue]\n  consumer:\n    image: busybox\n    networks: [green]\n";
       const networks = "networks:\n  blue: {}\n  green: {}\n";
       for (const selected of [
-        { service: "    environment:\n      UPSTREAM: \"'${DEVFN_URL_WEB}'\"\n", env: "" },
-        { service: "    env_file: service.env\n", env: "ACTIVATE=yes\nUPSTREAM=${ACTIVATE:+${DEVFN_URL_WEB}}\n" },
+        { service: "    environment:\n      UPSTREAM: \"'${DEVFN_URL_WEB}'\"\n", env: "", projectEnv: "" },
+        { service: "    env_file: service.env\n", env: "ACTIVATE=yes\nUPSTREAM=${ACTIVATE:+${DEVFN_URL_WEB}}\n", projectEnv: "" },
+        { service: "    env_file: service.env\n", env: "ACTIVATE=yes\nUPSTREAM=${ACTIVATE:+${ALIAS}}\n",
+          projectEnv: "ALIAS=${DEVFN_URL_WEB}\n" },
       ]) {
         await writeFile(path.join(root, "compose.yaml"), `${common}${selected.service}${networks}`);
         await writeFile(path.join(root, "service.env"), selected.env);
+        await writeFile(path.join(root, ".env"), selected.projectEnv);
         await expect(new DevFnOrchestrator().up({ config, root, stateDir }))
           .rejects.toThrow(/no shared effective Compose network/);
         await expect(stat(stateDir)).rejects.toMatchObject({ code: "ENOENT" });
