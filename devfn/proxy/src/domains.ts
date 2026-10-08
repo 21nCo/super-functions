@@ -57,22 +57,31 @@ export async function verifyLocalDns(hostname: string, resolve: typeof lookup = 
   }
 }
 
-export async function verifyCertificate(hostname: string, certificateFile: string | undefined, keyFile: string | undefined): Promise<void> {
+async function verifyCertificateMaterial(certificateFile: string | undefined, keyFile: string | undefined): Promise<X509Certificate> {
   if (!certificateFile || !keyFile || !path.isAbsolute(certificateFile) || !path.isAbsolute(keyFile)) {
     throw new DomainError("DEVFN_DOMAIN_CERT_INVALID", "Certificate and key must be explicit absolute files.");
   }
   try {
     const certificate = new X509Certificate(await readFile(certificateFile));
     const key = createPrivateKey(await readFile(keyFile));
-    // checkHost accepts a legacy CN when no SAN exists. Explicit route
-    // certificates must cover the host through a DNS subjectAltName.
-    if (!certificate.subjectAltName?.split(/,\s*/).some((entry) => entry.startsWith("DNS:")) ||
-      !certificate.checkHost(hostname, { subject: "never" })) throw new Error("Certificate DNS SAN does not cover hostname.");
+    if (!certificate.subjectAltName?.split(/,\s*/).some((entry) => entry.startsWith("DNS:"))) {
+      throw new Error("Certificate has no DNS subjectAltName.");
+    }
     if (!createPublicKey(key).export({ type: "spki", format: "der" }).equals(certificate.publicKey.export({ type: "spki", format: "der" }))) {
       throw new Error("Certificate and key do not match.");
     }
     if (Date.parse(certificate.validFrom) > Date.now() || Date.parse(certificate.validTo) <= Date.now()) throw new Error("Certificate is not currently valid.");
+    return certificate;
   } catch {
+    throw new DomainError("DEVFN_DOMAIN_CERT_INVALID", "Configured certificate or key is invalid.");
+  }
+}
+
+export async function verifyCertificate(hostname: string, certificateFile: string | undefined, keyFile: string | undefined): Promise<void> {
+  const certificate = await verifyCertificateMaterial(certificateFile, keyFile);
+  // checkHost accepts a legacy CN when no SAN exists; material validation
+  // above requires a DNS SAN before checking each selected route hostname.
+  if (!certificate.checkHost(hostname, { subject: "never" })) {
     throw new DomainError("DEVFN_DOMAIN_CERT_INVALID", `Configured certificate cannot serve ${hostname}.`);
   }
 }
@@ -110,8 +119,7 @@ export async function registerDomain(stateDir: string, entry: RegisteredDomain, 
     throw new DomainError("DEVFN_DOMAIN_INVALID", "Domain ownership and TLS mode are required.");
   }
   if (entry.tls === "certificate") {
-    try { await verifyCertificate(domain, entry.certificateFile, entry.keyFile); }
-    catch { await verifyCertificate(`registration-probe.${domain}`, entry.certificateFile, entry.keyFile); }
+    await verifyCertificateMaterial(entry.certificateFile, entry.keyFile);
   }
   if (entry.tls === "internal" && (entry.certificateFile || entry.keyFile)) throw new DomainError("DEVFN_DOMAIN_INVALID", "Internal TLS cannot include certificate files.");
   await verifyLocalDns(domain, resolve);

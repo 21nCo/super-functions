@@ -7,5 +7,6 @@
 - Repository-relative process, Compose, runtime, policy, and output paths are validated against lexical and symlink path escape.
 - PID ownership uses a birth signature where the host exposes one. DevFn refuses to stop a reused PID.
 - `down` stops only the exact worktree instance. Ordinary shutdown removes no persistent Docker volumes.
-- Project hostnames must be concrete `.localhost` names. DevFn manages only a Caddy process it started itself and refuses to overwrite an unrelated Caddy admin endpoint.
+- `.localhost` remains the default hostname suffix. Other development domains require explicit machine registration for the repository and project; a repository manifest cannot register one. Each selected alias must resolve only to loopback, and registration does not change DNS, a hosts file, or the OS resolver. Public routing needs separate validation.
+- DevFn manages only a Caddy process it started itself and refuses to overwrite an unrelated Caddy admin endpoint. Internal TLS uses Caddy's local CA without installing its trust root; clients must trust that CA explicitly. Explicit certificate mode requires a valid matching key and a DNS subjectAltName covering every selected alias before proxy reload. DNS-01 is unavailable until a validated adapter exists and is rejected rather than configured implicitly.
 - Volume deletion, database reset, public tunnels, and other destructive operations are outside ordinary lifecycle commands and require separate explicit tooling and confirmation.

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -62,6 +62,50 @@ describe("registered local domains", () => {
         "-days", "1", "-subj", "/CN=app-fixture.dev.example.test"], { stdio: "ignore" });
       await expect(verifyCertificate("app-fixture.dev.example.test", certificateFile, keyFile)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
     } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
+  it("registers exact-alias SAN material and rejects an uncovered route before reload", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-exact-cert-"));
+    const repo = await mkdtemp(path.join(tmpdir(), "devfn-exact-repo-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-exact-tools-"));
+    const certificateFile = path.join(stateDir, "cert.pem");
+    const keyFile = path.join(stateDir, "key.pem");
+    const originalPath = process.env.PATH;
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const resolve = (async () => [{ address: "127.0.0.1", family: 4 }]) as never;
+    try {
+      execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
+        "-days", "1", "-subj", "/CN=unrelated.test", "-addext", "subjectAltName=DNS:app-main.dev.example.test,DNS:app.dev.example.test"], { stdio: "ignore" });
+      const registration = await registerDomain(stateDir, {
+        domain: "dev.example.test", projectId: "fixture", repositoryIdentity: repo, tls: "certificate", certificateFile, keyFile,
+      }, resolve);
+      expect(registration.domain).toBe("dev.example.test");
+      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      const controller = new CaddyProxyController(stateDir, resolve);
+      const route = (id: string, hostname: string) => ({ id, instanceId: "main", hostname, targetHost: "127.0.0.1", targetPort: 4100,
+        tls: "certificate" as const, registeredDomain: registration.domain, projectId: registration.projectId,
+        repositoryIdentity: registration.repositoryIdentity, certificateFile, keyFile });
+      await controller.upsert([route("readable", "app-main.dev.example.test"), route("canonical", "app.dev.example.test")]);
+      await expect(unregisterDomain(stateDir, registration.domain, "fixture", repo)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_IN_USE" });
+      await expect(controller.upsert([route("uncovered", "app-child.dev.example.test")])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
+      expect((await controller.routes()).map((item) => item.hostname).sort()).toEqual(["app-main.dev.example.test", "app.dev.example.test"]);
+      expect(await readFile(path.join(stateDir, "Caddyfile"), "utf8")).not.toContain("app-child.dev.example.test");
+      await controller.removeInstance("main");
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [{
+        ...route("pending", "app.dev.example.test"), updatedAt: "now",
+      }] }));
+      await expect(unregisterDomain(stateDir, registration.domain, "fixture", repo)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_IN_USE" });
+      await rm(path.join(stateDir, "proxy-routes.pending.json"));
+      await unregisterDomain(stateDir, registration.domain, "fixture", repo);
+      expect(await readRegisteredDomains(stateDir)).toEqual([]);
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true }); await rm(repo, { recursive: true, force: true });
+      await rm(toolsDir, { recursive: true, force: true });
+    }
   });
 });
 
