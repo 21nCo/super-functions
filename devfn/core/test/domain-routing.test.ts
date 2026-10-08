@@ -32,6 +32,7 @@ it("protects Caddy listener ports for selected proxy routes while preserving no-
         ...(proxy ? { hostnames: { app: { target: "app" } } } : {}) });
       await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toMatchObject({
         code: proxy && exact ? "DEVFN_PORT_CONFLICT" : "DEVFN_START_FAILED",
+        ...(proxy && exact ? { message: expect.stringContaining("change the service's exact port") } : {}),
       });
       if (proxy && exact) {
         await expect(access(started)).rejects.toMatchObject({ code: "ENOENT" });
@@ -68,7 +69,10 @@ it("rejects proxy activation behind a sibling listener lease before changing eit
     await registry.reserve({ projectId: "sibling", instanceId: "sibling-id", invocationId: "sibling-run", profile: "default",
       requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] });
     const before = await registry.read();
-    await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+    await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toMatchObject({
+      code: "DEVFN_PORT_CONFLICT", message: expect.stringContaining("Stop the profile using port"),
+      details: { port, instanceId: "sibling-id", service: "api", action: expect.stringContaining("change its exact/preferred service port") },
+    });
     await expect(access(started)).rejects.toMatchObject({ code: "ENOENT" });
     const after = await registry.read();
     expect(after.allocations).toEqual(before.allocations);

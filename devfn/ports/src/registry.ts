@@ -15,6 +15,10 @@ const EMPTY: RegistryState = { version: 1, revision: 0, allocations: [], invocat
 const execFileAsync = promisify(execFile);
 const ABANDONED_CLAIM_MS = 300_000;
 
+function proxyListenerMigration(port: number): string {
+  return `Stop the profile using port ${port}, change its exact/preferred service port, then retry proxy activation; DevFn does not move existing leases.`;
+}
+
 // Route files are owned by the proxy. A missing file proves no routes there;
 // an unreadable or malformed file cannot prove that a claim is safe to drop.
 async function noOwnedProxyRoutes(stateDir: string, instanceId: string): Promise<boolean> {
@@ -130,11 +134,12 @@ export class FilePortRegistry {
       const proxyPorts = new Set(input.proxyListenerPorts ?? []);
       for (const port of proxyPorts) {
         const conflict = state.allocations.find((item) => active(item) && item.port === port);
-        if (conflict) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${port} is leased by ${conflict.instanceId}/${conflict.service}.`,
-          { port, instanceId: conflict.instanceId, service: conflict.service });
+        if (conflict) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${port} is leased by ${conflict.instanceId}/${conflict.service}. ${proxyListenerMigration(port)}`,
+          { port, instanceId: conflict.instanceId, service: conflict.service, action: proxyListenerMigration(port) });
       }
       const occupied = new Set(state.allocations.filter(active).map((item) => occupancyKey(item.port, item.protocol)));
       const claimingInstance = new Map<number, string>();
+      for (const port of input.proxyListenerPorts ?? []) claimingInstance.set(port, input.instanceId);
       for (const invocation of state.invocations) {
         if (["planning", "starting", "ready"].includes(invocation.state)) {
           for (const port of invocation.proxyListenerPorts ?? []) {
@@ -167,8 +172,13 @@ export class FilePortRegistry {
         if (spec.exact && spec.preferred !== undefined) {
           if (occupied.has(occupancyKey(spec.preferred, protocol)) || !await this.availabilityCheck(spec.preferred, protocol, host)) {
             const claimant = claimingInstance.get(spec.preferred);
-            if (claimant) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is claimed by proxy instance ${claimant}.`,
-              { service: name, port: spec.preferred, instanceId: claimant });
+            if (claimant) {
+              const action = claimant === input.instanceId
+                ? "This profile also selects proxy routes; change the service's exact port before activating them."
+                : `Change this service's exact port or stop proxy instance ${claimant} before retrying.`;
+              throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is claimed by proxy instance ${claimant}. ${action}`,
+                { service: name, port: spec.preferred, instanceId: claimant, action });
+            }
             throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is occupied.`, { service: name, port: spec.preferred });
           }
           return { port: spec.preferred, source: "exact" };
@@ -276,8 +286,8 @@ export class FilePortRegistry {
     await withFileLock(this.lockPath, async () => {
       const state = await this.read();
       const conflict = state.allocations.find((item) => active(item) && item.instanceId !== exceptInstanceId && ports.includes(item.port));
-      if (conflict) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${conflict.port} is leased by ${conflict.instanceId}/${conflict.service}.`,
-        { port: conflict.port, instanceId: conflict.instanceId, service: conflict.service });
+      if (conflict) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${conflict.port} is leased by ${conflict.instanceId}/${conflict.service}. ${proxyListenerMigration(conflict.port)}`,
+        { port: conflict.port, instanceId: conflict.instanceId, service: conflict.service, action: proxyListenerMigration(conflict.port) });
     });
   }
 

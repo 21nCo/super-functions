@@ -9,7 +9,11 @@ it("keeps arbitrary domains out of manifest hostnames and restricts domain refer
   expect(() => validateDevFnConfig(config({ hostname: "app.example.test" }))).toThrow(/localhost/);
   expect(() => validateDevFnConfig(config({ domain: "example.test.evil.test", hostname: "app.localhost" }))).toThrow(/both/);
   expect(() => validateDevFnConfig(config({ domain: "example.test", tls: "internal" }))).toThrow(/controlled/);
+  expect(() => validateDevFnConfig(config({ domain: "example.test", tls: "off" }))).toThrow(/controlled/);
   expect(() => validateDevFnConfig(config({ domain: "example.test", host: "app", path: "/api", match: "prefix", stripPrefix: true }))).not.toThrow();
+  const registered = validateDevFnConfig(config({ domain: "example.test" }));
+  expect(registered.hostnames?.app.tls).toBeUndefined();
+  expect(() => validateDevFnConfig(registered)).not.toThrow();
   expect(() => validateDevFnConfig(config({ domain: "example.test", host: "app.example" }))).toThrow(/one DNS label/);
 });
 

@@ -253,7 +253,7 @@ function hostnameSpec(value: unknown, field: string): HostnameSpec {
   if (domain && (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain) || domain.endsWith(".localhost"))) {
     fail(`${field}.domain must be a concrete registered domain.`, `${field}.domain`);
   }
-  if (domain && tls !== "off") fail(`${field}.tls is controlled by the machine domain registration.`, `${field}.tls`);
+  if (domain && input.tls !== undefined) fail(`${field}.tls is controlled by the machine domain registration; omit it from the manifest.`, `${field}.tls`);
   const routePath = optionalString(input.path, `${field}.path`);
   if (routePath && (!/^\/(?:[A-Za-z0-9._~!$&'()+,;=:@/-]*)$/.test(routePath) || routePath.includes("//") || routePath.split("/").some((part) => part === "." || part === ".."))) {
     fail(`${field}.path must be an unambiguous absolute URL path.`, `${field}.path`);
@@ -274,7 +274,7 @@ function hostnameSpec(value: unknown, field: string): HostnameSpec {
     ...(routePath ? { path: routePath } : {}),
     ...(match ? { match: match as "exact" | "prefix" } : {}),
     ...(stripPrefix === undefined ? {} : { stripPrefix }),
-    tls,
+    ...(domain ? {} : { tls }),
     ...(stringArray(input.profiles, `${field}.profiles`) ? { profiles: stringArray(input.profiles, `${field}.profiles`) } : {}),
   };
 }

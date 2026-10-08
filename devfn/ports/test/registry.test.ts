@@ -78,7 +78,9 @@ describe("FilePortRegistry", () => {
         targetHost: "127.0.0.1", targetPort: port + 1, tls: "off", updatedAt: new Date().toISOString() }] }));
       await registry.reconcile();
       await registry.gc();
-      await expect(reserveSibling()).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "proxy" } });
+      await expect(reserveSibling()).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: {
+        instanceId: "proxy", action: expect.stringContaining("stop proxy instance proxy"),
+      } });
       await rm(routeFile);
       await writeFile(path.join(dir, "proxy-owner.json"), JSON.stringify({ pid: process.pid }));
       await registry.reconcile();
