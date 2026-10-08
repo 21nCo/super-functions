@@ -1,0 +1,54 @@
+devfn/SPEC.md
+  h_bdc5b81c173ee9 15,23-24
+devfn/cli/README.md
+  h_bdc5b81c173ee9 13-14
+devfn/cli/src/index.ts
+  h_bdc5b81c173ee9 16,32-34,53,65-67,73,99-101,176-190
+devfn/cli/test/cli.test.ts
+  h_bdc5b81c173ee9 25-37
+devfn/config/src/schema.ts
+  h_bdc5b81c173ee9 247-262,270-274,379,437
+devfn/config/src/types.ts
+  h_bdc5b81c173ee9 67-72
+devfn/config/test/domain-routes.test.ts
+  h_bdc5b81c173ee9 1-20
+devfn/core/src/endpoints.ts
+  h_bdc5b81c173ee9 951-952
+devfn/core/src/identity.ts
+  h_bdc5b81c173ee9 7,15,20-25,32-33,38-48
+devfn/core/src/index.ts
+  h_bdc5b81c173ee9 1-2
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 11,13,17,168,174,176-200,209-213,286-287,337,349,364,414
+devfn/core/src/types.ts
+  h_bdc5b81c173ee9 19
+devfn/core/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 1-25
+devfn/core/test/identity.test.ts
+  h_bdc5b81c173ee9 2,8,13-36
+devfn/docs/configuration.md
+  h_bdc5b81c173ee9 81-89
+devfn/proxy/README.md
+  h_bdc5b81c173ee9 3
+devfn/proxy/src/domains.ts
+  h_bdc5b81c173ee9 1-141
+devfn/proxy/src/index.ts
+  h_bdc5b81c173ee9 8-9,14-20,37-45,47-78,80,131-144,233,238-243,245-246
+devfn/proxy/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 1-103
+devfn/proxy/test/proxy.test.ts
+  h_bdc5b81c173ee9 12-14
+devfn/proxy/test/real-caddy.test.ts
+  h_bdc5b81c173ee9 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2f1e5829fa668985dc8cbf0032590278b7c19365",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
