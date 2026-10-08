@@ -14,7 +14,6 @@ const SENSITIVE_VALUE_PATTERN =
   /(bearer\s+[a-z0-9._-]+|xox[baprs]-[a-z0-9-]+|gh[pousr]_[a-z0-9]+|sk_[a-z0-9]+|api[_-]?key\s*[:=])/i;
 
 const RAW_HTML_ALLOWLIST_ENV = "DOCSFN_HTML_UNSAFE_ALLOWLIST";
-const MANIFEST_CONTENT_ID_PATTERN = /^(?:docs|pages|blog|collection:[^:/\\]+):(.+)$/;
 
 export interface ResolveUnsafeHtmlAllowlistInput {
   value?: string;
@@ -403,6 +402,17 @@ export async function assertDocsRouteAccess(
   };
 }
 
+// Manifest ids are `collection:relativePath`. Matching the collection-relative
+// identity too mirrors the manifest build gate for the same Markdown entry.
+// Named collection ids may contain ":", so any further colon makes the split
+// ambiguous; those ids then match only rules written against the full id.
+function resolveManifestRelativePath(sourceId: string): string | undefined {
+  const system = /^(?:docs|pages|blog):(.+)$/.exec(sourceId);
+  if (system) return system[1];
+  const named = /^collection:[^:/\\]+:(.+)$/.exec(sourceId);
+  return named && !named[1].includes(":") ? named[1] : undefined;
+}
+
 export function isUnsafeHtmlAllowed(sourcePath?: string, policyInput?: SourceTrustPolicy): boolean {
   const input = { sourcePath, policy: policyInput };
   const policy = normalizeTrustPolicy(input.policy);
@@ -412,9 +422,7 @@ export function isUnsafeHtmlAllowed(sourcePath?: string, policyInput?: SourceTru
 
   if (!input.sourcePath) return false;
   const sourceId = input.sourcePath;
-  // Manifest ids are `collection:relativePath`. Match the collection-relative
-  // identity too, as the manifest build gate does for the same Markdown entry.
-  const manifestRelativePath = MANIFEST_CONTENT_ID_PATTERN.exec(sourceId)?.[1];
+  const manifestRelativePath = resolveManifestRelativePath(sourceId);
   const allowlisted = matchesAllowlist(
     {
       id: sourceId,

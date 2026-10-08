@@ -78,6 +78,8 @@ and pass `sourcePath={entry.id}` plus `unsafeHtmlAllowlist={resolveUnsafeHtmlAll
 to `DocsContent`. Browsers cannot read the server environment, so the allowlist must
 travel with the render props. A manifest id such as `blog:launch/post.md` matches rules
 written against the full id or the collection-relative path (`launch/post.md`).
+Named collection ids may contain `:`, so an id such as `collection:foo:bar:page.md`
+is ambiguous and matches only rules written against the full id.
 Absolute-path rules apply only while building the manifest.
 
 Compiled content without a source identity cannot gain trust from an allowlist,

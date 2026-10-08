@@ -171,6 +171,13 @@ function parseExcerpt(input: {
   return summary.length > 0 ? summary : undefined;
 }
 
+// ECMAScript reads offset-less ISO date-times in the build machine's zone but
+// date-only values as UTC. Treat both as UTC so builds agree across machines.
+function withUtcDefault(date: string): string {
+  const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/.exec(date);
+  return match ? `${match[1]}T${match[2]}Z` : date;
+}
+
 function parsePublishedDate(input: {
   date: string;
   sourceId: string;
@@ -180,7 +187,7 @@ function parsePublishedDate(input: {
   publishedAt: string;
   timestamp: number;
 } {
-  const timestamp = Date.parse(input.date);
+  const timestamp = Date.parse(withUtcDefault(input.date));
   if (!Number.isFinite(timestamp)) {
     const label = input.collectionLabel ?? "dated content entry";
     throw createDocsError({

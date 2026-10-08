@@ -168,3 +168,43 @@ test("migration evaluates TypeScript sidebars without Node globals", async () =>
     assert.match(await migrate(join(root, "isolated")), /Sidebar load error: process is not defined/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("migration leaves asset references in code examples literal and unpublished", async () => {
+  const root = await mkdtemp(join(tmpdir(), "docsfn-migration-code-assets-"));
+  try {
+    const source = join(root, "source"), target = join(root, "target");
+    await mkdir(join(source, "docs"), { recursive: true });
+    for (const file of ["internal.pdf", "tilde.png", "inline.png", "quoted.png", "public.png"])
+      await writeFile(join(source, "docs", file), file);
+    const examples = [
+      "# Example",
+      "",
+      "```md",
+      "[example]: ./internal.pdf",
+      "```",
+      "",
+      "~~~~md",
+      "~~~",
+      "![Tilde](./tilde.png)",
+      "~~~~",
+      "",
+      "Use `![Inline](./inline.png)` in prose.",
+      "",
+      "> ```html",
+      '> <img src="./quoted.png">',
+      "> ```",
+      "",
+      "![Public][public]",
+      "",
+      "[public]: ./public.png",
+      "",
+    ].join("\n");
+    await writeFile(join(source, "docs/index.md"), examples);
+    await execute(process.execPath, [cli, "migrate", "docusaurus", source, "--out-dir", target]);
+    const migrated = await readFile(join(target, "content/docs/index.md"), "utf8");
+    assert.equal(migrated, examples.replace("[public]: ./public.png", "[public]: /docs-assets/public.png"));
+    assert.equal(await readFile(join(target, "static/docs-assets/public.png"), "utf8"), "public.png");
+    for (const file of ["internal.pdf", "tilde.png", "inline.png", "quoted.png"])
+      await assert.rejects(access(join(target, "static/docs-assets", file)));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

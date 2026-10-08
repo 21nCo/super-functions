@@ -41,7 +41,7 @@ collections: {
 ## Required frontmatter
 
 - **`title`** — Display title (also used in listings and RSS).
-- **`date`** — Publish date string; must parse to a finite timestamp (ISO-8601 dates like `2026-03-22` work).
+- **`date`** — Publish date string; must parse to a finite timestamp (ISO-8601 dates like `2026-03-22` work). ISO date-times without an offset, such as `2026-03-22T09:30:00`, are read as UTC so every build machine produces the same publish date; add an offset such as `+05:30` for local times.
 
 Missing or invalid `date` fails manifest build with **`DOCS_ARTIFACT_INVALID`**.
 

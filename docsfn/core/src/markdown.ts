@@ -30,7 +30,10 @@ export interface CompileMarkdownInput {
 }
 
 const HEADING_REGEX = /^(#{1,6})\s+(.*)$/;
-const CODE_FENCE_REGEX = /^```/;
+// GFM fences use three or more backticks or tildes. Backtick info strings
+// cannot contain backticks, and only a matching run at least as long closes.
+const CODE_FENCE_OPEN_REGEX = /^(`{3,}|~{3,})(.*)$/;
+const CODE_FENCE_CLOSE_REGEX = /^(`{3,}|~{3,})$/;
 const TABS_START_REGEX = /^<\s*(DocsTabs|Tabs)\b([^>]*)>/;
 const TABS_END_REGEX = /^<\s*\/\s*(DocsTabs|Tabs)\s*>/;
 const TAB_START_REGEX = /^<\s*(DocsTab|Tab)\b([^>]*)>/;
@@ -201,6 +204,17 @@ function createSlugger(): (text: string) => string {
   };
 }
 
+function matchCodeFenceOpen(trimmed: string): { marker: string; length: number; info: string } | null {
+  const match = CODE_FENCE_OPEN_REGEX.exec(trimmed);
+  if (!match || (match[1][0] === "`" && match[2].includes("`"))) return null;
+  return { marker: match[1][0], length: match[1].length, info: match[2].trim() };
+}
+
+function isCodeFenceClose(trimmed: string, open: { marker: string; length: number }): boolean {
+  const match = CODE_FENCE_CLOSE_REGEX.exec(trimmed);
+  return Boolean(match && match[1][0] === open.marker && match[1].length >= open.length);
+}
+
 function isListStart(line: string): boolean {
   const trimmed = line.trim();
   return LIST_UNORDERED_REGEX.test(trimmed) || LIST_ORDERED_REGEX.test(trimmed);
@@ -215,7 +229,7 @@ function isBlockStart(line: string): boolean {
   return (
     trimmed.length === 0 ||
     HEADING_REGEX.test(trimmed) ||
-    CODE_FENCE_REGEX.test(trimmed) ||
+    matchCodeFenceOpen(trimmed) !== null ||
     TABS_START_REGEX.test(trimmed) ||
     CALLOUT_REGEX.test(trimmed) ||
     COMPONENT_SELF_CLOSING_REGEX.test(trimmed) ||
@@ -480,14 +494,15 @@ function parseBlocks(input: ParseBlocksOptions): CompiledContentBlock[] {
       continue;
     }
 
-    if (CODE_FENCE_REGEX.test(trimmed)) {
-      const lang = trimmed.slice(3).trim() || undefined;
+    const fence = matchCodeFenceOpen(trimmed);
+    if (fence) {
+      const lang = fence.info || undefined;
       index += 1;
       const codeLines: string[] = [];
       let foundFenceClose = false;
       while (index < lines.length) {
         const codeLine = lines[index];
-        if (CODE_FENCE_REGEX.test(codeLine.trim())) {
+        if (isCodeFenceClose(codeLine.trim(), fence)) {
           foundFenceClose = true;
           index += 1;
           break;

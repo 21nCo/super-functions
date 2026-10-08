@@ -513,3 +513,43 @@ it("collects custom and built-in components throughout the block tree", () => {
   const result = compileMarkdown({sourcePath:'nested.mdx',source:'<Wrapper>\n\n<DemoCard />\n\n```mermaid\ngraph TD; A-->B\n```\n\n</Wrapper>'});
   expect(result.componentsUsed).toEqual(expect.arrayContaining(['Wrapper','DemoCard','MermaidBlock']));
 });
+
+it("parses tilde and longer backtick fences inside component islands", () => {
+  const source = [
+    '<DocsTabs items={["One"]}>',
+    '<DocsTab value="One">',
+    "",
+    "~~~ts",
+    "const tilde = 1;",
+    "~~~",
+    "",
+    "````md",
+    "```js",
+    "inner();",
+    "```",
+    "````",
+    "",
+    "~~~mermaid",
+    "graph TD; A-->B;",
+    "~~~",
+    "",
+    "</DocsTab>",
+    "</DocsTabs>",
+  ].join("\n");
+  const compiled = compileMarkdown({ source, sourcePath: "fences.mdx" });
+  const blocks: Array<Record<string, unknown>> = [];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      if (record.type === "code" || record.type === "mermaid") blocks.push(record);
+      Object.values(record).forEach(visit);
+    }
+  };
+  visit(compiled.blocks);
+  expect(blocks.map(({ type, lang, code }) => ({ type, lang, code }))).toEqual([
+    { type: "code", lang: "ts", code: "const tilde = 1;" },
+    { type: "code", lang: "md", code: "```js\ninner();\n```" },
+    { type: "mermaid", lang: undefined, code: "graph TD; A-->B;" },
+  ]);
+});

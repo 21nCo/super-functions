@@ -305,6 +305,17 @@ it.each([
   }
 });
 
+it.each([
+  ["bar:page.md", false],
+  ["page.md", false],
+  ["collection:foo:bar:page.md", true],
+])("does not split ambiguous named collection ids for allowlist %s", (glob, allowed) => {
+  const compiled = () =>
+    assertCompiledContentTrusted({ source: "<script>alert(1)</script>", sourcePath: "collection:foo:bar:page.md", policy: { allowUnsafeHtmlAllowlist: [glob] } });
+  if (allowed) expect(compiled).not.toThrow();
+  else expect(compiled).toThrow(/DOCS_HTML_UNSAFE|unsafe HTML/);
+});
+
 it("never grants path-based trust to content with no source identity", () => {
   expect(() => assertCompiledContentTrusted({ source: "<script>alert(1)</script>", policy: { allowUnsafeHtmlAllowlist: ["**"] } })).toThrow();
   expect(() => assertCompiledContentTrusted({ source: "<script>alert(1)</script>", policy: { allowUnsafeHtml: true } })).not.toThrow();

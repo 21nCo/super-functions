@@ -229,3 +229,18 @@ it.each(["", "rss.xml", "tags/release"])("rejects reserved collection route %s",
 it('rejects a feed mounted at the list surface', () => {
   expect(() => buildCanonicalDatedCollectionRecords({ posts: [], collectionId: 'news', routeBase: '/news', feedPath: '/news' })).toThrow(/routes conflict/);
 });
+
+it.each(["2026-03-01T00:30:00", "2026-03-01 00:30:00", "2026-03-01T00:30"])(
+  "reads offset-less publish date-time %s as UTC on every machine",
+  (date) => {
+    const previous = process.env.TZ;
+    process.env.TZ = "Asia/Kolkata";
+    try {
+      const [post] = buildCanonicalBlogRecords({ posts: [createPost("blog:alpha.mdx", { date })], basePath: "/docs" }).posts;
+      expect(post).toMatchObject({ date: "2026-03-01", publishedAt: "2026-03-01T00:30:00.000Z" });
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
+  }
+);

@@ -1114,7 +1114,7 @@ function rewriteColocatedAssets(source: string, record: ContentRecord, assets: S
     assets.add(target);
     return `/docs-assets/${normalizePath(relative).split("/").map(encodeURIComponent).join("/")}${suffix}`;
   };
-  return source
+  return mapMarkdownProse(source, (prose) => prose
     .replace(
       /(!?\[[^\]]*\]\()([^\s)]+)((?:\s+"[^"\n]*"|\s+'[^'\n]*')?\))/g,
       (_match, prefix, href, close) => `${prefix}${rewrite(href)}${close}`
@@ -1128,7 +1128,43 @@ function rewriteColocatedAssets(source: string, record: ContentRecord, assets: S
       /^( {0,3}\[[^\]\n]+\]:[ \t]*)(?:<([^>\n]*)>|(\S+))/gm,
       (_match, prefix, bracketed, bare) =>
         bracketed === undefined ? `${prefix}${rewrite(bare)}` : `${prefix}<${rewrite(bracketed)}>`
-    );
+    ));
+}
+
+// Code is literal text in CommonMark, so asset rewriting only touches prose.
+// Fence openers are matched at any indentation: treating an ambiguous line as
+// code can only leave a link unpublished, never publish an unreferenced file.
+function mapMarkdownProse(source: string, transform: (prose: string) => string): string {
+  const output: string[] = [];
+  let prose: string[] = [];
+  let fence: { marker: string; length: number } | undefined;
+  const flush = () => {
+    if (prose.length) output.push(transformOutsideInlineCode(prose.join(""), transform));
+    prose = [];
+  };
+  for (const line of source.split(/(?<=\n)/)) {
+    const content = line
+      .replace(/\r?\n$/, "")
+      .replace(/^(?:[ \t]*(?:>[ \t]?|(?:[-+*]|\d{1,9}[.)])[ \t]+))*[ \t]*/, "");
+    const run = /^(`{3,}|~{3,})(.*)$/.exec(content);
+    if (fence) {
+      output.push(line);
+      if (run && run[1][0] === fence.marker && run[1].length >= fence.length && !run[2].trim()) fence = undefined;
+    } else if (run && !(run[1][0] === "`" && run[2].includes("`"))) {
+      flush();
+      fence = { marker: run[1][0], length: run[1].length };
+      output.push(line);
+    } else prose.push(line);
+  }
+  flush();
+  return output.join("");
+}
+
+function transformOutsideInlineCode(prose: string, transform: (prose: string) => string): string {
+  const spans: string[] = [];
+  // Private-use delimiters keep line anchors intact while code spans are hidden.
+  const masked = prose.replace(/(`+)(?!`)[\s\S]*?[^`]\1(?!`)/g, (span) => `\uE000${spans.push(span) - 1}\uE001`);
+  return transform(masked).replace(/\uE000(\d+)\uE001/g, (_match, index) => spans[Number(index)]);
 }
 
 async function copyContentRecords(input: {

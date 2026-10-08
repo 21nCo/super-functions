@@ -96,7 +96,7 @@ Thin delegates to the corresponding `*OrThrow` getter; a miss throws **`DOCS_ROU
 
 All map **`DOCS_ROUTE_NOT_FOUND`** to HTTP 404 via SvelteKit **`error`**.
 
-SvelteKit serializes load data to the browser, so these factories never return the manifest. Page loads return only the selected page, its surface and the resolved sidebar. `collection` carries `id`, `label`, `scope`, `listRoute` and `feedPath` without post-id indexes. Keep the manifest in server-only modules and derive any other data there. Route access checks remain the caller's responsibility.
+SvelteKit serializes load data to the browser, so these factories never return the manifest. Page loads return only the selected page, its surface and the resolved sidebar. `collection` carries `id`, `label`, `scope`, `listRoute` and `feedPath` without post-id indexes, or is `null` when the post's collection has no manifest surface. Keep the manifest in server-only modules and derive any other data there. Route access checks remain the caller's responsibility.
 
 ## Search endpoint
 
