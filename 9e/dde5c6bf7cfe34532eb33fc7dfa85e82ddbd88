@@ -1,0 +1,32 @@
+devfn/core/src/identity.ts
+  h_bdc5b81c173ee9 16-18,20-23
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 175,193-196,291
+devfn/core/test/identity.test.ts
+  h_bdc5b81c173ee9 2,43-51
+devfn/docs/configuration.md
+  h_bdc5b81c173ee9 89
+devfn/proxy/README.md
+  h_bdc5b81c173ee9 3
+devfn/proxy/src/domains.ts
+  h_bdc5b81c173ee9 60-63
+devfn/proxy/src/index.ts
+  h_bdc5b81c173ee9 77,89,148-159
+devfn/proxy/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 59-61
+devfn/proxy/test/proxy.test.ts
+  h_bdc5b81c173ee9 70-80
+devfn/proxy/test/real-caddy.test.ts
+  h_bdc5b81c173ee9 1,46-49,55-57,81-82,90-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9edde5c6bf7cfe34532eb33fc7dfa85e82ddbd88",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
