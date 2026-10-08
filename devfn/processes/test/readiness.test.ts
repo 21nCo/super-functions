@@ -1,11 +1,51 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { checkReadinessNow, waitForReadiness } from "../src/index.js";
+import { checkReadinessNow, resolveHttpReadinessUrl, waitForReadiness } from "../src/index.js";
 
 describe("process readiness", () => {
+  it("uses direct HTTPS with the configured path and query for a leased port", () => {
+    expect(resolveHttpReadinessUrl({ type: "http", port: "api", url: "https://api.localhost/base?token=1", path: "/health?ready=1" }, { api: 4101 }))
+      .toBe("https://127.0.0.1:4101/base/health?ready=1");
+  });
+
+  it("validates an absolute health path against its configured origin before leasing", () => {
+    expect(resolveHttpReadinessUrl({ type: "http", port: "api", url: "http://svc.test/base?old=1", path: "http://svc.test/ready?new=1" }, { api: 4101 }))
+      .toBe("http://127.0.0.1:4101/ready?new=1");
+    expect(() => resolveHttpReadinessUrl({ type: "http", port: "api", url: "http://svc.test/base", path: "http://other.test/ready" }, { api: 4101 }))
+      .toThrow(/configured URL origin/);
+  });
+
+  it("rejects same-origin userinfo before a leased origin can erase it", () => {
+    const marker = "synthetic-sentinel";
+    for (const health of [
+      { type: "http" as const, port: "api", url: `http://alice:${marker}@svc.test/ready` },
+      { type: "http" as const, port: "api", url: "http://svc.test/base", path: `http://alice:${marker}@svc.test/ready` },
+    ]) {
+      let error = "";
+      try { resolveHttpReadinessUrl(health, { api: 4101 }); }
+      catch (failure) { error = (failure as Error).message; }
+      expect(error).toMatch(/secret channel/);
+      expect(error).not.toContain(marker);
+    }
+  });
+
+  it("uses the same direct HTTPS endpoint at startup and on a later status probe", async () => {
+    const urls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      urls.push(String(input));
+      return { status: 200 } as Response;
+    }) as typeof fetch;
+    const input = { health: { type: "http" as const, port: "api", url: "https://api.localhost/health?ready=1", timeoutMs: 1000 }, ports: { api: 4101 }, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true };
+    try {
+      await waitForReadiness(input);
+      expect(await checkReadinessNow(input)).toBe(true);
+      expect(urls).toEqual(["https://127.0.0.1:4101/health?ready=1", "https://127.0.0.1:4101/health?ready=1"]);
+    } finally { globalThis.fetch = originalFetch; }
+  });
   it("applies a configured path to URL-based HTTP probes", async () => {
     const server = (await import("node:http")).createServer((request, response) => {
       response.writeHead(request.url === "/base/health?ready=1" ? 200 : 404);

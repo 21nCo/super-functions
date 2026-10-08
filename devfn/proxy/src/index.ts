@@ -178,7 +178,7 @@ export class CaddyProxyController {
       const ids = new Set(routes.map((route) => route.id));
       const now = new Date().toISOString();
       const nextRoutes = [...state.routes.filter((route) => !ids.has(route.id)), ...routes.map((route) => ({ ...route, updatedAt: now }))];
-      const duplicate = nextRoutes.find((route, index) => nextRoutes.findIndex((candidate) => candidate.hostname === route.hostname) !== index);
+      const duplicate = nextRoutes.find((route, index) => nextRoutes.findIndex((candidate) => candidate.hostname.toLowerCase() === route.hostname.toLowerCase()) !== index);
       if (duplicate) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Hostname ${duplicate.hostname} is already owned by another DevFn route.`);
       await this.apply({ version: 1, routes: nextRoutes });
       return nextRoutes.filter((route) => ids.has(route.id));

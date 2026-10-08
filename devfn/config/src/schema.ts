@@ -14,9 +14,9 @@ import type {
   RuntimePrerequisite,
 } from "./types.js";
 import { DevFnConfigError } from "./errors.js";
+import { isCredentialKey } from "./credentials.js";
 
 type RecordValue = Record<string, unknown>;
-const SENSITIVE_KEY = /(authorization|token|secret|password|cookie|api[-_]?key|session[-_]?id|access[-_]?key|refresh[-_]?token)/i;
 
 function fail(message: string, field?: string): never {
   throw new DevFnConfigError("DEVFN_CONFIG_INVALID", message, field);
@@ -48,9 +48,21 @@ function stringArray(value: unknown, field: string): string[] | undefined {
   return value.map((item, index) => string(item, `${field}[${index}]`));
 }
 
-function stringMap(value: unknown, field: string): Record<string, string> | undefined {
+function stringMap(value: unknown, field: string, allowHost = false): Record<string, string> | undefined {
   if (value === undefined) return undefined;
-  return Object.fromEntries(Object.entries(record(value, field)).map(([key, item]) => [key, string(item, `${field}.${key}`)]));
+  const seen = new Set<string>();
+  return Object.fromEntries(Object.entries(record(value, field)).map(([key, item]) => {
+    environmentKey(key, `${field}.${key}`, allowHost);
+    if (seen.has(key.toUpperCase())) fail(`${field} has colliding environment keys for ${key}.`, `${field}.${key}`);
+    seen.add(key.toUpperCase());
+    return [key, string(item, `${field}.${key}`)];
+  }));
+}
+
+function environmentKey(key: string, field: string, allowHost = false): void {
+  if (!/^[A-Za-z_]\w*$/.test(key)) fail(`${field} must be an environment variable name.`, field);
+  if (["__proto__", "constructor", "prototype"].includes(key)) fail(`${field} is not a supported environment key.`, field);
+  if (key.toUpperCase().startsWith("DEVFN_") || (!allowHost && key.toUpperCase() === "HOST")) fail(`${field} is reserved for DevFn startup.`, field);
 }
 
 function integer(value: unknown, field: string, min = 1, max = 65535): number {
@@ -136,13 +148,31 @@ function portSpec(value: unknown, field: string): PortSpec {
   };
 }
 
-function environmentFields(input: RecordValue, field: string): Pick<ProcessSpec, "env" | "envAllowlist" | "secretEnv"> {
-  const env = stringMap(input.env, `${field}.env`);
+function assertUniqueEnvironmentKeys(keys: string[] | undefined, field: string): void {
+  const seen = new Set<string>();
+  for (const key of keys ?? []) {
+    const folded = key.toUpperCase();
+    if (seen.has(folded)) fail(`${field} has colliding environment keys for ${key}.`, field);
+    seen.add(folded);
+  }
+}
+
+function assertSecretEnvironmentChannels(env: Record<string, string> | undefined, envAllowlist: string[] | undefined,
+  secretEnv: string[] | undefined, field: string): void {
+  for (const key of Object.keys(env ?? {})) if (isCredentialKey(key)) fail(`${field}.env.${key} must not contain a literal secret; inherit it through envAllowlist and declare it in secretEnv.`, `${field}.env.${key}`);
+  for (const key of secretEnv ?? []) if (!envAllowlist?.includes(key)) fail(`${field}.secretEnv contains ${key}, which is not present in envAllowlist.`, `${field}.secretEnv`);
+  for (const key of envAllowlist ?? []) if (isCredentialKey(key) && !secretEnv?.includes(key)) fail(`${field}.envAllowlist contains sensitive key ${key}; declare it in secretEnv for log redaction.`, `${field}.envAllowlist`);
+}
+
+function environmentFields(input: RecordValue, field: string, allowHost = false): Pick<ProcessSpec, "env" | "envAllowlist" | "secretEnv"> {
+  const env = stringMap(input.env, `${field}.env`, allowHost);
   const envAllowlist = stringArray(input.envAllowlist, `${field}.envAllowlist`);
   const secretEnv = stringArray(input.secretEnv, `${field}.secretEnv`);
-  for (const key of Object.keys(env ?? {})) if (SENSITIVE_KEY.test(key)) fail(`${field}.env.${key} must not contain a literal secret; inherit it through envAllowlist and declare it in secretEnv.`, `${field}.env.${key}`);
-  for (const key of secretEnv ?? []) if (!envAllowlist?.includes(key)) fail(`${field}.secretEnv contains ${key}, which is not present in envAllowlist.`, `${field}.secretEnv`);
-  for (const key of envAllowlist ?? []) if (SENSITIVE_KEY.test(key) && !secretEnv?.includes(key)) fail(`${field}.envAllowlist contains sensitive key ${key}; declare it in secretEnv for log redaction.`, `${field}.envAllowlist`);
+  assertUniqueEnvironmentKeys(envAllowlist, `${field}.envAllowlist`);
+  assertUniqueEnvironmentKeys(secretEnv, `${field}.secretEnv`);
+  for (const key of envAllowlist ?? []) environmentKey(key, `${field}.envAllowlist`, allowHost);
+  for (const key of secretEnv ?? []) environmentKey(key, `${field}.secretEnv`, allowHost);
+  assertSecretEnvironmentChannels(env, envAllowlist, secretEnv, field);
   return { ...(env ? { env } : {}), ...(envAllowlist ? { envAllowlist } : {}), ...(secretEnv ? { secretEnv } : {}) };
 }
 
@@ -167,7 +197,7 @@ function processSpec(value: unknown, field: string): ProcessSpec {
     ...(command ? { command } : {}),
     ...(script ? { script } : {}),
     ...(input.cwd === undefined ? {} : { cwd: relativePath(input.cwd, `${field}.cwd`) }),
-    ...environmentFields(input, field),
+    ...environmentFields(input, field, exposure === "public"),
     ...(ports ? { ports } : {}),
     ...(dependsOn ? { dependsOn } : {}),
     ...(parsedHealth ? { health: parsedHealth } : {}),
@@ -192,7 +222,7 @@ function serviceSpec(value: unknown, field: string): ComposeServiceSpec {
     ...(dependsOn ? { dependsOn } : {}),
     ...(parsedHealth ? { health: parsedHealth } : {}),
     ...(input.persistent === undefined ? {} : { persistent: input.persistent === true }),
-    ...environmentFields(input, field),
+    ...environmentFields(input, field, true),
   };
 }
 
@@ -200,7 +230,7 @@ function profileSpec(value: unknown, field: string): ProfileSpec {
   const input = record(value, field);
   const environment = stringMap(input.environment, `${field}.environment`);
   const proxy = optionalBoolean(input.proxy, `${field}.proxy`);
-  for (const key of Object.keys(environment ?? {})) if (SENSITIVE_KEY.test(key)) fail(`${field}.environment.${key} must not contain a secret. Use process envAllowlist and secretEnv.`, `${field}.environment.${key}`);
+  for (const key of Object.keys(environment ?? {})) if (isCredentialKey(key)) fail(`${field}.environment.${key} must not contain a secret. Use process envAllowlist and secretEnv.`, `${field}.environment.${key}`);
   return {
     ...(stringArray(input.processes, `${field}.processes`) ? { processes: stringArray(input.processes, `${field}.processes`) } : {}),
     ...(stringArray(input.services, `${field}.services`) ? { services: stringArray(input.services, `${field}.services`) } : {}),
@@ -314,12 +344,14 @@ function validateReferences(config: DevFnConfig): void {
   validateSelectionReferences(config, ports, processes, services);
   const environmentOwners = new Map<string, string>();
   for (const [name, spec] of Object.entries(config.ports ?? {})) {
-    if (spec.env?.startsWith("DEVFN_")) fail(`ports.${name}.env cannot use reserved DEVFN_ runtime variables.`, `ports.${name}.env`);
+    if (spec.env?.toUpperCase().startsWith("DEVFN_")) fail(`ports.${name}.env cannot use reserved DEVFN_ runtime variables.`, `ports.${name}.env`);
+    if (spec.env) environmentKey(spec.env, `ports.${name}.env`);
     const generated = `DEVFN_PORT_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
-    for (const environmentName of new Set([generated, ...(spec.env ? [spec.env] : [])])) {
-      const owner = environmentOwners.get(environmentName);
+    const generatedUrl = `DEVFN_URL_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
+    for (const environmentName of new Set([generated, generatedUrl, ...(spec.env ? [spec.env] : [])])) {
+      const owner = environmentOwners.get(environmentName.toUpperCase());
       if (owner !== undefined && owner !== name) fail(`Ports ${owner} and ${name} both emit environment variable ${environmentName}.`, `ports.${name}`);
-      environmentOwners.set(environmentName, name);
+      environmentOwners.set(environmentName.toUpperCase(), name);
     }
   }
   for (const [name, spec] of Object.entries(config.hostnames ?? {})) {

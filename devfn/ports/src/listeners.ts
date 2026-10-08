@@ -93,28 +93,38 @@ export function parseWindowsNetstatListeners(output: string, protocol: "tcp" | "
   return listeners;
 }
 
-export async function scanListenerState(): Promise<ListenerScanResult> {
+async function scanOsListeners(protocol: "tcp" | "udp"): Promise<{ listeners: ListenerInfo[]; inspected: boolean }> {
+  if (process.platform === "win32") {
+    try {
+      const output = (await execFileAsync("netstat", ["-ano", "-p", protocol])).stdout;
+      return { listeners: parseWindowsNetstatListeners(output, protocol), inspected: true };
+    } catch { return { listeners: [], inspected: false }; }
+  }
+  const args = protocol === "tcp" ? ["-nP", "-iTCP", "-sTCP:LISTEN"] : ["-nP", "-iUDP"];
+  try { return { listeners: parseLsof((await execFileAsync("lsof", args)).stdout, protocol), inspected: true }; }
+  catch (error) { return { listeners: [], inspected: commandProducedNoMatches(error) }; }
+}
+
+/** Native ownership checks need OS listeners only; diagnostics may include Docker. */
+export async function scanListenerState(includeDocker = true): Promise<ListenerScanResult> {
   const results: ListenerInfo[] = [];
   const inspection = { tcp: false, udp: false, docker: false };
-  if (process.platform !== "win32") {
-    try { results.push(...parseLsof((await execFileAsync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"])).stdout, "tcp")); inspection.tcp = true; }
-    catch (error) { if (commandProducedNoMatches(error)) inspection.tcp = true; }
-    try { results.push(...parseLsof((await execFileAsync("lsof", ["-nP", "-iUDP"])).stdout, "udp")); inspection.udp = true; }
-    catch (error) { if (commandProducedNoMatches(error)) inspection.udp = true; }
-  } else {
-    try {
-      const output = (await execFileAsync("netstat", ["-ano", "-p", "tcp"])).stdout;
-      results.push(...parseWindowsNetstatListeners(output, "tcp"));
-      inspection.tcp = true;
-    } catch { /* unavailable */ }
-    try {
-      const output = (await execFileAsync("netstat", ["-ano", "-p", "udp"])).stdout;
-      results.push(...parseWindowsNetstatListeners(output, "udp"));
-      inspection.udp = true;
-    } catch { /* unavailable */ }
+  for (const protocol of ["tcp", "udp"] as const) {
+    const scanned = await scanOsListeners(protocol);
+    results.push(...scanned.listeners);
+    inspection[protocol] = scanned.inspected;
   }
-  try { results.push(...parseDockerListeners((await execFileAsync("docker", ["ps", "--format", "{{.ID}}\\t{{.Names}}\\t{{.Ports}}"])).stdout)); inspection.docker = true; } catch { /* Docker is optional */ }
-  return { listeners: results.sort((a, b) => a.port - b.port || a.source.localeCompare(b.source)), inspection };
+  if (includeDocker) {
+    try { results.push(...parseDockerListeners((await execFileAsync("docker", ["ps", "--format", String.raw`{{.ID}}\t{{.Names}}\t{{.Ports}}`], { timeout: 10_000 })).stdout)); inspection.docker = true; }
+    catch { /* Docker is optional */ }
+  }
+  results.sort((a, b) => {
+    if (a.port !== b.port) return a.port - b.port;
+    if (a.source < b.source) return -1;
+    if (a.source > b.source) return 1;
+    return 0;
+  });
+  return { listeners: results, inspection };
 }
 
 export async function scanListeners(): Promise<ListenerInfo[]> { return (await scanListenerState()).listeners; }

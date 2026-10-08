@@ -1,10 +1,391 @@
-import { mkdtemp } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
+import { checkReadinessNow } from "@devfn/processes";
 import { describe, expect, it } from "vitest";
-import { ComposeController, createComposeEnvironment, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
+import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
+import { assertComposeSourceGraphBounded } from "../src/source-files.js";
+
+const execFileAsync = promisify(execFile);
+const MOCK_COMPOSE_HASH = "a".repeat(64);
 
 describe("ComposeController", () => {
+  it("merges unique Compose resources by effective target across short and long forms", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-unique-resources-"));
+    try {
+      await writeFile(path.join(root, "base.yaml"), `services:
+  base:
+    image: busybox
+    volumes: ['\${HOME:-./parent}:/data', './keep:/keep']
+    configs: [first, keep]
+    devices: ['/dev/one:/dev/fixture:rwm', '/dev/keep:/dev/keep']
+    ports:
+      - {target: 80, published: '8080', host_ip: 127.0.0.1, protocol: tcp, x-marker: old}
+`);
+      const source = path.join(root, "compose.yaml");
+      await writeFile(source, `services:
+  api:
+    extends: {file: base.yaml, service: base}
+    volumes: ['./safe:/data']
+    configs: [{source: second, target: /first}]
+    devices: ['/dev/two:/dev/fixture:rwm']
+    ports:
+      - {target: 80, published: '8080', host_ip: 127.0.0.1, protocol: tcp, x-marker: new}
+`);
+      const service = (await assertComposeSourceGraphBounded(source, "api", async (names) => names)).service;
+      expect(service?.volumes).toEqual(["./safe:/data", "./keep:/keep"]);
+      expect(service?.configs).toEqual([{ source: "second", target: "/first" }, "keep"]);
+      expect(service?.devices).toEqual(["/dev/two:/dev/fixture:rwm", "/dev/keep:/dev/keep"]);
+      expect(service?.ports).toEqual([{ target: 80, published: "8080", host_ip: "127.0.0.1", protocol: "tcp", "x-marker": "new" }]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("retains inherited unique mounts in bounded source inventory", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-inherited-mounts-"));
+    try {
+      await writeFile(path.join(root, "base.yaml"), "services:\n  base:\n    image: busybox\n    volumes: ['${HOME}:/data', './logs:/logs']\n");
+      const source = path.join(root, "compose.yaml");
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    volumes: ['./safe:/extra', './other:/logs']\n");
+      const inventory = await assertComposeSourceGraphBounded(source, "api", async (names) => names);
+      expect(inventory.service?.volumes).toEqual(["${HOME}:/data", "./other:/logs", "./safe:/extra"]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("bounds expanded extends ancestors without Docker", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-expanded-"));
+    const source = path.join(root, "compose.yaml");
+    const services = ["  api:\n    extends: step0"];
+    for (let index = 0; index < 490; index += 1) {
+      services.push(`  step${index}:\n    ${index === 489 ? "image: busybox" : `extends: step${index + 1}`}\n    environment:\n      KEY_${index}: ${"x".repeat(256)}`);
+    }
+    try {
+      await writeFile(source, `services:\n${services.join("\n")}\n`);
+      await expect(assertComposeSourceGraphBounded(source, "api", async (names) => names))
+        .rejects.toThrow(/materialization limit/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 10_000);
+
+  it("bounds aggregate Compose source bytes before Docker config", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-source-limit-"));
+    const spec = { adapter: "compose" as const, service: "api" };
+    try {
+      const padding = `#${"x".repeat(6 * 1024 * 1024)}\n`;
+      await mkdir(path.join(root, "nested"));
+      await writeFile(path.join(root, "compose.yaml"), `${padding}include: [nested/child.yaml]\nservices:\n  api:\n    image: busybox\n`);
+      await writeFile(path.join(root, "nested", "child.yaml"), `${padding}services:\n  child:\n    image: busybox\n`);
+      await expect(fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec))).rejects.toThrow(/inventory Compose sources/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 20_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("reads effective default, explicit and isolated service networks", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-networks-"));
+    const file = path.join(root, "compose.yaml");
+    const read = (service: string) => effectiveComposeServiceNetworks({ adapter: "compose", service }, root, "opaque/owner", createComposeEnvironment({ adapter: "compose", service }));
+    try {
+      await writeFile(file, "services:\n  web:\n    image: busybox\n  consumer:\n    image: busybox\n");
+      expect(await read("web")).toEqual(await read("consumer"));
+      await writeFile(file, "services:\n  web:\n    image: busybox\n    networks: [blue]\n  consumer:\n    image: busybox\n    networks: [green]\nnetworks:\n  blue: {}\n  green: {}\n");
+      const isolatedConsumer = await read("consumer");
+      expect((await read("web")).some((network) => isolatedConsumer.includes(network))).toBe(false);
+      await writeFile(file, "services:\n  web:\n    image: busybox\n    networks: [shared]\n  consumer:\n    image: busybox\n    networks: [shared]\nnetworks:\n  shared:\n    external: true\n    name: fixture-external-network\n");
+      expect(await read("web")).toEqual(["fixture-external-network"]);
+      expect(await read("consumer")).toEqual(["fixture-external-network"]);
+      await writeFile(file, "services:\n  web:\n    image: busybox\n    network_mode: host\n");
+      expect(await read("web")).toEqual([]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("fingerprints effective Compose command and env_file inputs", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-fingerprint-"));
+    const file = path.join(root, "compose.yaml");
+    const envFile = path.join(root, "service.env");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await writeFile(envFile, "MODE=first\n");
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    command: ["sleep", "10"]\n    env_file: service.env\n');
+      const first = await fingerprint();
+      expect(await fingerprint()).toBe(first);
+      await writeFile(envFile, "MODE=second\n");
+      const changedEnvironment = await fingerprint();
+      expect(changedEnvironment).not.toBe(first);
+      await writeFile(envFile, "MODE=first\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(envFile, "MODE=second\n");
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    command: ["sleep", "20"]\n    env_file: service.env\n');
+      expect(await fingerprint()).not.toBe(changedEnvironment);
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    command: ["sleep", "20"]\n    environment:\n      MODE: current\n    env_file: service.env\n');
+      const currentLiteral = await fingerprint();
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    command: ["sleep", "20"]\n    environment:\n      MODE: changed\n    env_file: service.env\n');
+      expect(await fingerprint()).not.toBe(currentLiteral);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("tracks effective interpolation and selected resources without secret values", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-resources-"));
+    const source = path.join(root, "compose.yaml");
+    const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["MODE", "CUSTOM"], secretEnv: ["CUSTOM"] };
+    const fingerprint = (mode: string, token: string) => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec, {}, { ...process.env, MODE: mode, CUSTOM: token }));
+    const document = (volume: string, unused = "other") => `services:\n  api:\n    image: busybox\n    environment:\n      MODE: \${MODE}\n      CUSTOM: \${CUSTOM}\n    volumes: [data:/var/data]\nvolumes:\n  data:\n    name: ${volume}\n  unused:\n    name: ${unused}\n`;
+    try {
+      await writeFile(source, document("first"));
+      const first = await fingerprint("one", "synthetic-one");
+      expect(await fingerprint("two", "synthetic-one")).not.toBe(first);
+      expect(await fingerprint("one", "synthetic-two")).toBe(first);
+      await writeFile(source, document("second"));
+      expect(await fingerprint("one", "synthetic-one")).not.toBe(first);
+      await writeFile(source, document("first", "changed"));
+      expect(await fingerprint("one", "synthetic-one")).toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("tracks selected network and config definitions after YAML merges", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-selected-"));
+    const source = path.join(root, "compose.yaml");
+    const configFile = path.join(root, "settings.txt");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    const document = (network: string, config: string, unused = "other") => `x-env: &common\n  MODE: fixture\nservices:\n  api:\n    image: busybox\n    environment:\n      <<: *common\n    networks: [internal]\n    configs: [settings]\nnetworks:\n  internal:\n    name: ${network}\n  unused:\n    name: ${unused}\nconfigs:\n  settings:\n    file: ${config}\n`;
+    try {
+      await writeFile(configFile, "application-neutral\n");
+      await writeFile(source, document("first", "settings.txt"));
+      const first = await fingerprint();
+      await writeFile(configFile, "application-neutral\n");
+      expect(await fingerprint()).toBe(first);
+      await writeFile(configFile, "application-changed\n");
+      expect(await fingerprint()).not.toBe(first);
+      await writeFile(configFile, "application-neutral\n");
+      const restored = await fingerprint();
+      await writeFile(source, document("second", "settings.txt"));
+      expect(await fingerprint()).not.toBe(restored);
+      await writeFile(path.join(root, "other.txt"), "application-neutral\n");
+      await writeFile(source, document("first", "other.txt"));
+      expect(await fingerprint()).not.toBe(first);
+      await writeFile(source, document("first", "settings.txt", "changed"));
+      expect(await fingerprint()).toBe(restored);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("accepts include path lists and same-file extends at the effective service", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-path-list-"));
+    const nested = path.join(root, "nested");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await mkdir(nested);
+      await writeFile(path.join(root, "compose.yaml"), "include:\n  - path: [nested/first.yaml, nested/second.yaml]\n");
+      await writeFile(path.join(nested, "first.yaml"), "services:\n  helper:\n    image: busybox\n");
+      await writeFile(path.join(nested, "second.yaml"), "services:\n  base:\n    image: busybox\n    command: [sleep, '10']\n  api:\n    extends: base\n");
+      const first = await fingerprint();
+      await writeFile(path.join(nested, "second.yaml"), "services:\n  base:\n    image: busybox\n    command: [sleep, '20']\n  api:\n    extends: base\n");
+      expect(await fingerprint()).not.toBe(first);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("tracks default and include-scoped interpolation files", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-scoped-env-"));
+    const nested = path.join(root, "nested");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await mkdir(nested);
+      await writeFile(path.join(root, ".env"), "ROOT_MODE=first\n");
+      await writeFile(path.join(nested, "project.env"), "CHILD_MODE=one\n");
+      await writeFile(path.join(root, "compose.yaml"), "include:\n  - path: nested/compose.yaml\n    env_file: nested/project.env\nservices:\n  api:\n    image: busybox\n    environment:\n      ROOT_MODE: ${ROOT_MODE}\n");
+      await writeFile(path.join(nested, "compose.yaml"), "services:\n  child:\n    image: busybox\n    environment:\n      CHILD_MODE: ${CHILD_MODE}\n");
+      const first = await fingerprint();
+      await writeFile(path.join(root, ".env"), "ROOT_MODE=second\n");
+      expect(await fingerprint()).not.toBe(first);
+      await writeFile(path.join(root, ".env"), "ROOT_MODE=first\n");
+      expect(await fingerprint()).toBe(first);
+      const childSpec = { adapter: "compose" as const, service: "child" };
+      const childFingerprint = () => fingerprintComposeSource(childSpec, root, "owner", createComposeEnvironment(childSpec));
+      const childFirst = await childFingerprint();
+      await writeFile(path.join(nested, "project.env"), "CHILD_MODE=two\n");
+      expect(await fingerprint()).toBe(first);
+      expect(await childFingerprint()).not.toBe(childFirst);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("requires explicit provenance for inherited Compose interpolation", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-inherited-"));
+    const source = path.join(root, "compose.yaml");
+    const implicit = { adapter: "compose" as const, service: "api" };
+    const explicit = { ...implicit, envAllowlist: ["HOME"] };
+    const dockerConfig = process.env.DOCKER_CONFIG ?? path.join(process.env.HOME ?? "", ".docker");
+    try {
+      await writeFile(source, "services:\n  api:\n    image: busybox\n    environment:\n      WORK_DIR: ${HOME}\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inherited host value/);
+      const first = await fingerprintComposeSource(explicit, root, "owner", createComposeEnvironment(explicit, {}, { ...process.env, DOCKER_CONFIG: dockerConfig, HOME: "/tmp/first" }));
+      const second = await fingerprintComposeSource(explicit, root, "owner", createComposeEnvironment(explicit, {}, { ...process.env, DOCKER_CONFIG: dockerConfig, HOME: "/tmp/second" }));
+      expect(second).not.toBe(first);
+      await writeFile(source, "services:\n  api:\n    image: busybox\n    command: [echo, '$$HOME']\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).resolves.toMatch(/^[a-f0-9]{64}$/);
+      await writeFile(source, "services:\n  api:\n    image: busybox\n  unrelated:\n    image: busybox\n    environment:\n      WORK_DIR: ${HOME}\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).resolves.toMatch(/^[a-f0-9]{64}$/);
+      await writeFile(source, "services:\n  api:\n    image: busybox\n    networks: [selected]\nnetworks:\n  selected:\n    name: ${USER}\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inherited host value/);
+      await writeFile(source, "include: ${HOME}/included.yaml\nservices:\n  api:\n    image: busybox\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).rejects.toThrow(/inventory Compose sources/);
+      await writeFile(path.join(root, "base.yaml"), "services:\n  base:\n    image: busybox\n    environment:\n      WORK_DIR: ${HOME}\n");
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !override\n      WORK_DIR: fixed\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).resolves.toMatch(/^[a-f0-9]{64}$/);
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment:\n      WORK_DIR: fixed\n");
+      await expect(fingerprintComposeSource(implicit, root, "owner", createComposeEnvironment(implicit))).resolves.toMatch(/^[a-f0-9]{64}$/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("tracks nested optional env_file inputs without requiring missing files", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-optional-env-"));
+    const nested = path.join(root, "nested");
+    await mkdir(nested);
+    const file = path.join(nested, "compose.yaml");
+    const envFile = path.join(nested, "service.env");
+    const spec = { adapter: "compose" as const, file: "nested/compose.yaml", service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    try {
+      await writeFile(path.join(root, "service.env"), "MODE=unrelated\n");
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    env_file:\n      - path: service.env\n        required: false\n');
+      const absent = await fingerprint();
+      await writeFile(envFile, "MODE=one\n");
+      const present = await fingerprint();
+      expect(present).not.toBe(absent);
+      await writeFile(envFile, "MODE=second\n");
+      expect(await fingerprint()).not.toBe(present);
+      await rm(envFile);
+      expect(await fingerprint()).toBe(absent);
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    env_file: service.env\n');
+      await expect(fingerprint()).rejects.toThrow();
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("tracks merged include and extends inputs by effective bytes", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-imports-"));
+    const nested = path.join(root, "nested");
+    await mkdir(nested);
+    const top = path.join(root, "compose.yaml");
+    const included = path.join(nested, "included.yaml");
+    const leaf = path.join(nested, "leaf.yaml");
+    const base = path.join(nested, "base.yaml");
+    const grand = path.join(nested, "grand.yaml");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    const sideSpec = { adapter: "compose" as const, service: "side" };
+    const sideFingerprint = () => fingerprintComposeSource(sideSpec, root, "owner", createComposeEnvironment(sideSpec));
+    try {
+      await writeFile(top, 'include: [nested/included.yaml]\nservices:\n  api:\n    extends:\n      file: nested/base.yaml\n      service: base\n    image: busybox\n');
+      await writeFile(included, 'include: [leaf.yaml]\n');
+      await writeFile(leaf, 'services:\n  side:\n    image: busybox\n');
+      await writeFile(base, 'services:\n  base:\n    extends:\n      file: grand.yaml\n      service: grand\n');
+      await writeFile(grand, 'services:\n  grand:\n    command: ["sleep", "10"]\n');
+      const original = await fingerprint();
+      const originalSide = await sideFingerprint();
+      await writeFile(grand, 'services:\n  grand:\n    command: ["sleep", "20"]\n');
+      expect(await fingerprint()).not.toBe(original);
+      await writeFile(grand, 'services:\n  grand:\n    command: ["sleep", "10"]\n');
+      expect(await fingerprint()).toBe(original);
+      await writeFile(leaf, 'services:\n  side:\n    image: busybox\n    command: ["sleep", "30"]\n');
+      expect(await sideFingerprint()).not.toBe(originalSide);
+      // An unrelated included service does not change api's startup recipe.
+      expect(await fingerprint()).toBe(original);
+      await writeFile(top, 'include: [nested/included.yaml]\nservices:\n  api:\n    extends:\n      file: nested/base.yaml\n      service: base\n    image: busybox\n    command: ["sleep", "40"]\n');
+      expect(await fingerprint()).not.toBe(original);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("ignores environment inputs removed by Compose merge tags", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-effective-env-"));
+    const base = path.join(root, "base.yaml");
+    const source = path.join(root, "compose.yaml");
+    const ignoredFile = path.join(root, "ignored.env");
+    const activeFile = path.join(root, "active.env");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+    const baseText = (value: string) => `services:\n  base:\n    image: busybox\n    environment:\n      BASE_ONLY: ${value}\n    env_file: ignored.env\n`;
+    try {
+      await writeFile(base, baseText("first"));
+      await writeFile(ignoredFile, "MODE=ignored\n");
+      await writeFile(activeFile, "MODE=active\n");
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !override\n      CURRENT: one\n    env_file: !override [active.env]\n");
+      const original = await fingerprint();
+      await writeFile(base, baseText("second"));
+      await writeFile(ignoredFile, "MODE=changed\n");
+      expect(await fingerprint()).toBe(original);
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !override\n      CURRENT: two\n    env_file: !override [active.env]\n");
+      const changedLiteral = await fingerprint();
+      expect(changedLiteral).not.toBe(original);
+      await writeFile(activeFile, "MODE=changed\n");
+      const changedFile = await fingerprint();
+      expect(changedFile).not.toBe(changedLiteral);
+      await rm(ignoredFile);
+      expect(await fingerprint()).toBe(changedFile);
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !reset {}\n    env_file: !reset []\n");
+      const reset = await fingerprint();
+      await writeFile(base, baseText("third"));
+      expect(await fingerprint()).toBe(reset);
+      await writeFile(source, "services:\n  api:\n    extends:\n      file: base.yaml\n      service: base\n    environment: !reset null\n    env_file: !reset []\n");
+      expect(await fingerprint()).toBe(reset);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("resolves interpolated optional env files without hashing ambient values", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-interpolated-env-"));
+    const file = path.join(root, "compose.yaml");
+    const envFile = path.join(root, "service.env");
+    const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["FILE_PATH", "UNRELATED_SECRET"] };
+    const fingerprint = (unrelated: string) => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec, {}, { ...process.env, FILE_PATH: "service.env", UNRELATED_SECRET: unrelated }));
+    try {
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    env_file:\n      - path: "${FILE_PATH}"\n        required: false\n');
+      const absent = await fingerprint("one");
+      expect(await fingerprint("two")).toBe(absent);
+      await writeFile(envFile, "MODE=first\n");
+      const present = await fingerprint("one");
+      expect(present).not.toBe(absent);
+      await writeFile(envFile, "MODE=second\n");
+      expect(await fingerprint("one")).not.toBe(present);
+      await rm(envFile);
+      expect(await fingerprint("one")).toBe(absent);
+      await writeFile(file, 'services:\n  api:\n    image: busybox\n    env_file: "${FILE_PATH}"\n');
+      await expect(fingerprint("one")).rejects.toThrow();
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("keeps case-distinct opaque owners in separate stable Compose projects", () => {
+    expect(composeProjectName("blue", "Owner")).not.toBe(composeProjectName("BLUE", "owner"));
+    expect(composeProjectName("blue", "OWNER")).not.toBe(composeProjectName("blue", "owner-0559aadba9e2"));
+    expect(composeProjectName("blue", "Owner")).not.toBe(composeProjectName("BLUE", "Owner"));
+    expect(composeProjectName("blue", "Owner")).toBe(composeProjectName("blue", "Owner"));
+    expect(composeProjectName("blue", "--token=synthetic-sentinel")).not.toContain("synthetic-sentinel");
+    expect(composeProjectName("abcdefghijklmnopqrstuvwxy-one", "owner")).not.toBe(composeProjectName("abcdefghijklmnopqrstuvwxy-two", "owner"));
+    expect(composeProjectName("team.alpha", "owner")).not.toBe(composeProjectName("team-alpha", "owner"));
+  });
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("isolates simultaneous case-distinct owners through stop and retry", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-dual-owner-"));
+    const file = path.join(root, "compose.yaml");
+    const controller = new ComposeController();
+    const prefix = path.basename(root).toLowerCase();
+    const owners = ["Owner", "owner"];
+    await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n');
+    const start = (owner: string) => controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: prefix }, root,
+      runtimeDir: path.join(root, owner), instanceId: owner, ports: {} });
+    try {
+      const first = await start(owners[0]);
+      const second = await start(owners[1]);
+      expect(first.projectName).not.toBe(second.projectName);
+      expect(first.containerIds[0]).not.toBe(second.containerIds[0]);
+      await controller.stop(first);
+      expect(await controller.status(second)).toBe("running");
+      await controller.stop(second);
+      const retried = await start(owners[0]);
+      expect(retried.projectName).toBe(first.projectName);
+      expect(await controller.status(retried)).toBe("running");
+    } finally {
+      for (const owner of owners) await execFileAsync("docker", ["compose", "-p", composeProjectName(prefix, owner), "-f", file, "down"], { cwd: root }).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
   it("exposes availability as a non-throwing diagnostic", async () => {
     const available = new ComposeController(async () => ({ stdout: "2.24.4", stderr: "" }));
     const tooOld = new ComposeController(async () => ({ stdout: "Docker Compose version v2.23.99", stderr: "" }));
@@ -31,6 +412,42 @@ describe("ComposeController", () => {
       { APP_PORT: "4100" },
       { PATH: "/bin", ALLOWED: "yes", SECRET_TOKEN: "no" },
     )).not.toHaveProperty("SECRET_TOKEN");
+  });
+
+  it("delivers allowlisted secrets to host command readiness without storing them in resolved values", async () => {
+    const marker = "synthetic-sentinel";
+    const previous = process.env.API_TOKEN;
+    process.env.API_TOKEN = marker;
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-readiness-"));
+    const readinessEnvironment = { DEVFN_URL_WEB: "http://127.0.0.1:4100", MODE: "probe" };
+    const spec = { adapter: "compose" as const, service: "web", envAllowlist: ["API_TOKEN"], secretEnv: ["API_TOKEN"],
+      health: { type: "command" as const, command: [process.execPath, "-e", "if (!process.env.API_TOKEN || process.env.DEVFN_URL_WEB !== 'http://127.0.0.1:4100') process.exit(1)"] } };
+    let psCalls = 0;
+    const controller = new ComposeController(async (_file, args) => {
+      if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+      if (args.includes("ps")) return { stdout: ++psCalls >= 3 ? "container-id\n" : "", stderr: "" };
+      if (args[0] === "inspect") return { stdout: "true\n", stderr: "" };
+      return { stdout: "", stderr: "" };
+    });
+    try {
+      const managed = await controller.start({ name: "web", spec, root, runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {},
+        environment: { DEVFN_URL_WEB: "http://web:8080" }, readinessEnvironment });
+      expect(JSON.stringify(managed)).not.toContain(marker);
+      expect(JSON.stringify(readinessEnvironment)).not.toContain(marker);
+      const statusEnvironment = createComposeReadinessEnvironment(spec, readinessEnvironment);
+      expect(statusEnvironment).toMatchObject({ API_TOKEN: marker, DEVFN_URL_WEB: "http://127.0.0.1:4100" });
+      expect(statusEnvironment).not.toHaveProperty("UNLISTED_SECRET");
+      expect(await checkReadinessNow({ health: spec.health, ports: {}, logPath: "", cwd: root, environment: statusEnvironment, isAlive: () => true })).toBe(true);
+      delete process.env.API_TOKEN;
+      expect(await checkReadinessNow({ health: spec.health, ports: {}, logPath: "", cwd: root,
+        environment: createComposeReadinessEnvironment(spec, readinessEnvironment), isAlive: () => true })).toBe(false);
+      process.env.API_TOKEN = marker;
+      expect(createComposeReadinessEnvironment({ ...spec, health: { type: "http", url: "http://127.0.0.1:4100" } }, readinessEnvironment)).not.toHaveProperty("API_TOKEN");
+    } finally {
+      if (previous === undefined) delete process.env.API_TOKEN;
+      else process.env.API_TOKEN = previous;
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("binds explicitly public ports and disables persistence for secret-bearing logs", () => {
@@ -108,7 +525,13 @@ describe("ComposeController", () => {
         (calls as string[][]).push([...args]);
         if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
         if (args.includes("ps")) { psCalls += 1; return { stdout: `${projectName || psCalls < 3 ? "old-id" : "new-id"}\n`, stderr: "" }; }
-        if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? (projectName ? "<no value>\t<no value>\t<no value>\n" : "true\tmanaged\tapi\n") : "true\n", stderr: "" };
+        if (args.includes("--hash")) return { stdout: `api ${MOCK_COMPOSE_HASH}\n`, stderr: "" };
+        if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: {} } } }), stderr: "" };
+        if (args[0] === "image") return { stdout: '["PATH=/bin"]\n', stderr: "" };
+        if (args.includes("{{json .Config.Env}}")) return { stdout: '["PATH=/bin"]\n', stderr: "" };
+        if (args.includes("{{json .HostConfig.PortBindings}}")) return { stdout: "{}\n", stderr: "" };
+        if (args.includes("{{.Image}}")) return { stdout: "image-id\n", stderr: "" };
+        if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? (projectName ? "<no value>\t<no value>\t<no value>\n" : "true\tmanaged\tapi\n") : args.some((arg) => arg.includes("com.docker.compose.config-hash")) ? `${MOCK_COMPOSE_HASH}\n` : "true\n", stderr: "" };
         return { stdout: "", stderr: "" };
       });
       const managed = await controller.start({
@@ -131,6 +554,208 @@ describe("ComposeController", () => {
     expect(abandoned.calls.some((args) => args[0] === "stop" && args.includes("new-id"))).toBe(true);
   });
 
+  it("refuses stale environment in an unmanaged container before Compose up", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-stale-"));
+    try {
+      for (const running of [true, false]) {
+        const calls: string[][] = [];
+        const controller = new ComposeController(async (_file, args) => {
+          calls.push([...args]);
+          if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+          if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
+          if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: { DEVFN_PORT_API: "4102" } } } }), stderr: "" };
+          if (args[0] === "inspect") return { stdout: args.includes("{{json .Config.Env}}") ? '["DEVFN_PORT_API=4101"]\n' : "<no value>\t<no value>\t<no value>\n", stderr: "" };
+          return { stdout: "", stderr: "" };
+        });
+        await expect(controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
+          runtimeDir: path.join(root, ".devfn", "instances", "owner"), instanceId: "owner", ports: {}, environment: { DEVFN_PORT_API: "4102" } })).rejects.toThrow(/stale startup environment/);
+        expect(calls.some((args) => args.includes("up"))).toBe(false);
+        expect(calls.some((args) => args[0] === "stop" || args[0] === "rm")).toBe(false);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("refuses unmanaged containers with stale command or leased port config before Compose up", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-stale-hash-"));
+    try {
+      for (const change of ["command", "port"] as const) for (const running of [true, false]) {
+        const calls: string[][] = [];
+        const controller = new ComposeController(async (_file, args) => {
+          calls.push([...args]);
+          if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+          if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
+          if (args.includes("--hash")) return { stdout: `api ${MOCK_COMPOSE_HASH}\n`, stderr: "" };
+          if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: {}, command: change === "command" ? ["sleep", "20"] : ["sleep", "10"], ...(change === "port" ? { ports: [{ target: 8080, published: "4102", host_ip: "127.0.0.1", protocol: "tcp" }] } : {}) } } }), stderr: "" };
+          if (args[0] === "image") return { stdout: '["PATH=/bin"]\n', stderr: "" };
+          if (args.includes("{{json .Config.Env}}")) return { stdout: '["PATH=/bin"]\n', stderr: "" };
+          if (args.includes("{{.Image}}")) return { stdout: "image-id\n", stderr: "" };
+          if (args.some((arg) => arg.includes("com.docker.compose.config-hash"))) return { stdout: `${change === "command" ? "b".repeat(64) : MOCK_COMPOSE_HASH}\n`, stderr: "" };
+          if (args.includes("{{json .HostConfig.PortBindings}}")) return { stdout: change === "port" ? '{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"4101"}]}\n' : "{}\n", stderr: "" };
+          if (args[0] === "inspect") return { stdout: "<no value>\t<no value>\t<no value>\n", stderr: "" };
+          return { stdout: "", stderr: "" };
+        });
+        const error = await controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared", ...(change === "port" ? { ports: { api: 8080 } } : {}) }, root,
+          runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: change === "port" ? { api: 4102 } : {} }).then(() => "", (failure: Error) => failure.message);
+        expect(error).toMatch(change === "command" ? /stale startup configuration/ : /stale published ports/);
+        expect(calls.some((args) => args.includes("up") || args[0] === "stop" || args[0] === "rm")).toBe(false);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("reuses valid random and ranged unmanaged ports but rejects an outside binding", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-published-"));
+    try {
+      for (const [published, actual, allowed] of [["", "44001", true], ["44000-44010", "44001", true], ["44000-44010", "44011", false]] as const) {
+        const calls: string[][] = [];
+        const controller = new ComposeController(async (_file, args) => {
+          calls.push([...args]);
+          if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+          if (args.includes("ps")) return { stdout: "old-id\n", stderr: "" };
+          if (args.includes("--hash")) return { stdout: `api ${MOCK_COMPOSE_HASH}\n`, stderr: "" };
+          if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: {}, ports: [{ target: 8080, published, host_ip: "127.0.0.1", protocol: "tcp" }] } } }), stderr: "" };
+          if (args.includes("{{json .Config.Env}}")) return { stdout: "[]\n", stderr: "" };
+          if (args.some((arg) => arg.includes("com.docker.compose.config-hash"))) return { stdout: `${MOCK_COMPOSE_HASH}\n`, stderr: "" };
+          if (args.includes("{{json .HostConfig.PortBindings}}")) return { stdout: JSON.stringify({ "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: actual }] }) + "\n", stderr: "" };
+          if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? "<no value>\t<no value>\t<no value>\n" : "true\n", stderr: "" };
+          return { stdout: "", stderr: "" };
+        });
+        const start = controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
+          runtimeDir: path.join(root, `runtime-${published || "random"}-${actual}`), instanceId: "owner", ports: {} });
+        if (allowed) {
+          const managed = await start;
+          expect(managed.preExisting).toBe(true);
+          expect(calls.some((args) => args.includes("up"))).toBe(true);
+        } else {
+          await expect(start).rejects.toThrow(/stale published ports/);
+          expect(calls.some((args) => args.includes("up"))).toBe(false);
+        }
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("refuses removed DevFn startup keys in stopped and running unmanaged containers", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-removed-env-"));
+    try {
+      for (const running of [true, false]) {
+        for (const removed of ["DEVFN_URL_API", "DEVFN_PORT_API"]) {
+          const calls: string[][] = [];
+          const controller = new ComposeController(async (_file, args) => {
+            calls.push([...args]);
+            if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+            if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
+            if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: { MODE: "current" } } } }), stderr: "" };
+            if (args[0] === "inspect") return { stdout: args.includes("{{json .Config.Env}}") ? JSON.stringify(["MODE=current", `${removed}=synthetic-sentinel`]) + "\n" : "<no value>\t<no value>\t<no value>\n", stderr: "" };
+            return { stdout: "", stderr: "" };
+          });
+          const error = await controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
+            runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {}, environment: { DEVFN_PROFILE: "default" } }).then(() => "", (failure: Error) => failure.message);
+          expect(error).toMatch(/stale startup environment/);
+          expect(error).not.toContain("synthetic-sentinel");
+          expect(calls.some((args) => args.includes("up") || args[0] === "stop" || args[0] === "rm")).toBe(false);
+        }
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("refuses removed literal startup keys while allowing image defaults", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-literal-env-"));
+    try {
+      for (const running of [true, false]) {
+        for (const literal of ["MODE", "PROFILE_MODE"]) {
+          const calls: string[][] = [];
+          const controller = new ComposeController(async (_file, args) => {
+            calls.push([...args]);
+            if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+            if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
+            if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: { CURRENT: "yes" } } } }), stderr: "" };
+            if (args[0] === "image") return { stdout: JSON.stringify(["PATH=/bin"]) + "\n", stderr: "" };
+            if (args[0] === "inspect") {
+              if (args.includes("{{json .Config.Env}}")) return { stdout: JSON.stringify(["CURRENT=yes", "PATH=/bin", `${literal}=synthetic-sentinel`]) + "\n", stderr: "" };
+              if (args.includes("{{.Image}}")) return { stdout: "image-id\n", stderr: "" };
+              return { stdout: "<no value>\t<no value>\t<no value>\n", stderr: "" };
+            }
+            return { stdout: "", stderr: "" };
+          });
+          const error = await controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
+            runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {}, environment: { CURRENT: "yes" } }).then(() => "", (failure: Error) => failure.message);
+          expect(error).toMatch(/stale startup environment/);
+          expect(error).not.toContain("synthetic-sentinel");
+          expect(calls.some((args) => args.includes("up") || args[0] === "stop" || args[0] === "rm")).toBe(false);
+        }
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("preserves a real unmanaged container with an old leased value", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-stale-real-"));
+    const file = path.join(root, "compose.yaml");
+    const projectPrefix = path.basename(root).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 42);
+    const projectName = composeProjectName(projectPrefix, "owner");
+    await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n    environment:\n      DEVFN_PORT_API: "${DEVFN_PORT_API}"\n');
+    try {
+      await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "up", "-d", "api"], { cwd: root, env: { ...process.env, DEVFN_PORT_API: "4101" } });
+      const controller = new ComposeController();
+      await expect(controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: projectPrefix }, root,
+        runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {}, environment: { DEVFN_PORT_API: "4102" } })).rejects.toThrow(/stale startup environment/);
+      const { stdout: id } = await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "ps", "-q", "api"], { cwd: root, env: { ...process.env, DEVFN_PORT_API: "4101" } });
+      expect(id.trim()).not.toBe("");
+      const { stdout: current } = await execFileAsync("docker", ["inspect", "--format", "{{json .Config.Env}}", id.trim()]);
+      expect(JSON.parse(current) as string[]).toContain("DEVFN_PORT_API=4101");
+    } finally {
+      await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "down"], { cwd: root, env: { ...process.env, DEVFN_PORT_API: "4101" } }).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 40_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("refuses a removed DevFn URL in a real stopped unmanaged container", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-removed-real-"));
+    const file = path.join(root, "compose.yaml");
+    const projectPrefix = path.basename(root).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 42);
+    const projectName = composeProjectName(projectPrefix, "owner");
+    await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n    environment:\n      DEVFN_URL_API: "http://api:4101"\n');
+    try {
+      await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "up", "-d", "api"], { cwd: root });
+      await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "stop", "api"], { cwd: root });
+      await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n');
+      const controller = new ComposeController();
+      await expect(controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: projectPrefix }, root,
+        runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {}, environment: { DEVFN_PROFILE: "default" } })).rejects.toThrow(/stale startup environment/);
+      const { stdout: id } = await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "ps", "-a", "-q", "api"], { cwd: root });
+      expect(id.trim()).not.toBe("");
+      const { stdout: state } = await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", id.trim()]);
+      expect(state.trim()).toBe("false");
+    } finally {
+      await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "down"], { cwd: root }).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 40_000);
+
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("refuses removed literal environment in real running and stopped unmanaged containers", async () => {
+    for (const running of [true, false]) {
+      const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-literal-real-"));
+      const file = path.join(root, "compose.yaml");
+      const projectPrefix = path.basename(root).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 42);
+      const projectName = composeProjectName(projectPrefix, "owner");
+      await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n    environment:\n      MODE: "stale-literal"\n');
+      try {
+        await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "up", "-d", "api"], { cwd: root });
+        if (!running) await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "stop", "api"], { cwd: root });
+        await writeFile(file, 'services:\n  api:\n    image: node:22-alpine\n    command: ["node", "-e", "setInterval(() => {}, 1000)"]\n');
+        const controller = new ComposeController();
+        const failure = await controller.start({ name: "api", spec: { adapter: "compose", service: "api", projectName: projectPrefix }, root,
+          runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {}, environment: { DEVFN_PROFILE: "default" } }).then(() => "", (error: Error) => error.message);
+        expect(failure).toMatch(/stale startup environment/);
+        expect(failure).not.toContain("stale-literal");
+        const { stdout: id } = await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "ps", "-a", "-q", "api"], { cwd: root });
+        const { stdout: state } = await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", id.trim()]);
+        expect(state.trim()).toBe(String(running));
+      } finally {
+        await execFileAsync("docker", ["compose", "-p", projectName, "-f", file, "down"], { cwd: root }).catch(() => undefined);
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  }, 90_000);
+
   it("restores only user-owned containers that DevFn started", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-mixed-"));
     const calls: string[][] = [];
@@ -140,7 +765,11 @@ describe("ComposeController", () => {
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("ps") && args.includes("-a")) { allCalls += 1; return { stdout: allCalls === 1 ? "running-id\nstopped-id\n" : "running-id\nstopped-id\ncreated-id\n", stderr: "" }; }
       if (args.includes("ps")) return { stdout: "running-id\n", stderr: "" };
-      if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? "<no value>\t<no value>\t<no value>\n<no value>\t<no value>\t<no value>\n" : "true\ntrue\ntrue\n", stderr: "" };
+      if (args.includes("--hash")) return { stdout: `api ${MOCK_COMPOSE_HASH}\n`, stderr: "" };
+      if (args.includes("config")) return { stdout: JSON.stringify({ services: { api: { environment: {} } } }), stderr: "" };
+      if (args.includes("{{json .Config.Env}}")) return { stdout: "[]\n[]\n", stderr: "" };
+      if (args.includes("{{json .HostConfig.PortBindings}}")) return { stdout: "{}\n{}\n", stderr: "" };
+      if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? "<no value>\t<no value>\t<no value>\n<no value>\t<no value>\t<no value>\n" : args.some((arg) => arg.includes("com.docker.compose.config-hash")) ? `${MOCK_COMPOSE_HASH}\n${MOCK_COMPOSE_HASH}\n` : "true\ntrue\ntrue\n", stderr: "" };
       return { stdout: "", stderr: "" };
     });
     const managed = await controller.start({

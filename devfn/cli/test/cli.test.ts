@@ -9,7 +9,7 @@ import { runCli } from "../src/index.js";
 
 async function withListenerTools<T>(action: () => Promise<T>): Promise<T> {
   const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-tools-"));
-  await symlink("/bin/ps", path.join(toolsDir, "ps"));
+  if (process.platform !== "win32") await symlink("/bin/ps", path.join(toolsDir, "ps"));
   const originalPath = process.env.PATH;
   try {
     process.env.PATH = toolsDir;
@@ -438,6 +438,43 @@ describe("devfn CLI", () => {
     expect(trustedCode).toBe(1);
     expect(JSON.parse(stdout).error.code).toBe("DEVFN_CONFIG_INVALID");
     await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("requires positive Docker ownership when an occupied container port cannot be inspected", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-doctor-docker-unknown-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    const probe = createServer();
+    const occupied = createServer();
+    try {
+      await new Promise<void>((resolve, reject) => { probe.once("error", reject); probe.listen(0, "127.0.0.1", resolve); });
+      const address = probe.address();
+      if (!address || typeof address === "string") throw new Error("TCP probe did not receive a port.");
+      await new Promise<void>((resolve) => probe.close(() => resolve()));
+      await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
+        version: 1, project: { id: "docker-ownership-fixture" }, ports: { api: { preferred: address.port, exact: true } },
+        services: { api: { adapter: "compose", service: "api", ports: { api: 8080 } } },
+        profiles: { default: { services: ["api"] } },
+      }));
+      const owner = (await resolveInstanceIdentity("docker-ownership-fixture", cwd)).instanceId;
+      const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+      await registry.reserve({ projectId: "docker-ownership-fixture", instanceId: owner, invocationId: "fixture-invocation", profile: "default",
+        requests: [{ name: "api", spec: { preferred: address.port, exact: true } }] });
+      await registry.markActive("fixture-invocation", { api: { container: { id: "fixture-container" } } });
+      await new Promise<void>((resolve, reject) => { occupied.once("error", reject); occupied.listen(address.port, "127.0.0.1", resolve); });
+      await withListenerTools(async () => {
+        let stdout = "";
+        await runCli(["doctor", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+        const result = JSON.parse(stdout) as { diagnostics: Array<{ code: string; severity: string; message: string }> };
+        expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({
+          code: "DEVFN_LISTENER_INSPECTION_UNAVAILABLE", severity: "error", message: expect.stringContaining("Docker listener ownership"),
+        })]));
+      });
+    } finally {
+      if (probe.listening) await new Promise<void>((resolve) => probe.close(() => resolve()));
+      if (occupied.listening) await new Promise<void>((resolve) => occupied.close(() => resolve()));
+      await rm(cwd, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("does not load an untrusted JSON manifest", async () => {

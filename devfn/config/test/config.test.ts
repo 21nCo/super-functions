@@ -3,9 +3,93 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { discoverProject, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
+import { discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
 
 describe("DevFn configuration", () => {
+  it("rejects case-colliding allowlist and secret keys at schema validation", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: ["MODE", "mode"] } } }))
+      .toThrow(/colliding environment keys/);
+    expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"],
+      envAllowlist: ["API_TOKEN", "api_token"], secretEnv: ["API_TOKEN", "api_token"] } } }))
+      .toThrow(/colliding environment keys/);
+    expect(isCredentialKey("API_KEYS")).toBe(true);
+    expect(isCredentialKey("THEME")).toBe(false);
+  });
+  it("classifies credential aliases across separators, case boundaries and documented compact qualifiers", () => {
+    for (const alias of ["key", "pass", "passcode", "passphrase", "pwd", "auth", "sig", "token", "secret", "password", "cred", "credential", "creds"]) {
+      for (const separator of ["_", "-", "."]) expect(isCredentialKey(`db${separator}${alias}`)).toBe(true);
+      for (const prefix of ["DB", "db", "Db"]) {
+        expect(isCredentialKey(`${prefix}${alias.toUpperCase()}`)).toBe(true);
+        expect(isCredentialKey(`${prefix}${alias[0].toUpperCase()}${alias.slice(1)}`)).toBe(true);
+        expect(isCredentialKey(`${prefix}USER${alias.toUpperCase()}`)).toBe(true);
+      }
+      expect(isCredentialKey(`api_${alias}_value`)).toBe(true);
+    }
+    for (const ordinary of ["MONKEY", "compass", "PASSAGE", "KEYSTONE", "DB_MODE", "DATABASE", "authority", "tokenize", "task_status_enabled"]) {
+      expect(isCredentialKey(ordinary)).toBe(false);
+    }
+    for (const alias of ["password", "pass", "pwd"]) {
+      for (const name of [`PG${alias.toUpperCase()}`, `pg${alias}`, `Pg${alias[0].toUpperCase()}${alias.slice(1)}`, `pg_${alias}`]) {
+        expect(isCredentialKey(name)).toBe(true);
+      }
+    }
+    for (const ordinary of ["PGPORT", "PGHOST", "PGDATABASE", "PGUSER", "PAGE", "PAGING"]) expect(isCredentialKey(ordinary)).toBe(false);
+  });
+
+  it("classifies numbered credential keys without treating ordinary numbered keys as secrets", () => {
+    for (const key of ["PASSWORD1", "API_TOKEN2", "AUTHORIZATION2", "DB_PASS3", "DBSIG4", "session-id_5"]) {
+      expect(isCredentialKey(key)).toBe(true);
+    }
+    for (const key of ["PAGE1", "DB_MODE2", "PGPORT3", "REQUEST_ID4"]) expect(isCredentialKey(key)).toBe(false);
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["PASSWORD1", "API_TOKEN2", "AUTHORIZATION2"]) {
+      expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, services: { app: { adapter: "compose", service: "app", env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
+    }
+  });
+  it("rejects compact credential suffixes in literal maps while retaining ordinary keys and secret inheritance", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["MYPASSWORD", "GITHUBTOKEN", "requestSecret2"]) {
+      expect(isCredentialKey(key)).toBe(true);
+      expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, services: { app: { adapter: "compose", service: "app", env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
+    }
+    for (const key of ["MONKEY", "compass", "PAGE2", "GITHUBISSUE"]) expect(isCredentialKey(key)).toBe(false);
+  });
+  it("classifies compact API and access keys with arbitrary qualifiers", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["MYAPIKEY", "GITHUBAPIKEY2", "MYACCESSKEY", "githubAccessKey3"]) {
+      expect(isCredentialKey(key)).toBe(true);
+      expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, services: { app: { adapter: "compose", service: "app", env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
+    }
+    for (const key of ["MONKEY", "APIKEYSTONE", "ACCESSKEYBOARD", "GITHUBISSUE", "PAGE2"]) expect(isCredentialKey(key)).toBe(false);
+  });
+  it("classifies compact secret keys and access key IDs before accepting literals", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["GITHUBSECRETKEY", "githubSecretKey2", "GITHUBACCESSKEYID", "githubAccessKeyId3"]) {
+      expect(isCredentialKey(key)).toBe(true);
+      expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+    }
+    for (const key of ["GITHUBISSUE", "SECRETKEYSTONE", "ACCESSKEYBOARD", "PAGE2"]) expect(isCredentialKey(key)).toBe(false);
+  });
+  it("treats passkeys as credentials in literals and inherited secret declarations", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["PASSKEY", "MY_PASSKEY", "GITHUBPASSKEY2"]) {
+      expect(isCredentialKey(key)).toBe(true);
+      expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], env: { [key]: "SYNTHETIC_DO_NOT_USE" } } } })).toThrow(/secret/);
+      expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
+    }
+    for (const key of ["COMPASS", "PASSAGE", "NODE_ENV"]) expect(isCredentialKey(key)).toBe(false);
+  });
   it("validates named ports, processes, services, profiles, and hostnames", () => {
     const config = validateDevFnConfig({
       version: 1,
@@ -57,6 +141,36 @@ describe("DevFn configuration", () => {
     const base = { version: 1, project: { id: "x" }, profiles: { default: { processes: ["app"] } } };
     expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: ["API_TOKEN"] } } })).toThrow(/secretEnv/);
     expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: ["API_TOKEN"], secretEnv: ["API_TOKEN"] } } }).processes?.app.secretEnv).toEqual(["API_TOKEN"]);
+  });
+
+  it("rejects qualified credential literals consistently while allowing declared host secrets", () => {
+    const marker = "synthetic-sentinel";
+    const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
+    for (const key of ["DB_PRIVATE_KEY", "DB_CREDENTIALS", "DB_PASSWD", "DB_PWD", "DBPWD", "dbPwd", "DBAUTHKEY", "DBKEY", "DBAUTH", "dbAuth", "DBKey", "DBAuth", "DBPwd", "DbKey", "dbKEY", "dbkey", "DB_PASS", "DBSIG", "DBSig", "DbSig", "apiPass", "USER_SIG", "PGPASSWORD", "PgPassword", "pg_pass"]) {
+      for (const location of ["profile", "process", "service"] as const) {
+        const config = location === "profile"
+          ? { ...base, profiles: { default: { environment: { [key]: marker } } } }
+          : location === "process"
+            ? { ...base, processes: { app: { adapter: "command", command: ["node"], env: { [key]: marker } } } }
+            : { ...base, services: { app: { adapter: "compose", service: "app", env: { [key]: marker } } } };
+        let message = "";
+        try { validateDevFnConfig(config); } catch (error) { message = (error as Error).message; }
+        expect(message).toMatch(/secret/);
+        expect(message).not.toContain(marker);
+      }
+      expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key] } } })).toThrow(/secretEnv/);
+      expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: [key], secretEnv: [key] } } }).processes?.app.secretEnv).toEqual([key]);
+      expect(validateDevFnConfig({ ...base, services: { app: { adapter: "compose", service: "app", envAllowlist: [key], secretEnv: [key] } } }).services?.app.secretEnv).toEqual([key]);
+    }
+  });
+
+  it("permits HOST only on an explicitly public native process", () => {
+    const base = { version: 1, project: { id: "x" }, profiles: { default: { processes: ["app"] } } };
+    const process = { adapter: "command", command: ["node"], env: { HOST: "0.0.0.0" }, envAllowlist: ["HOST"] };
+    expect(() => validateDevFnConfig({ ...base, processes: { app: process } })).toThrow(/reserved/);
+    expect(validateDevFnConfig({ ...base, processes: { app: { ...process, exposure: "public" } } }).processes?.app).toMatchObject(process);
+    expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], exposure: "public", envAllowlist: ["HOST"] } } }).processes?.app.envAllowlist).toEqual(["HOST"]);
+    expect(() => validateDevFnConfig({ ...base, profiles: { default: { environment: { HOST: "0.0.0.0" } } } })).toThrow(/reserved/);
   });
 
   it("requires an implicit default profile and private output modes", () => {

@@ -4,9 +4,20 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { ProcessSupervisor } from "../src/index.js";
 import { prepareProcessLog } from "../src/supervisor.js";
 
 describe("process supervision", () => {
+  it("rejects colliding environments before opening a process log", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-prelog-"));
+    const runtimeDir = path.join(root, "runtime");
+    const logPath = path.join(runtimeDir, "logs", "app.log");
+    try {
+      await expect(new ProcessSupervisor().start({ name: "app", root, runtimeDir, ports: {}, environment: {},
+        spec: { adapter: "command", command: [process.execPath, "-e", "0"], env: { MODE: "a" }, envAllowlist: ["mode"] } })).rejects.toThrow(/collides/);
+      await expect(readFile(logPath)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
   it("clears historical output before starting a secret-bearing process", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-sensitive-log-"));
     try {
