@@ -1,0 +1,31 @@
+devfn/compose/src/index.ts
+  s_b7da401caff52c::t_681b6fc9c8966b 456
+  s_b7da401caff52c::t_aa027c8a305455 453-455
+  s_b7da401caff52c::t_0fa565e4684c0d 457-459
+devfn/compose/test/path-contract.test.ts
+  s_e41552db7a7823::t_fb14a588dfc579 7,62,105-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "85977fc78a3fe9017d846a55219d6c5d917b5fed",
+  "prompts": {},
+  "sessions": {
+    "s_b7da401caff52c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51593f53-9c12-4d52-9b48-2d6bbdd12aac",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_e41552db7a7823": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ccf55d8d-6176-4456-a8a3-555947c35bfe",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
