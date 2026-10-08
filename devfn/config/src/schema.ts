@@ -246,7 +246,9 @@ function hostnameSpec(value: unknown, field: string): HostnameSpec {
   const hostname = optionalString(input.hostname, `${field}.hostname`);
   const domain = optionalString(input.domain, `${field}.domain`);
   const host = optionalString(input.host, `${field}.host`);
-  if (host && (!domain || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(host))) fail(`${field}.host requires a registered domain and one DNS label.`, `${field}.host`);
+  // The generated alias adds a separator and an eight-character minimum
+  // worktree suffix; a longer host cannot fit in one DNS label.
+  if (host && (!domain || host.length > 54 || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(host))) fail(`${field}.host requires a registered domain and one DNS label of at most 54 characters.`, `${field}.host`);
   if (domain && hostname) fail(`${field} cannot set both hostname and domain.`, field);
   if (domain && (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain) || domain.endsWith(".localhost"))) {
     fail(`${field}.domain must be a concrete registered domain.`, `${field}.domain`);

@@ -174,7 +174,8 @@ export function resolveAllocationUrls(allocations: readonly PortAllocation[], ro
 
 async function selectedProxyRoutes(config: DevFnConfig, plan: LifecyclePlan, identity: RoutingIdentity, ports: Readonly<Record<string, number>>, suffix: string, stateDir: string, verifyActivation = true): Promise<Array<Omit<ProxyRoute, "updatedAt">>> {
   if (!plan.proxy) return [];
-  const registrations = await readRegisteredDomains(stateDir);
+  const registrations = Object.values(config.hostnames ?? {}).some((spec) => spec.domain && (!spec.profiles || spec.profiles.includes(plan.profile)))
+    ? await readRegisteredDomains(stateDir) : [];
   const routes: Array<Omit<ProxyRoute, "updatedAt">> = [];
   for (const [name, spec] of Object.entries(config.hostnames ?? {}).filter(([, value]) => !value.profiles || value.profiles.includes(plan.profile))) {
     if (!plan.portNames.includes(spec.target) || !Number.isInteger(ports[spec.target])) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Selected route ${name} has no selected target port.`);
@@ -416,7 +417,7 @@ export class DevFnOrchestrator {
       }
       if (plan.proxy) {
         const routes = await selectedProxyRoutes(options.config, plan, identity, ports, suffix, stateDir);
-        receipt.routes = await proxy.upsert(routes);
+        receipt.routes = await proxy.upsert(routes, identity.instanceId);
       }
       receipt.urls = resolveAllocationUrls(allocations, receipt.routes, selectedHttpPorts(options.config, plan), resolved.directUrls);
       clearInterval(heartbeat);

@@ -68,16 +68,47 @@ describe("Caddy route rendering", () => {
       expect(await controller.routes()).toEqual([retained]);
       await expect(controller.upsert([retained])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_UNREGISTERED" });
       await controller.upsert([removed]);
+      const committedBefore = await controller.routes();
       await writeFile(path.join(stateDir, "domains.json"), JSON.stringify({ version: 1, domains: [
         { domain: "invalid.test", projectId: "fixture", repositoryIdentity: stateDir, tls: "internal" },
       ] }));
       const failedActivation = { ...retained, id: "new-domain", instanceId: "new", hostname: "new.invalid.test" };
-      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [retained, removed, failedActivation] }));
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [...committedBefore, failedActivation] }));
+      expect(await controller.routes()).toEqual(committedBefore);
+      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: committedBefore });
+      expect(await controller.routes()).toEqual(committedBefore);
       await controller.removeInstance("b");
       expect(await controller.routes()).toEqual([retained]);
+      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: [retained] });
       await expect(access(path.join(stateDir, "proxy-routes.pending.json"))).rejects.toMatchObject({ code: "ENOENT" });
       await expect(controller.upsert([failedActivation])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
       expect(await controller.routes()).toEqual([retained]);
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
+    }
+  });
+
+  it("an empty owner selection recovers pending state and removes only that owner's routes", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-empty-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+    const originalPath = process.env.PATH;
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const first = { id: "a", instanceId: "a", hostname: "a.localhost", targetHost: "127.0.0.1", targetPort: 4101, tls: "off" as const, updatedAt: "now" };
+    const sibling = { id: "b", instanceId: "b", hostname: "b.localhost", targetHost: "127.0.0.1", targetPort: 4102, tls: "off" as const, updatedAt: "now" };
+    try {
+      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+      await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [first] }));
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [first, sibling] }));
+      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      const controller = new CaddyProxyController(stateDir);
+      await expect(controller.upsert([], "a")).resolves.toEqual([]);
+      expect(await controller.routes()).toEqual([sibling]);
+      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: [sibling] });
+      await expect(access(path.join(stateDir, "proxy-routes.pending.json"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(controller.upsert([])).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
     } finally {
       if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
       await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });

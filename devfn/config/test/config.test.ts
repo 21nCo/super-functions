@@ -128,6 +128,13 @@ describe("DevFn configuration", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { bad_name: { target: "app" } } })).toThrow(/invalid/);
   });
 
+  it("rejects registered host labels that cannot fit a worktree alias during config validation", () => {
+    const base = { version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} } };
+    expect(validateDevFnConfig({ ...base, hostnames: { app: { target: "app", domain: "dev.example.test", host: "a".repeat(54) } } }).hostnames?.app.host).toHaveLength(54);
+    expect(() => validateDevFnConfig({ ...base, hostnames: { app: { target: "app", domain: "dev.example.test", host: "a".repeat(55) } } }))
+      .toThrow(/host requires a registered domain and one DNS label of at most 54 characters/);
+  });
+
   it("rejects lifecycle names that cannot be used as safe runtime filenames", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, services: { "../outside": { adapter: "compose", service: "app" } }, profiles: { default: {} } })).toThrow(/unsupported|only letters/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, services: { "worker\n": { adapter: "compose", service: "app" } }, profiles: { default: {} } })).toThrow(/only letters/);

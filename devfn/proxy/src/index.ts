@@ -154,14 +154,14 @@ export class CaddyProxyController {
         // its DNS or certificate has since become invalid. Restore the last
         // committed configuration before accepting further updates.
         const committed = previous ?? { version: 1, routes: [] };
-        await this.apply(committed, true, committed.routes);
+        await this.apply(committed, true, committed.routes, true);
         return committed;
       }
     }
     return await this.readState(this.statePath) ?? { version: 1, routes: [] };
   }
 
-  private async apply(next: ProxyState, recovering = false, previous: readonly ProxyRoute[] = []): Promise<void> {
+  private async apply(next: ProxyState, recovering = false, previous: readonly ProxyRoute[] = [], rejectPending = false): Promise<void> {
     const changed = next.routes.filter((route) => {
       const saved = previous.find((item) => item.id === route.id);
       return !saved || JSON.stringify({ ...saved, updatedAt: undefined }) !== JSON.stringify({ ...route, updatedAt: undefined });
@@ -264,11 +264,17 @@ export class CaddyProxyController {
       child.unref();
     }
     await rename(candidate, this.configPath);
-    await rename(this.pendingPath, this.statePath);
+    // A rejected activation is a rollback, not a replay. Its pending journal
+    // must never replace the last committed route state after Caddy recovers.
+    if (rejectPending) await rm(this.pendingPath, { force: true });
+    else await rename(this.pendingPath, this.statePath);
   }
 
-  public async upsert(routes: readonly Omit<ProxyRoute, "updatedAt">[]): Promise<ProxyRoute[]> {
-    if (routes.length === 0) return [];
+  public async upsert(routes: readonly Omit<ProxyRoute, "updatedAt">[], instanceId?: string): Promise<ProxyRoute[]> {
+    const selectedOwner = instanceId ?? routes[0]?.instanceId;
+    if (!selectedOwner || routes.some((route) => route.instanceId !== selectedOwner)) {
+      throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "One update must name routes for one instance.");
+    }
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
     return await withFileLock(this.lockPath, async () => {
       const state = await this.read();
@@ -277,14 +283,13 @@ export class CaddyProxyController {
       if (routes.some((route) => state.routes.some((saved) => saved.id === route.id && saved.instanceId !== route.instanceId))) {
         throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "A route ID is already owned by another instance.");
       }
-      const owners = new Set(routes.map((route) => route.instanceId));
-      if (owners.size !== 1) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "One update must contain routes for one instance.");
       const now = new Date().toISOString();
-      const nextRoutes = [...state.routes.filter((route) => !owners.has(route.instanceId)), ...routes.map((route) => ({ ...route, updatedAt: now }))];
+      const nextRoutes = [...state.routes.filter((route) => route.instanceId !== selectedOwner), ...routes.map((route) => ({ ...route, updatedAt: now }))];
       renderCaddyfile(nextRoutes);
+      if (routes.length === 0 && nextRoutes.length === state.routes.length) return [];
       // Every explicitly selected route is activated again. Only routes from
       // other instances are exempt from fresh DNS and certificate checks.
-      await this.apply({ version: 1, routes: nextRoutes }, false, state.routes.filter((route) => !owners.has(route.instanceId)));
+      await this.apply({ version: 1, routes: nextRoutes }, false, state.routes.filter((route) => route.instanceId !== selectedOwner));
       return nextRoutes.filter((route) => ids.has(route.id));
     }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
   }
