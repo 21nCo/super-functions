@@ -69,7 +69,7 @@ describe("instance identity", () => {
       expect(nestedIdentity.isPrimaryWorktree).toBe(true);
       expect(nestedIdentity.readableWorktreeLabel).toBe(identities[0].readableWorktreeLabel);
       expect(domainAliases("app", "dev.example.test", nestedIdentity)).toContain("app.dev.example.test");
-    } finally { await rm(parent, { recursive: true, force: true }); }
+    } finally { await rm(parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
   });
 
   it("does not change when the origin remote changes", async () => {
