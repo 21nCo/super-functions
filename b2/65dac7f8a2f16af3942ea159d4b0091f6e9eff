@@ -1,0 +1,14 @@
+devfn/core/test/identity.test.ts
+  h_bdc5b81c173ee9 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b265dac7f8a2f16af3942ea159d4b0091f6e9eff",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
