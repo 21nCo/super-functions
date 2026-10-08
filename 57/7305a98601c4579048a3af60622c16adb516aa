@@ -1,0 +1,18 @@
+devfn/cli/SECURITY.md
+  h_bdc5b81c173ee9 10-11
+devfn/proxy/src/domains.ts
+  h_bdc5b81c173ee9 60,67-69,74,76-84,122
+devfn/proxy/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 1,66-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "577305a98601c4579048a3af60622c16adb516aa",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
