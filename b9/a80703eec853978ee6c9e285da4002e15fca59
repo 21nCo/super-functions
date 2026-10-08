@@ -1,0 +1,39 @@
+docsfn/cli/src/migrate-docusaurus.ts
+  s_c1093e7194f7e3::t_8c389afcaf1024 1117,1131-1167
+docsfn/docs/content/docs/api/sveltekit/index.md
+  s_c1093e7194f7e3::t_e33d7b5d1de269 99
+docsfn/docs/content/docs/core-concepts/security.md
+  s_c1093e7194f7e3::t_e33d7b5d1de269 81-82
+docsfn/core/src/markdown.ts
+  s_c1093e7194f7e3::t_e8cc72506fea71 33-36,207-217,232,497-499,505
+docsfn/core/src/security.test.ts
+  s_c1093e7194f7e3::t_36b3c6b488c9bf 308-318
+docsfn/core/src/blog.ts
+  s_c1093e7194f7e3::t_946d92cf7d005d 174-180,190
+docsfn/core/src/markdown.test.ts
+  s_c1093e7194f7e3::t_edddcdad69922e 516-555
+docsfn/docs/content/docs/core-concepts/blog.md
+  s_c1093e7194f7e3::t_610fa8ff121afd 44
+docsfn/core/src/blog.test.ts
+  s_c1093e7194f7e3::t_e24995f3284f1a 232-246
+docsfn/cli/tests/migration-route-safety.test.mjs
+  s_c1093e7194f7e3::t_8c389afcaf1024 171-210
+docsfn/core/src/security.ts
+  s_c1093e7194f7e3::t_36b3c6b488c9bf 405-415,425
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b9a80703eec853978ee6c9e285da4002e15fca59",
+  "prompts": {},
+  "sessions": {
+    "s_c1093e7194f7e3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "203316bd-9c88-41f4-b037-58d76f8b6cd9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
