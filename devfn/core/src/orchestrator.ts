@@ -68,7 +68,7 @@ async function needsNetworkPreflight(config: DevFnConfig, plan: LifecyclePlan, r
     const spec = config.services![node.name];
     const selected = provisional.nodes[node.name].environment;
     const environment = createComposeEnvironment({ ...spec, env: selected }, selected);
-    if ((await selectedComposeEndpointReferences(spec, root, environment, deadline)).size) return true;
+    if ((await selectedComposeEndpointReferences({ ...spec, env: selected }, root, environment, deadline)).size) return true;
   }
   return false;
 }
@@ -114,6 +114,9 @@ async function startupFingerprints(config: DevFnConfig, root: string, resolved: 
         kind: "process", command: resolveAdapterCommand(spec), cwd: processSpec.cwd ?? ".",
         exposure: processSpec.exposure ?? "local", ports: processSpec.ports ?? [],
         environment: declaredEnvironment,
+        inheritedEnvironment: Object.entries(createProcessEnvironment(spec)).filter(([key]) => !Object.hasOwn(node.environment, key))
+          .sort(([a], [b]) => compareCodepoint(a, b))
+          .map(([key, value]) => [key, secretNames.has(key) || isCredentialKey(key) ? "<secret-channel>" : value]),
         envAllowlist: [...(processSpec.envAllowlist ?? [])].sort(compareCodepoint), secretEnv: [...(processSpec.secretEnv ?? [])].sort(compareCodepoint),
       };
     } else if (serviceSpec) {

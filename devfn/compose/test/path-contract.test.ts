@@ -1,9 +1,10 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 
 import { createScopedPathInterpolator, readComposeEnvDefinitions } from "../src/path-interpolation.js";
+import { selectedComposeEndpointReferences } from "../src/index.js";
 
 async function withDotenv(content: string, check: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-path-contract-"));
@@ -44,5 +45,56 @@ it("bounds acyclic dotenv expansion before materialization", async () => {
     const interpolate = createScopedPathInterpolator({}, Date.now() + 5_000, new Set());
     await expect(interpolate(["${A22}"], root)).rejects.toThrow(/value limit|aggregate byte limit/);
     expect(Date.now() - started).toBeLessThan(2_000);
+  });
+});
+
+it("rejects a direct credential reference before resolving a source path", async () => {
+  const interpolate = createScopedPathInterpolator({ API_TOKEN: "private.env" }, Date.now() + 5_000, new Set());
+  await expect(interpolate(["${API_TOKEN}"], process.cwd())).rejects.toThrow(/secret value/);
+});
+
+it("follows the selected ancestor alias in a child source path", async () => {
+  await withDotenv("ALIAS=service\nDIR=${ALIAS}\n", async (root) => {
+    const child = path.join(root, "child");
+    await mkdir(child);
+    await writeFile(path.join(child, ".env"), "FILE_PATH=${DIR}.env\n");
+    const interpolate = createScopedPathInterpolator({}, Date.now() + 5_000, new Set());
+    await expect(interpolate(["${FILE_PATH}"], child, [], [
+      { directory: root, envFiles: [] }, { directory: child, envFiles: [] },
+    ])).resolves.toEqual(["service.env"]);
+  });
+});
+
+it("allows a large unrelated dotenv value while bounding selected paths", async () => {
+  await withDotenv(`UNRELATED=${"x".repeat(70_000)}\nFILE_PATH=service.env\n`, async (root) => {
+    expect((await readComposeEnvDefinitions(path.join(root, ".env"))).get("FILE_PATH")).toBe("service.env");
+    const interpolate = createScopedPathInterpolator({}, Date.now() + 5_000, new Set());
+    await expect(interpolate(["${FILE_PATH}"], root)).resolves.toEqual(["service.env"]);
+  });
+});
+
+it("checks generated URLs only when their value reaches the selected Compose branch", async () => {
+  await withDotenv("", async (root) => {
+    const source = path.join(root, "compose.yaml");
+    const spec = { adapter: "compose" as const, service: "api" };
+    const environment = { DEVFN_URL_WEB: "http://web:8080" };
+    await writeFile(source, "services:\n  api:\n    image: busybox\n    command: '${DEVFN_URL_WEB:+fallback}'\n");
+    expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set());
+    await writeFile(source, "services:\n  api:\n    image: busybox\n    command: '${DEVFN_URL_WEB}'\n");
+    expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set(["DEVFN_URL_WEB"]));
+    await writeFile(source, "services:\n  api:\n    image: busybox\n    command: '${ACTIVATE:+${DEVFN_URL_WEB}}'\n");
+    expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set());
+    await writeFile(path.join(root, ".env"), "ACTIVATE=yes\n");
+    expect(await selectedComposeEndpointReferences(spec, root, environment)).toEqual(new Set(["DEVFN_URL_WEB"]));
+  });
+});
+
+it.each([
+  ["missing", "FILE_PATH=${MISSING}.env\n"],
+  ["cyclic", "FILE_PATH=${ALIAS}.env\nALIAS=${FILE_PATH}\n"],
+])("rejects a %s reference in the selected source path", async (_name, declarations) => {
+  await withDotenv(declarations, async (root) => {
+    const interpolate = createScopedPathInterpolator({}, Date.now() + 5_000, new Set());
+    await expect(interpolate(["${FILE_PATH}"], root)).rejects.toThrow(/missing selected reference/);
   });
 });

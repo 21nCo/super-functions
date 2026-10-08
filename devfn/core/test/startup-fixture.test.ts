@@ -94,6 +94,33 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
 }, 60_000);
 
 describe("real local startup fixtures", () => {
+  it("replaces a native process when an inherited ordinary allowlist value changes", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-native-env-drift-"));
+    const stateDir = path.join(root, "state");
+    const oldMode = process.env.MODE;
+    const config = validateDevFnConfig({ version: 1, project: { id: "native-env-drift-fixture" }, ports: { native: {} },
+      processes: { native: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["native"],
+        health: { type: "http", port: "native", timeoutMs: 10_000 }, envAllowlist: ["MODE"],
+        env: { OBSERVED_FILE: path.join(root, "observed.json") } } },
+      profiles: { default: { processes: ["native"] } } });
+    const orchestrator = new DevFnOrchestrator();
+    try {
+      await writeFile(path.join(root, "server.mjs"), serverScript);
+      process.env.MODE = "one";
+      const first = await orchestrator.up({ config, root, stateDir });
+      expect((await readFile(path.join(root, "observed.json"), "utf8"))).toContain('"mode":"one"');
+      process.env.MODE = "two";
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+      const second = await orchestrator.up({ config, root, stateDir });
+      expect(second.invocationId).not.toBe(first.invocationId);
+      expect((await readFile(path.join(root, "observed.json"), "utf8"))).toContain('"mode":"two"');
+    } finally {
+      await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+      if (oldMode === undefined) delete process.env.MODE; else process.env.MODE = oldMode;
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("replaces dotenv-backed config drift while retaining duration-secret rotation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-config-lifecycle-"));
     const stateDir = path.join(root, "state");

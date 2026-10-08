@@ -863,21 +863,23 @@ function composeSiblingReachable(producer: LifecyclePlan["nodes"][number], consu
   return producerNetworks.some((name) => consumerNetworks.includes(name));
 }
 
+function assertReachableReference(name: string, plan: LifecyclePlan, config: DevFnConfig,
+  field: string, unreachable: ReadonlySet<string>): void {
+  if (!unreachable.has(name)) return;
+  invalid(field, producerIsNative(plan, config, name) ?
+    `reference ${name} points to a native loopback process unreachable from Compose.` :
+    `reference ${name} has no shared effective Compose network.`);
+}
+
 function rejectUnreachableReferences(node: LifecyclePlan["nodes"][number], context: NodeResolutionContext, field: string, unreachable: ReadonlySet<string>): void {
   const { input, config } = context;
   const profile = config.profiles[input.plan.profile];
   const spec = config.services![node.name];
   for (const name of input.composeReferences?.[node.name] ?? []) {
-    if (unreachable.has(name)) invalid(field, producerIsNative(input.plan, config, name) ?
-      `reference ${name} points to a native loopback process unreachable from Compose.` :
-      `reference ${name} has no shared effective Compose network.`);
+    assertReachableReference(name, input.plan, config, field, unreachable);
   }
   for (const value of [...Object.values(profile.environment ?? {}), ...Object.values(spec.env ?? {})]) {
-    for (const match of value.matchAll(REFERENCE)) if (unreachable.has(match[1])) {
-      invalid(field, producerIsNative(input.plan, config, match[1]) ?
-        `reference ${match[1]} points to a native loopback process unreachable from Compose.` :
-        `reference ${match[1]} has no shared effective Compose network.`);
-    }
+    for (const match of value.matchAll(REFERENCE)) assertReachableReference(match[1], input.plan, config, field, unreachable);
   }
 }
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { createComposeEnvironment, fingerprintComposeSource } from "../src/index.js";
+import { createComposeEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource } from "../src/index.js";
 import { readComposeEnvDefinitions } from "../src/path-interpolation.js";
 
 const live = process.env.DEVFN_REAL_COMPOSE === "1";
@@ -44,6 +44,21 @@ async function installProbeLogger(root: string, kind: "presence" | "paths", dela
 }
 
 describe.skipIf(!live)("effective Compose startup fingerprint", () => {
+  it("keeps inactive generated URL branches out of effective network references", async () => {
+    await withComposeSource({
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    command: 'echo ${DEVFN_URL_WEB:+fallback}'\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const environment = createComposeEnvironment(spec, { DEVFN_URL_WEB: "http://web:8080" });
+      const inactive = new Set<string>();
+      await effectiveComposeServiceNetworks(spec, root, "owner", environment, Date.now() + 20_000, inactive);
+      expect(inactive).toEqual(new Set());
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: 'echo ${DEVFN_URL_WEB}'\n");
+      const active = new Set<string>();
+      await effectiveComposeServiceNetworks(spec, root, "owner", environment, Date.now() + 20_000, active);
+      expect(active).toEqual(new Set(["DEVFN_URL_WEB"]));
+    });
+  }, 30_000);
   it.each([
     { name: "BOM and tab export", file: "active.env", first: "\uFEFFexport\tMODE=one\n", second: "\uFEFFexport\tMODE=two\n", invalid: undefined },
     { name: "escaped dollars and quotes", file: "service.env", first: 'MODE="\\$HOME"\nLABEL=\'one\'\n',
@@ -235,6 +250,43 @@ describe.skipIf(!live)("effective Compose startup fingerprint", () => {
     });
   }, 30_000);
 
+  it("tracks ordinary config content behind an inactive nested secret branch", async () => {
+    await withComposeSource({
+      ".env": "APP_CONFIG=${API_TOKEN:-${PUBLIC_VALUE}}\n",
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["PUBLIC_VALUE", "API_TOKEN"], secretEnv: ["API_TOKEN"] };
+      const fingerprint = (value: string, secret?: string) => fingerprintComposeSource(spec, root, "owner",
+        createComposeEnvironment(spec, {}, { ...process.env, API_TOKEN: secret, PUBLIC_VALUE: value }));
+      expect(await fingerprint("one")).not.toBe(await fingerprint("two"));
+      expect(await fingerprint("two", "private-one")).toBe(await fingerprint("two", "private-two"));
+    });
+  }, 30_000);
+
+  it("fingerprints selected ordinary config content larger than a source path", async () => {
+    await withComposeSource({
+      ".env": `APP_CONFIG=${"x".repeat(70_000)}\n`,
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    environment: APP_CONFIG\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, ".env"), `APP_CONFIG=${"x".repeat(69_999)}y\n`);
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
+  it("rejects a credential-derived selected resource path before Compose resolution", async () => {
+    await withComposeSource({
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    configs: [settings]\nconfigs:\n  settings:\n    file: ${API_TOKEN}\n",
+      "private.txt": "ordinary data\n",
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api", envAllowlist: ["API_TOKEN"], secretEnv: ["API_TOKEN"] };
+      await expect(fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec, {},
+        { ...process.env, API_TOKEN: "private.txt" }))).rejects.toThrow(/source path interpolates/);
+    });
+  }, 30_000);
+
   it("uses ordered config-content provenance and tracks an ordinary absent-secret fallback", async () => {
     await withComposeSource({
       ".env": "SOURCE=${API_TOKEN}\nAPP_CONFIG=${SOURCE}\nSOURCE=ordinary\n",
@@ -419,60 +471,25 @@ configs:
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
-  it("resolves literal dotenv include paths without per-scope Compose probes", async () => {
+  it.each([
+    { kind: "literal", depth: 48, definition: (index: number) => `NEXT${index}=../scope${index + 1}/compose.yaml\n` },
+    { kind: "required", depth: 16, definition: (index: number) =>
+      `DIR${index}=../scope${index + 1}\nNEXT${index}=\${DIR${index}?missing}/compose.yaml\n` },
+    { kind: "nested fallback", depth: 16, definition: (index: number) =>
+      `DIR${index}=../scope${index + 1}\nNEXT${index}=\${MISSING${index}:-\${DIR${index}}/compose.yaml}\n` },
+    { kind: "quoted-name", depth: 24, definition: (index: number) =>
+      `NEXT${index}=../scope${index + 1}/com'pose.yaml\n`, childFile: "com'pose.yaml" },
+  ])("resolves distinct $kind dotenv include paths without serial Compose probes", async ({ depth, definition, childFile }) => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-path-depth-"));
     try {
       const { wrapperDirectory, log } = await installProbeLogger(root, "paths");
       const spec = { adapter: "compose" as const, file: "scope0/compose.yaml", service: "api", env: { DEVFN_PROBE_LOG: log } };
-      for (let index = 0; index < 48; index += 1) {
+      for (let index = 0; index < depth; index += 1) {
         const directory = path.join(root, `scope${index}`);
         await mkdir(directory);
-        if (index < 47) await writeFile(path.join(directory, ".env"), `NEXT${index}=../scope${index + 1}/compose.yaml\n`);
-        await writeFile(path.join(directory, "compose.yaml"), index === 47
-          ? "services:\n  api:\n    image: busybox\n"
-          : `include: ['\${NEXT${index}}']\n`);
-      }
-      const environment = createComposeEnvironment(spec, {}, { ...process.env, PATH: `${wrapperDirectory}:${process.env.PATH}` });
-      const started = Date.now();
-      await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
-      expect(await readFile(log, "utf8").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error))).toBe("");
-      expect(Date.now() - started).toBeLessThan(10_000);
-    } finally { await rm(root, { recursive: true, force: true }); }
-  }, 30_000);
-
-  it("resolves distinct simple dotenv expressions without serial Compose probes", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-dynamic-depth-"));
-    try {
-      const { wrapperDirectory, log } = await installProbeLogger(root, "paths");
-      const spec = { adapter: "compose" as const, file: "scope0/compose.yaml", service: "api", env: { DEVFN_PROBE_LOG: log } };
-      for (let index = 0; index < 16; index += 1) {
-        const directory = path.join(root, `scope${index}`);
-        await mkdir(directory);
-        if (index < 15) await writeFile(path.join(directory, ".env"),
-          `DIR${index}=../scope${index + 1}\nNEXT${index}=\${DIR${index}?missing}/compose.yaml\n`);
-        await writeFile(path.join(directory, "compose.yaml"), index === 15
-          ? "services:\n  api:\n    image: busybox\n"
-          : `include: ['\${NEXT${index}}']\n`);
-      }
-      const environment = createComposeEnvironment(spec, {}, { ...process.env, PATH: `${wrapperDirectory}:${process.env.PATH}` });
-      await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
-      expect(await readFile(log, "utf8").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error))).toBe("");
-    } finally { await rm(root, { recursive: true, force: true }); }
-  }, 30_000);
-
-  it("resolves distinct nested fallback paths without serial Compose probes", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "devfn-fingerprint-nested-fallback-depth-"));
-    try {
-      const { wrapperDirectory, log } = await installProbeLogger(root, "paths");
-      const spec = { adapter: "compose" as const, file: "scope0/compose.yaml", service: "api", env: { DEVFN_PROBE_LOG: log } };
-      for (let index = 0; index < 16; index += 1) {
-        const directory = path.join(root, `scope${index}`);
-        await mkdir(directory);
-        if (index < 15) await writeFile(path.join(directory, ".env"),
-          `DIR${index}=../scope${index + 1}\nNEXT${index}=\${MISSING${index}:-\${DIR${index}}/compose.yaml}\n`);
-        await writeFile(path.join(directory, "compose.yaml"), index === 15
-          ? "services:\n  api:\n    image: busybox\n"
-          : `include: ['\${NEXT${index}}']\n`);
+        if (index < depth - 1) await writeFile(path.join(directory, ".env"), definition(index));
+        await writeFile(path.join(directory, index === 0 ? "compose.yaml" : childFile ?? "compose.yaml"), index === depth - 1
+          ? "services:\n  api:\n    image: busybox\n" : `include: ['\${NEXT${index}}']\n`);
       }
       const environment = createComposeEnvironment(spec, {}, { ...process.env, PATH: `${wrapperDirectory}:${process.env.PATH}` });
       const started = Date.now();
