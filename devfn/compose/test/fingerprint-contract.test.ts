@@ -74,6 +74,21 @@ describe.skipIf(!live)("effective Compose startup fingerprint", () => {
     });
   }, 30_000);
 
+  it.each(["'", '"'])("normalizes a BOM before scanning %s quoted env_file values", async (quote) => {
+    await withComposeSource({
+      "compose.yaml": "services:\n  api:\n    image: busybox\n    env_file: service.env\n",
+      "service.env": `MODE=${quote}one${quote}\n`,
+    }, async (root) => {
+      const spec = { adapter: "compose" as const, service: "api" };
+      const fingerprint = () => fingerprintComposeSource(spec, root, "owner", createComposeEnvironment(spec));
+      const first = await fingerprint();
+      await writeFile(path.join(root, "service.env"), `\uFEFFMODE=${quote}one${quote}\n`);
+      expect(await fingerprint()).toBe(first);
+      await writeFile(path.join(root, "service.env"), `\uFEFFMODE=${quote}two${quote}\n`);
+      expect(await fingerprint()).not.toBe(first);
+    });
+  }, 30_000);
+
   it("keeps missing, empty and present secret branches distinct without hashing secret bytes", async () => {
     await withComposeSource({
       "compose.yaml": "services:\n  api:\n    image: busybox\n    command: 'echo ${CUSTOM+present}${CUSTOM-absent}'\n",
@@ -558,7 +573,7 @@ configs:
       const started = Date.now();
       await expect(fingerprintComposeSource(spec, root, "owner", environment)).resolves.toMatch(/^[a-f0-9]{64}$/);
       await expect(readFile(log, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-      expect(Date.now() - started).toBeLessThan(10_000);
+      expect(Date.now() - started).toBeLessThan(3_000);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 

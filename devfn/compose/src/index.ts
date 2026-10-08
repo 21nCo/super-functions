@@ -267,6 +267,7 @@ interface ReferenceTrace { direct: ReadonlySet<string>; captured: readonly Refer
 interface ConfigEnvProvenance { value?: string; safeValue?: string; secretDerived: boolean; references: ReferenceTrace }
 type ConfigScope = Array<[string, string]>;
 const MAX_CONFIG_EXPANSION_BYTES = 10 * 1024 * 1024;
+const MAX_SELECTED_REFERENCES = 4096;
 
 function configDeclarationIndex(scopes: readonly ConfigScope[]): Array<Map<string, number[]>> {
   return scopes.map((scope) => {
@@ -355,16 +356,34 @@ function capturedReferences(direct: ReadonlySet<string>,
   return { direct, captured };
 }
 
-function collectedReferences(roots: Iterable<ReferenceTrace>): Set<string> {
+function collectedReferences(roots: Iterable<ReferenceTrace>, seen = new Set<ReferenceTrace>()): Set<string> {
   const names = new Set<string>();
-  const seen = new Set<ReferenceTrace>();
-  const pending = [...roots];
+  const pending: ReferenceTrace[] = [];
+  const queued = new Set<ReferenceTrace>();
+  const enqueue = (trace: ReferenceTrace): void => {
+    if (seen.has(trace) || queued.has(trace)) return;
+    queued.add(trace);
+    if (queued.size > MAX_SELECTED_REFERENCES) {
+      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the reference count limit.");
+    }
+    pending.push(trace);
+  };
+  for (const root of roots) enqueue(root);
   while (pending.length) {
     const trace = pending.pop()!;
+    queued.delete(trace);
     if (seen.has(trace)) continue;
     seen.add(trace);
-    for (const name of trace.direct) names.add(name);
-    pending.push(...trace.captured);
+    if (seen.size > MAX_SELECTED_REFERENCES) {
+      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the reference count limit.");
+    }
+    for (const name of trace.direct) {
+      names.add(name);
+      if (names.size > MAX_SELECTED_REFERENCES) {
+        throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the reference count limit.");
+      }
+    }
+    for (const child of trace.captured) enqueue(child);
   }
   return names;
 }
@@ -437,6 +456,9 @@ function selectEnvFileConfigDeclarations(selection: ConfigSelection,
       throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the aggregate work limit.");
     }
     prior.set(name, { value, references });
+    if (prior.size > MAX_SELECTED_REFERENCES) {
+      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the reference count limit.");
+    }
     if (!Object.hasOwn(selection.environment, name) && !projectDefines(name)) effectiveValues[name] = value ?? "";
   }
   const active = collectedReferences([...prior].filter(([name]) => !overridden.has(name)).map(([, entry]) => entry.references));
@@ -537,25 +559,23 @@ interface SelectedInterpolationState { values: NodeJS.ProcessEnv; safeValues: No
 
 function assertActiveReferences(names: ReadonlySet<string>, references: (name: string) => ReferenceTrace | undefined,
   forbidden: ReadonlySet<string>): Set<string> {
-  const pending = [...names];
+  const pending = new Set(names);
   const checked = new Set<string>();
   const seen = new Set<ReferenceTrace>();
-  while (pending.length) {
-    const name = pending.pop()!;
+  while (pending.size) {
+    const name = pending.values().next().value!;
+    pending.delete(name);
     if (forbidden.has(name)) {
       throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Selected Compose input interpolates an inherited host value without an explicit allowlist.");
     }
     if (checked.has(name)) continue;
     checked.add(name);
+    if (checked.size + pending.size > MAX_SELECTED_REFERENCES) {
+      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", "Compose interpolation exceeds the reference count limit.");
+    }
     const trace = references(name);
-    if (!trace) continue;
-    const traces = [trace];
-    while (traces.length) {
-      const current = traces.pop()!;
-      if (seen.has(current)) continue;
-      seen.add(current);
-      pending.push(...current.direct);
-      traces.push(...current.captured);
+    for (const dependency of trace ? collectedReferences([trace], seen) : []) {
+      if (!checked.has(dependency)) pending.add(dependency);
     }
   }
   return checked;
@@ -708,8 +728,7 @@ function unquotedEnvFileValue(line: string, start: number): string {
 }
 
 function envFileAssignment(lines: string[], lineIndex: number): { name: string; value: string; lastLine: number } | undefined {
-  // Compose accepts a UTF-8 BOM at the beginning of an env file.
-  const line = lineIndex === 0 ? lines[lineIndex].replace(/^\uFEFF/, "") : lines[lineIndex];
+  const line = lines[lineIndex];
   let cursor = skipEnvSpaces(line, 0);
   if (line[cursor] === "#" || cursor === line.length) return undefined;
   if (line.startsWith("export", cursor) && /[ \t]/.test(line[cursor + 6] ?? "")) cursor = skipEnvSpaces(line, cursor + 6);
@@ -733,6 +752,8 @@ function envFileAssignment(lines: string[], lineIndex: number): { name: string; 
 function envFileAssignments(content: string): Array<[string, string]> {
   const values: Array<[string, string]> = [];
   const lines = content.split(/\r?\n/);
+  // Normalize once so the assignment cursor and quote scanner read identical text.
+  if (lines[0]?.startsWith("\uFEFF")) lines[0] = lines[0].slice(1);
   let lineIndex = 0;
   while (lineIndex < lines.length) {
     const assignment = envFileAssignment(lines, lineIndex);

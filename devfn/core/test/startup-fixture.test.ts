@@ -796,7 +796,7 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
     await mkdir(observed);
     await writeFile(path.join(root, "web.mjs"), `import { createServer } from "node:http";
 import { writeFile } from "node:fs/promises";
-await writeFile("/observed/web.json", JSON.stringify({ url: process.env.OBSERVED_URL, port: process.env.OBSERVED_PORT, mode: process.env.OBSERVED_MODE }));
+await writeFile("/observed/web.json", JSON.stringify({ url: process.env.OBSERVED_URL, port: process.env.OBSERVED_PORT, mode: process.env.OBSERVED_MODE, extra: process.env.EXTRA }));
 createServer((request, response) => { response.writeHead(request.url === "/health?probe=1" || request.url === "/health" ? 200 : 404); response.end("ok"); }).listen(8080, process.env.HOST);
 `);
     await writeFile(path.join(root, "consumer.mjs"), `import { createServer } from "node:http";
@@ -809,6 +809,7 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
     await writeFile(path.join(root, "compose.yaml"), `services:
   web:
     image: node:22-alpine
+    env_file: web.env
     working_dir: /app
     volumes:
       - ./web.mjs:/app/web.mjs:ro
@@ -830,6 +831,7 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       UPSTREAM_URL: "\${DEVFN_URL_WEB}"
       DEVFN_PORT_WEB: "\${DEVFN_PORT_WEB}"
 `);
+    await writeFile(path.join(root, "web.env"), "\uFEFFEXTRA='one'\n");
     await writeFile(path.join(root, "server.mjs"), serverScript);
     const config = validateDevFnConfig({
       version: 1, project: { id: "compose-endpoint-fixture" },
@@ -853,11 +855,19 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
       const web = JSON.parse(await readFile(path.join(observed, "web.json"), "utf8"));
       const consumer = JSON.parse(await readFile(path.join(observed, "consumer.json"), "utf8"));
       const native = JSON.parse(await readFile(path.join(root, "native.json"), "utf8"));
-      expect(web).toEqual({ url: "http://web:8080", port: String(webPort), mode: "service" });
+      expect(web).toEqual({ url: "http://web:8080", port: String(webPort), mode: "service", extra: "one" });
       expect(consumer).toEqual({ upstream: "http://web:8080", port: String(webPort), response: 200 });
       expect(native.argv[0]).toBe(`http://127.0.0.1:${webPort}`);
       expect(native.upstream).toBe(`http://127.0.0.1:${webPort}`);
       expect(native.mode).toBe("node");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      await writeFile(path.join(root, "web.env"), "EXTRA='one'\n");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+      await writeFile(path.join(root, "web.env"), "\uFEFFEXTRA=${HOME}\n");
+      expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+      await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toThrow();
+      expect((await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", receipt.services[0].containerIds[0]])).stdout.trim()).toBe("true");
+      await writeFile(path.join(root, "web.env"), "\uFEFFEXTRA='one'\n");
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       const networkSource = path.join(root, "compose.yaml");
       const sharedSource = await readFile(networkSource, "utf8");
