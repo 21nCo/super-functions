@@ -6,9 +6,9 @@ import { promisify } from "node:util";
 
 import { matchesProcessIdentity, processExists } from "@devfn/processes";
 
-import { allocateEphemeralPort, isPortAvailable } from "./listeners.js";
+import { allocateEphemeralPort, isPortAvailable, scanListenerState } from "./listeners.js";
 import { withFileLock } from "./lock.js";
-import { PortRegistryError, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput } from "./types.js";
+import { PortRegistryError, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput, type ReservationRequest } from "./types.js";
 import { parsePersistedProxyRoutes } from "./proxy-state.js";
 import { parseProxyOwner, proxyOwnerStatus } from "./proxy-owner.js";
 
@@ -40,24 +40,58 @@ async function noOwnedProxyRoutes(stateDir: string, instanceId: string): Promise
   return true;
 }
 
-async function noLiveProxyOwner(stateDir: string): Promise<boolean> {
+async function proxyClaimHasNoBoundListener(stateDir: string, ports: readonly number[]): Promise<boolean> {
+  if (!ports.length || ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)) return false;
+  const scanned = await scanListenerState(false);
+  if (scanned.listeners.some((listener) => listener.protocol === "tcp" && ports.includes(listener.port)) ||
+    (!scanned.inspection.tcp && ports.some((port) => port < 1024))) return false;
+  // Binding is a second check for ordinary ports; privileged Linux ports
+  // require OS listener inspection because an unprivileged bind can fail even
+  // when no listener exists.
+  for (const port of ports) if (port >= 1024 && !await isPortAvailable(port, "tcp", "127.0.0.1")) return false;
   let owner;
   try { owner = parseProxyOwner(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
   }
-  if (owner && !["dead", "identity-mismatch"].includes(await proxyOwnerStatus(owner))) return false;
-  // DevFn always enables Caddy's loopback admin listener. A live but
-  // unrecorded Caddy must continue to protect its HTTP and HTTPS listeners.
+  const status = owner ? await proxyOwnerStatus(owner) : "dead";
+  if (status === "unverified") return false;
+  // A verified Caddy may retain its admin listener after all sites are gone.
+  // For an absent/dead/reused owner, an occupied admin port is ambiguous.
+  if (status === "active") return true;
   return await isPortAvailable(2019, "tcp", "127.0.0.1");
 }
 
-async function expireAbandonedProxyClaims(state: RegistryState, stateDir: string, now: string): Promise<void> {
+async function refreshAllocation(allocation: PortAllocation, now: string, available: (port: number, protocol: "tcp" | "udp", host: string) => Promise<boolean>): Promise<void> {
+  const previousState = allocation.state;
+  const portAvailable = await available(allocation.port, allocation.protocol, allocation.host);
+  if (allocation.state === "planned" && Date.now() - Date.parse(allocation.updatedAt) > ABANDONED_CLAIM_MS) allocation.state = "stale";
+  else if (allocation.state === "active" && allocation.process && !await matchesProcessOwner(allocation.process)) allocation.state = portAvailable ? "stale" : "externally-occupied";
+  else if (allocation.state === "active" && allocation.container && await inspectContainerRunning(allocation.container) === false) allocation.state = portAvailable ? "stale" : "externally-occupied";
+  else if (allocation.state === "active" && !allocation.process && !allocation.container) allocation.state = portAvailable ? "stale" : "externally-occupied";
+  else if (allocation.state === "externally-occupied" && portAvailable) allocation.state = "stale";
+  if (allocation.state !== previousState) allocation.updatedAt = now;
+}
+
+async function expireAbandonedProxyClaims(state: RegistryState, stateDir: string, now: string,
+  available: (port: number, protocol: "tcp" | "udp", host: string) => Promise<boolean>): Promise<void> {
   for (const invocation of state.invocations) {
     if (!invocation.proxyListenerPorts?.length || !["planning", "starting", "ready"].includes(invocation.state) ||
-      !Number.isFinite(Date.parse(invocation.updatedAt)) || Date.now() - Date.parse(invocation.updatedAt) <= ABANDONED_CLAIM_MS ||
-      state.allocations.some((item) => item.invocationId === invocation.id && active(item))) continue;
-    if (!await noOwnedProxyRoutes(stateDir, invocation.instanceId) || !await noLiveProxyOwner(stateDir)) continue;
+      !Number.isFinite(Date.parse(invocation.updatedAt)) || Date.now() - Date.parse(invocation.updatedAt) <= ABANDONED_CLAIM_MS) continue;
+    for (const allocation of state.allocations.filter((item) => item.invocationId === invocation.id && active(item))) {
+      await refreshAllocation(allocation, now, available);
+    }
+    if (state.allocations.some((item) => item.invocationId === invocation.id && active(item))) continue;
+    // Proxy mutations hold this lock across their route journal and reload.
+    // Inspect the route files and physical listener under the same lock so a
+    // concurrent activation cannot publish a route while we retire its claim.
+    let abandoned = false;
+    try {
+      abandoned = await withFileLock(path.join(stateDir, "proxy.lock"), async () =>
+        await noOwnedProxyRoutes(stateDir, invocation.instanceId) &&
+        await proxyClaimHasNoBoundListener(stateDir, invocation.proxyListenerPorts!));
+    } catch { /* Inconclusive ownership evidence keeps the claim. */ }
+    if (!abandoned) continue;
     Object.assign(invocation, { state: "failed", errorCode: "DEVFN_INTERRUPTED", updatedAt: now });
   }
 }
@@ -127,6 +161,7 @@ export class FilePortRegistry {
   public async reserve(input: ReservationInput): Promise<PortAllocation[]> {
     return await this.transaction(async (state) => {
       const now = new Date().toISOString();
+      await expireAbandonedProxyClaims(state, path.dirname(this.filePath), now, this.availabilityCheck);
       const proxyPorts = new Set(input.proxyListenerPorts ?? []);
       for (const port of proxyPorts) {
         const conflict = state.allocations.find((item) => active(item) && item.port === port);
@@ -277,10 +312,16 @@ export class FilePortRegistry {
     });
   }
 
-  public async assertProxyListenerAvailable(ports: readonly number[], exceptInstanceId: string): Promise<void> {
+  public async assertProxyListenerAvailable(ports: readonly number[], exceptInstanceId: string, requests: readonly ReservationRequest[] = []): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
     await withFileLock(this.lockPath, async () => {
       const state = await this.read();
+      const selfConflict = requests.find((request) => request.spec.exact && request.spec.preferred !== undefined && ports.includes(request.spec.preferred));
+      if (selfConflict) {
+        const port = selfConflict.spec.preferred!;
+        throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${selfConflict.name} is claimed by proxy instance ${exceptInstanceId}. This profile also selects proxy routes; change the service's exact port before activating them.`,
+          { service: selfConflict.name, port, instanceId: exceptInstanceId, action: "Change this service's exact port before activating proxy routes." });
+      }
       const conflict = state.allocations.find((item) => active(item) && item.instanceId !== exceptInstanceId && ports.includes(item.port));
       if (conflict) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${conflict.port} is leased by ${conflict.instanceId}/${conflict.service}. ${proxyListenerMigration(conflict.port)}`,
         { port: conflict.port, instanceId: conflict.instanceId, service: conflict.service, action: proxyListenerMigration(conflict.port) });
@@ -348,23 +389,16 @@ export class FilePortRegistry {
     await this.transaction(async (state) => {
       const now = new Date().toISOString();
       for (const allocation of state.allocations.filter(active)) {
-        const previousState = allocation.state;
-        const available = await this.availabilityCheck(allocation.port, allocation.protocol, allocation.host);
-        if (allocation.state === "planned" && Date.now() - Date.parse(allocation.updatedAt) > 300_000) allocation.state = "stale";
-        else if (allocation.state === "active" && allocation.process && !await matchesProcessOwner(allocation.process)) allocation.state = available ? "stale" : "externally-occupied";
-        else if (allocation.state === "active" && allocation.container && await inspectContainerRunning(allocation.container) === false) allocation.state = available ? "stale" : "externally-occupied";
-        else if (allocation.state === "active" && !allocation.process && !allocation.container) allocation.state = available ? "stale" : "externally-occupied";
-        else if (allocation.state === "externally-occupied" && available) allocation.state = "stale";
-        if (allocation.state !== previousState) allocation.updatedAt = now;
+        await refreshAllocation(allocation, now, this.availabilityCheck);
       }
-      await expireAbandonedProxyClaims(state, path.dirname(this.filePath), now);
+      await expireAbandonedProxyClaims(state, path.dirname(this.filePath), now, this.availabilityCheck);
     });
     return await this.read();
   }
 
   public async gc(): Promise<number> {
     return await this.transaction(async (state) => {
-      await expireAbandonedProxyClaims(state, path.dirname(this.filePath), new Date().toISOString());
+      await expireAbandonedProxyClaims(state, path.dirname(this.filePath), new Date().toISOString(), this.availabilityCheck);
       const before = state.allocations.length;
       state.allocations = state.allocations.filter((allocation) => allocation.state !== "stale" && allocation.state !== "released");
       state.invocations = state.invocations.filter((invocation) => !["failed", "stopped"].includes(invocation.state));

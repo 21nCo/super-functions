@@ -1,13 +1,15 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import net from "node:net";
 import { describe, expect, it } from "vitest";
 
+import { processBirthSignature } from "@devfn/processes";
 import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, renderPolicyInventory, resolvePolicy, withFileLock } from "../src/index.js";
 import { inspectContainerRunning } from "../src/registry.js";
 
 describe("FilePortRegistry", () => {
-  for (const invocationState of ["starting", "ready"] as const) {
+  for (const invocationState of ["planning", "starting", "ready"] as const) {
     it(`reclaims an abandoned ${invocationState} claim with a reused owner PID`, async () => {
       const dir = await mkdtemp(path.join(tmpdir(), "devfn-reused-proxy-owner-"));
       const port = 18453;
@@ -24,10 +26,10 @@ describe("FilePortRegistry", () => {
         const state = await registry.read();
         state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
         await writeFile(registry.filePath, JSON.stringify(state));
-        await registry.reconcile();
+        // Normal sibling startup must recover the expired claim by itself.
+        expect((await reserve("tcp-exact", "tcp", true))[0]).toMatchObject({ port, source: "exact" });
         expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
         await registry.gc();
-        expect((await reserve("tcp-exact", "tcp", true))[0]).toMatchObject({ port, source: "exact" });
         await registry.release({ invocationId: "tcp-exact" });
         expect((await reserve("udp-exact", "udp", true))[0]).toMatchObject({ port, source: "exact" });
         await registry.release({ invocationId: "udp-exact" });
@@ -37,6 +39,35 @@ describe("FilePortRegistry", () => {
       } finally { await rm(dir, { recursive: true, force: true }); }
     });
   }
+
+  it("releases a route-free claim with a verified live admin owner, but retains a bound listener", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-live-admin-claim-"));
+    const port = await allocateEphemeralPort();
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => port + 1, async () => true);
+    const birthSignature = await processBirthSignature(process.pid);
+    expect(birthSignature).toBeTruthy();
+    const sibling = (id: string) => registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: id, profile: "default",
+      requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] });
+    const listener = net.createServer();
+    try {
+      await registry.reserve({ projectId: "app", instanceId: "abandoned", invocationId: "old", profile: "default",
+        requests: [], proxyListenerPorts: [port] });
+      await registry.updateInvocation("old", { state: "starting" });
+      await writeFile(path.join(dir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+      const state = await registry.read();
+      state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
+      await writeFile(registry.filePath, JSON.stringify(state));
+      await new Promise<void>((resolve, reject) => listener.once("error", reject).listen(port, "127.0.0.1", resolve));
+      await expect(sibling("bound")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "abandoned" } });
+      expect((await registry.read()).invocations[0].state).toBe("starting");
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+      expect((await sibling("free"))[0]).toMatchObject({ port, protocol: "udp", source: "exact" });
+      expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
+    } finally {
+      if (listener.listening) await new Promise<void>((resolve) => listener.close(() => resolve()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 
   it("reclaims an abandoned starting proxy claim after its lease becomes stale", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-abandoned-proxy-"));
@@ -51,14 +82,13 @@ describe("FilePortRegistry", () => {
       state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
       state.allocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
       await writeFile(file, JSON.stringify(state));
-      await registry.reconcile();
-      expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
-      await registry.gc();
-      expect((await registry.read()).invocations).toEqual([]);
       const sibling = await registry.reserve({ projectId: "app", instanceId: "legacy", invocationId: "legacy", profile: "default",
         requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] });
       expect(sibling[0]).toMatchObject({ port, source: "exact", protocol: "udp" });
+      expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
       await registry.release({ invocationId: "legacy" });
+      await registry.gc();
+      expect((await registry.read()).invocations).toEqual([]);
       const tcp = await registry.reserve({ projectId: "app", instanceId: "legacy", invocationId: "legacy-tcp", profile: "default",
         requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "tcp" } }] });
       expect(tcp[0]).toMatchObject({ port, protocol: "tcp" });

@@ -9,7 +9,7 @@ import { processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController, proxyListenerPorts, registerDomain } from "@devfn/proxy";
 import { validateDevFnConfig } from "@devfn/config";
 import { FilePortRegistry } from "@devfn/ports";
-import { DevFnOrchestrator, domainAliases, resolveAllocationUrls, resolveInstanceIdentity } from "../src/index.js";
+import { DevFnOrchestrator, domainAliases, readReceipt, resolveAllocationUrls, resolveInstanceIdentity } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -36,9 +36,7 @@ it("protects Caddy listener ports for selected proxy routes while preserving no-
       });
       if (proxy && exact) {
         await expect(access(started)).rejects.toMatchObject({ code: "ENOENT" });
-        const registry = JSON.parse(await readFile(path.join(stateDir, "registry.json"), "utf8")) as { allocations: unknown[]; invocations: unknown[] };
-        expect(registry.allocations).toHaveLength(0);
-        expect(registry.invocations).toHaveLength(0);
+        await expect(access(path.join(stateDir, "registry.json"))).rejects.toMatchObject({ code: "ENOENT" });
       } else {
         const registry = JSON.parse(await readFile(path.join(stateDir, "registry.json"), "utf8")) as {
           allocations: Array<{ port: number; protocol: string }>; invocations: Array<{ state: string; proxyListenerPorts?: number[] }> };
@@ -54,6 +52,40 @@ it("protects Caddy listener ports for selected proxy routes while preserving no-
       }
     }
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it("keeps a ready v0.1 process and sibling routes when proxy replacement selects its exact listener port", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-preteardown-listener-"));
+  const stateDir = path.join(root, "state");
+  const orchestrator = new DevFnOrchestrator();
+  const original = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 5000 } } },
+    profiles: { default: { processes: ["app"], proxy: false } } });
+  try {
+    await writeFile(path.join(root, "server.mjs"),
+      "import { createServer } from 'node:http'; createServer((request, response) => { response.end('ready'); }).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    const first = await orchestrator.up({ config: original, root, stateDir });
+    const routeFile = path.join(stateDir, "proxy-routes.json");
+    const siblingRoutes = JSON.stringify({ version: 1, routes: [{ id: "sibling", instanceId: "sibling", hostname: "sibling.localhost",
+      targetHost: "127.0.0.1", targetPort: first.allocations[0].port, tls: "off", updatedAt: new Date().toISOString() }] });
+    await writeFile(routeFile, siblingRoutes);
+    const registryBefore = await readFile(path.join(stateDir, "registry.json"), "utf8");
+    const replacement = validateDevFnConfig({ version: 1, project: { id: "fixture" },
+      ports: { app: { preferred: proxyListenerPorts().httpsPort, exact: true } },
+      processes: original.processes, profiles: { default: { processes: ["app"], proxy: true } },
+      hostnames: { app: { target: "app", hostname: "fixture.localhost" } } });
+    await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({
+      code: "DEVFN_PORT_CONFLICT", message: expect.stringContaining("change the service's exact port"),
+    });
+    expect((await readReceipt(original, root, first.instanceId))?.invocationId).toBe(first.invocationId);
+    expect(await readFile(path.join(stateDir, "registry.json"), "utf8")).toBe(registryBefore);
+    expect(await readFile(routeFile, "utf8")).toBe(siblingRoutes);
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/health`).then((response) => response.text())).toBe("ready");
+  } finally {
+    await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 it("rejects proxy activation behind a sibling listener lease before changing either lifecycle", async () => {
