@@ -303,6 +303,10 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     resolved = await resolveWithComposeNetworks(config, plan, root, identity, ports, loadedPolicy?.policy.hostnameSuffix);
     if (!receiptRoutesMatch(receipt, await selectedProxyRoutes(config, plan, identity, ports,
       loadedPolicy?.policy.hostnameSuffix ?? ".localhost", receipt.stateDir ?? defaultStateDir(), false))) return false;
+    // The receipt is only as live as the proxy: a dead Caddy owner, a missing
+    // listener or routes switched by an interrupted replacement all mean the
+    // recorded URLs no longer reach this lifecycle.
+    if (!await new CaddyProxyController(receipt.stateDir ?? defaultStateDir()).instanceRoutesLive(receipt.instanceId, receipt.routes)) return false;
     const currentUrls = resolveAllocationUrls(receipt.allocations, receipt.routes, selectedHttpPorts(config, plan), resolved.directUrls);
     if (Object.keys(currentUrls).length !== Object.keys(receipt.urls).length ||
       Object.entries(currentUrls).some(([name, url]) => receipt.urls[name] !== url)) return false;

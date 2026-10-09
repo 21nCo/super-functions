@@ -11,7 +11,8 @@ vi.mock("@devfn/proxy", async (importOriginal) => {
     verifyLocalDns: async () => undefined,
     CaddyProxyController: class extends actual.CaddyProxyController {
       constructor(stateDir: string) {
-        super(stateDir, (async () => [{ address: "127.0.0.1", family: 4 }]) as never);
+        // The command stub stands in for a Caddy that holds its listeners.
+        super(stateDir, (async () => [{ address: "127.0.0.1", family: 4 }]) as never, 5_000, async () => true);
       }
       // This fixture replaces Caddy with a command stub; physical owner and
       // listener preflight is covered by the isolated real-Caddy suite.

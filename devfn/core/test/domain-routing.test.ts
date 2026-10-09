@@ -9,12 +9,17 @@ import { expect, it, vi } from "vitest";
 import { ProcessSupervisor, processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController, proxyListenerPorts, registerDomain } from "@devfn/proxy";
 import { validateDevFnConfig } from "@devfn/config";
-import { allocateEphemeralPort, FilePortRegistry, withRoutingLock } from "@devfn/ports";
+import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, withFileLock, withRoutingLock } from "@devfn/ports";
 import { DevFnOrchestrator, domainAliases, readReceipt, resolveAllocationUrls, resolveInstanceIdentity, resolveLocalHostname } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 
-it("protects Caddy listener ports for selected proxy routes while preserving no-proxy v0.1 ports", async () => {
+// Fixtures that need the fixed Caddy admin port 127.0.0.1:2019 free share one
+// machine-wide lock with other DevFn packages' fixtures that bind it.
+const withCaddyAdminPort = async <T>(action: () => Promise<T>): Promise<T> =>
+  await withFileLock(path.join(tmpdir(), "devfn-test-caddy-admin.lock"), action, { timeoutMs: 120_000 });
+
+it("protects Caddy listener ports for selected proxy routes while preserving no-proxy v0.1 ports", async () => await withCaddyAdminPort(async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-listener-reservation-"));
   const { httpPort, httpsPort } = proxyListenerPorts();
   const freePreferred = await allocateEphemeralPort();
@@ -54,7 +59,7 @@ it("protects Caddy listener ports for selected proxy routes while preserving no-
       }
     }
   } finally { await rm(root, { recursive: true, force: true }); }
-}, 30_000);
+}), 150_000);
 
 it("retires a proven abandoned proxy claim before first-start exact-port preflight", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-preflight-abandoned-"));
@@ -233,25 +238,35 @@ it("keeps a ready service when replacement selects a sibling proxy listener or h
   }
 });
 
-it("rejects an occupied Caddy listener before stopping a ready replacement", async () => {
+it("rejects an occupied Caddy listener before stopping a ready replacement", async () => await withCaddyAdminPort(async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-physical-preflight-"));
   const stateDir = path.join(root, "state");
   const orchestrator = new DevFnOrchestrator();
   const listener = net.createServer((socket) => socket.destroy());
+  const toolsDir = path.join(root, "tools");
+  const originalPath = process.env.PATH;
   const original = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
     processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
-      health: { type: "http", port: "app", timeoutMs: 5000 } } }, profiles: { default: { processes: ["app"], proxy: false } } });
+      health: { type: "http", port: "app", timeoutMs: 20_000 } } }, profiles: { default: { processes: ["app"], proxy: false } } });
   try {
+    // A command stub keeps the preflight order independent of an installed
+    // Caddy, so Linux CI exercises the same physical checks.
+    await mkdir(toolsDir);
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate) exit 0;; esac\nexit 1\n", { mode: 0o700 });
+    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
     await writeFile(path.join(root, "server.mjs"),
       "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
     const first = await orchestrator.up({ config: original, root, stateDir });
-    await new Promise<void>((resolve, reject) => listener.once("error", reject).listen(proxyListenerPorts().httpPort, "127.0.0.1", resolve));
     const replacement = validateDevFnConfig({ ...original, profiles: { default: { processes: ["app"], proxy: true } },
       hostnames: { app: { target: "app" } } });
-    await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_OWNERSHIP_CONFLICT" });
-    expect((await readReceipt(original, root, first.instanceId))?.state).toBe("ready");
-    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("ready");
-    await new Promise<void>((resolve) => listener.close(() => resolve()));
+    // An unprivileged Linux test cannot occupy port 80 itself.
+    if (await isPortAvailable(proxyListenerPorts().httpPort)) {
+      await new Promise<void>((resolve, reject) => listener.once("error", reject).listen(proxyListenerPorts().httpPort, "127.0.0.1", resolve));
+      await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_OWNERSHIP_CONFLICT" });
+      expect((await readReceipt(original, root, first.instanceId))?.state).toBe("ready");
+      expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("ready");
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
     await new Promise<void>((resolve, reject) => listener.once("error", reject).listen(2019, "127.0.0.1", resolve));
     await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_OWNERSHIP_CONFLICT" });
     expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("ready");
@@ -261,23 +276,18 @@ it("rejects an occupied Caddy listener before stopping a ready replacement", asy
       await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_UNAVAILABLE" });
       expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("ready");
     } finally { unavailable.mockRestore(); }
-    const toolsDir = path.join(root, "tools");
-    await mkdir(toolsDir);
     await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nif [ \"$1\" = validate ]; then exit 1; fi\nexit 0\n", { mode: 0o700 });
-    const originalPath = process.env.PATH;
-    try {
-      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
-      await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
-      expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("ready");
-    } finally { process.env.PATH = originalPath; }
+    await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("ready");
   } finally {
+    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
     if (listener.listening) await new Promise<void>((resolve) => listener.close(() => resolve()));
     await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
-}, 30_000);
+}), 150_000);
 
-it("preserves a ready replacement target when Caddy starts failing after validation", async () => {
+it("preserves a ready replacement target when Caddy starts failing after validation", async () => await withCaddyAdminPort(async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-late-caddy-failure-"));
   const stateDir = path.join(root, "state");
   const toolsDir = path.join(root, "tools");
@@ -313,7 +323,7 @@ it("preserves a ready replacement target when Caddy starts failing after validat
     await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
-}, 30_000);
+}), 150_000);
 
 it("releases prior and replacement leases when a replacement with a changed exact port fails after teardown", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-port-replacement-failure-"));
@@ -637,7 +647,7 @@ it("refuses an unregistered or differently owned domain before lifecycle state e
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-it("starts local-only preflight despite an invalid machine domain registry", async () => {
+it("starts local-only preflight despite an invalid machine domain registry", async () => await withCaddyAdminPort(async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-local-preflight-"));
   const stateDir = path.join(root, "machine-state");
   const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
@@ -649,7 +659,7 @@ it("starts local-only preflight despite an invalid machine domain registry", asy
     await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
     await expect(access(path.join(stateDir, "registry.json"))).resolves.toBeUndefined();
   } finally { await rm(root, { recursive: true, force: true }); }
-});
+}), 150_000);
 
 it("keeps registered-domain aliases and routes isolated across two Git worktrees", async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "devfn-domain-worktrees-"));

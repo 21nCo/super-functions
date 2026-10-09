@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
@@ -7,7 +7,13 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 
-import { renderCaddyfile, type ProxyRoute } from "../src/index.js";
+import { isPortAvailable, withFileLock } from "@devfn/ports";
+import { CaddyProxyController, proxyListenerPorts, renderCaddyfile, type ProxyRoute } from "../src/index.js";
+
+// Fixtures that need the fixed Caddy admin port 127.0.0.1:2019 free share one
+// machine-wide lock with other DevFn packages' fixtures that bind it.
+const withCaddyAdminPort = async <T>(action: () => Promise<T>): Promise<T> =>
+  await withFileLock(path.join(os.tmpdir(), "devfn-test-caddy-admin.lock"), action, { timeoutMs: 120_000 });
 
 async function freePort(): Promise<number> {
   const server = net.createServer();
@@ -101,3 +107,46 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("observes isolated Caddy exact, 
     await rm(stateDir, { recursive: true, force: true });
   }
 }, 30_000);
+
+it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("does not commit a fresh internal-TLS Caddy that fails to bind its HTTPS listener", async () => await withCaddyAdminPort(async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "devfn-caddy-bind-"));
+  const original = { XDG_DATA_HOME: process.env.XDG_DATA_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME };
+  const { httpsPort } = proxyListenerPorts();
+  const target = await upstream();
+  const blocker = net.createServer((socket) => socket.destroy());
+  const proxy = new CaddyProxyController(stateDir);
+  const secure: Omit<ProxyRoute, "updatedAt"> = { id: "secure", instanceId: "fixture", hostname: "secure.localhost", targetHost: "127.0.0.1", targetPort: target.port, tls: "internal" };
+  try {
+    // Fresh storage makes Caddy create its internal CA during startup, after
+    // its admin endpoint already answers.
+    process.env.XDG_DATA_HOME = path.join(stateDir, "data");
+    process.env.XDG_CONFIG_HOME = path.join(stateDir, "config");
+    expect(await isPortAvailable(2019)).toBe(true);
+    await new Promise<void>((resolve, reject) => blocker.once("error", reject).listen(httpsPort, "127.0.0.1", resolve));
+    await expect(proxy.upsert([secure])).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
+    await expect(access(path.join(stateDir, "proxy-routes.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(stateDir, "proxy-owner.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    for (let attempt = 0; attempt < 50 && !await isPortAvailable(2019); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(await isPortAvailable(2019)).toBe(true);
+    await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    const activated = await proxy.upsert([secure]);
+    expect(await proxy.instanceRoutesLive("fixture", activated)).toBe(true);
+    let live: Awaited<ReturnType<typeof request>> | undefined;
+    // Caddy issues the internal certificate asynchronously after startup.
+    for (let attempt = 0; attempt < 30 && !live; attempt += 1) {
+      live = await request(httpsPort, "secure.localhost", "/live", true).catch(() => undefined);
+      if (!live) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(live).toMatchObject({ status: 200, body: "/live" });
+    const { pid } = JSON.parse(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")) as { pid: number };
+    process.kill(-pid, "SIGTERM");
+    for (let attempt = 0; attempt < 50 && !await isPortAvailable(2019); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(await proxy.instanceRoutesLive("fixture", activated)).toBe(false);
+  } finally {
+    if (blocker.listening) await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    try { process.kill(-(JSON.parse(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")) as { pid: number }).pid, "SIGTERM"); } catch { /* stopped */ }
+    for (const [key, value] of Object.entries(original)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    await new Promise<void>((resolve) => target.server.close(() => resolve()));
+    await rm(stateDir, { recursive: true, force: true });
+  }
+}), 150_000);

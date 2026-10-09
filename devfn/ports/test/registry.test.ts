@@ -8,6 +8,11 @@ import { processBirthSignature } from "@devfn/processes";
 import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, renderPolicyInventory, resolvePolicy, withFileLock } from "../src/index.js";
 import { inspectContainerRunning } from "../src/registry.js";
 
+// Fixtures that need the fixed Caddy admin port 127.0.0.1:2019 free share one
+// machine-wide lock with other DevFn packages' fixtures that bind it.
+const withCaddyAdminPort = async <T>(action: () => Promise<T>): Promise<T> =>
+  await withFileLock(path.join(tmpdir(), "devfn-test-caddy-admin.lock"), action, { timeoutMs: 120_000 });
+
 describe("FilePortRegistry", () => {
   for (const protocol of ["tcp", "udp"] as const) {
     it(`preflights renamed and swapped exact ${protocol} leases by ready invocation and host`, async () => {
@@ -69,7 +74,7 @@ describe("FilePortRegistry", () => {
   });
 
   for (const invocationState of ["planning", "starting", "ready", "stopping"] as const) {
-    it(`reclaims an abandoned ${invocationState} claim with a reused owner PID`, async () => {
+    it(`reclaims an abandoned ${invocationState} claim with a reused owner PID`, async () => await withCaddyAdminPort(async () => {
       const dir = await mkdtemp(path.join(tmpdir(), "devfn-reused-proxy-owner-"));
       const port = 18453;
       const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => port + 1, async () => true);
@@ -96,7 +101,7 @@ describe("FilePortRegistry", () => {
         await registry.release({ invocationId: "tcp-preferred" });
         expect((await reserve("tcp-stable", "tcp", false))[0]).toMatchObject({ port, source: "stable" });
       } finally { await rm(dir, { recursive: true, force: true }); }
-    });
+    }), 150_000);
   }
 
   it("bounds stopping and replacement protection to live, recently refreshed lifecycles", async () => {
@@ -170,7 +175,7 @@ describe("FilePortRegistry", () => {
     }
   });
 
-  it("reclaims an abandoned starting proxy claim after its lease becomes stale", async () => {
+  it("reclaims an abandoned starting proxy claim after its lease becomes stale", async () => await withCaddyAdminPort(async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-abandoned-proxy-"));
     const file = path.join(dir, "registry.json");
     const port = 18445;
@@ -194,9 +199,9 @@ describe("FilePortRegistry", () => {
         requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "tcp" } }] });
       expect(tcp[0]).toMatchObject({ port, protocol: "tcp" });
     } finally { await rm(dir, { recursive: true, force: true }); }
-  });
+  }), 150_000);
 
-  it("reclaims an abandoned listener claim beside a mixed-case route owned by another instance", async () => {
+  it("reclaims an abandoned listener claim beside a mixed-case route owned by another instance", async () => await withCaddyAdminPort(async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-abandoned-case-route-"));
     const port = 18450;
     const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => port + 1, async () => true);
@@ -219,9 +224,9 @@ describe("FilePortRegistry", () => {
         requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] });
       expect(allocation[0].port).toBe(port);
     } finally { await rm(dir, { recursive: true, force: true }); }
-  });
+  }), 150_000);
 
-  it("retains a ready proxy claim while an owned route or live Caddy owner remains", async () => {
+  it("retains a ready proxy claim while an owned route or live Caddy owner remains", async () => await withCaddyAdminPort(async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-ready-proxy-"));
     const file = path.join(dir, "registry.json");
     const port = 18446;
@@ -261,9 +266,9 @@ describe("FilePortRegistry", () => {
       await registry.gc();
       expect((await reserveSibling())[0].port).toBe(port);
     } finally { await rm(dir, { recursive: true, force: true }); }
-  });
+  }), 150_000);
 
-  it("keeps an abandoned listener claim when route or owner evidence is malformed", async () => {
+  it("keeps an abandoned listener claim when route or owner evidence is malformed", async () => await withCaddyAdminPort(async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-claim-invalid-state-"));
     const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => 18449, async () => true);
     const port = 18448;
@@ -295,7 +300,7 @@ describe("FilePortRegistry", () => {
       await registry.gc();
       expect((await sibling("udp"))[0].port).toBe(port);
     } finally { await rm(dir, { recursive: true, force: true }); }
-  });
+  }), 150_000);
   it("claims proxy listeners atomically across TCP and UDP and releases failed claims", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-proxy-"));
     const port = 18443;

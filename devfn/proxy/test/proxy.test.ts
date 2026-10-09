@@ -2,8 +2,14 @@ import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { withFileLock } from "@devfn/ports";
 import { processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController, proxyOwnerStatus, renderCaddyfile } from "../src/index.js";
+
+// Fixtures that need the fixed Caddy admin port 127.0.0.1:2019 free share one
+// machine-wide lock with other DevFn packages' fixtures that bind it.
+const withCaddyAdminPort = async <T>(action: () => Promise<T>): Promise<T> =>
+  await withFileLock(path.join(tmpdir(), "devfn-test-caddy-admin.lock"), action, { timeoutMs: 120_000 });
 
 describe("Caddy route rendering", () => {
   it("renders explicit routes without a catch-all", () => {
@@ -276,7 +282,7 @@ describe("Caddy route rendering", () => {
     await expect(proxyOwnerStatus({ pid: process.pid })).resolves.toBe("unverified");
   });
 
-  it("clears a reused-PID owner on retry without signaling the unrelated process", async () => {
+  it("clears a reused-PID owner on retry without signaling the unrelated process", async () => await withCaddyAdminPort(async () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-reused-owner-"));
     const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
     const originalPath = process.env.PATH;
@@ -294,5 +300,5 @@ describe("Caddy route rendering", () => {
       if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
       await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
     }
-  });
+  }), 150_000);
 });
