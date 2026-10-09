@@ -1,0 +1,41 @@
+devfn/core/test/proxy-readiness.test.ts
+  s_fd2012bf034554::t_8f374da0edc212 2,25-26,28,200-323
+devfn/ports/test/claim-evidence.test.ts
+  s_fd2012bf034554::t_9075ff734e833f 136,142
+devfn/cli/README.md
+  s_fd2012bf034554::t_61c5328c17d8d2 18
+devfn/cli/SECURITY.md
+  s_fd2012bf034554::t_2498d25f7b71a7 12
+devfn/core/README.md
+  s_fd2012bf034554::t_2428c35b00b5ec 5
+devfn/core/src/orchestrator.ts
+  s_fd2012bf034554::t_44c22daa8902be 353-355,373,567,650,652-656,664-665,678
+devfn/ports/README.md
+  s_fd2012bf034554::t_0abbb3a4735dbc 7
+devfn/ports/src/registry.ts
+  s_fd2012bf034554::t_75554898156707 12,168-170,207-233,481,572-595,627-632,664-671,673-682,701-706
+devfn/ports/src/types.ts
+  s_fd2012bf034554::t_65f84ae72bea67 16-22,56-60
+devfn/ports/test/registry.test.ts
+  s_fd2012bf034554::t_ed64d69f733eb1 537-591
+devfn/proxy/src/index.ts
+  s_fd2012bf034554::t_4dccee2773ec55 255-257,523-527,539-555,557-560,564,567,586-587,590
+devfn/proxy/test/activation.test.ts
+  s_fd2012bf034554::t_ef45c2e888f03d 1-2,32,37,39,41-45,74-79,85-86,203-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8999a35e17d4bebf544f9d67dc88d2c1aaf9e793",
+  "prompts": {},
+  "sessions": {
+    "s_fd2012bf034554": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bba569bd-afce-4b37-bbb1-2a85837124dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
