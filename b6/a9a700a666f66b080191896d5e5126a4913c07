@@ -1,0 +1,61 @@
+devfn/cli/SECURITY.md
+  s_ce12272281eb3b::t_a9f4f34eb81683 8
+devfn/cli/test/cli.test.ts
+  s_ce12272281eb3b::t_4bcd45e5a18d27 7,234
+devfn/compose/src/index.ts
+  s_ce12272281eb3b::t_5ad469b3175025 1623
+devfn/compose/test/override.test.ts
+  s_ce12272281eb3b::t_9e71de3af1299c 6,17-25,1021-1051
+devfn/config/src/index.ts
+  s_ce12272281eb3b::t_691727138bfe64 6
+devfn/config/src/process-identity.ts
+  s_ce12272281eb3b::t_742a1d2353b100 6-10,20-23,49-55,60-66,70-89
+devfn/config/src/trust.ts
+  s_ce12272281eb3b::t_42b0645b0c72a9 6,42-43
+devfn/config/test/config.test.ts
+  s_ce12272281eb3b::t_3113bcd1a10880 1,5,8,17-40,395
+devfn/core/README.md
+  s_ce12272281eb3b::t_44885577ce06e7 5
+devfn/core/src/orchestrator.ts
+  s_ce12272281eb3b::t_3f8a4539b204bd 388-393,396,398,405-407
+devfn/core/test/teardown-evidence.test.ts
+  s_ce12272281eb3b::t_992ba0edb566d8 56,157-247
+devfn/ports/README.md
+  s_ce12272281eb3b::t_9d69980dbda440 7
+devfn/ports/src/lock.ts
+  s_ce12272281eb3b::t_4102ff5a52620f 6,49,51
+devfn/ports/src/registry.ts
+  s_ce12272281eb3b::t_15dc753e1dd033 8,231-235,237
+devfn/ports/test/registry.test.ts
+  s_ce12272281eb3b::t_1ad36eeb5137b7 95
+devfn/processes/README.md
+  s_ce12272281eb3b::t_526c98729a4b61 3
+devfn/processes/src/gated.ts
+  s_ce12272281eb3b::t_d5154fac22a243 4-5,22-25,28-29,37,56-78,99,124,126-127,129,131,133,135
+devfn/processes/src/group.ts
+  s_ce12272281eb3b::t_522e7ff7dd9831 1-65
+devfn/processes/src/identity.ts
+  s_ce12272281eb3b::t_de0191822e82a4 1
+devfn/processes/src/index.ts
+  s_ce12272281eb3b::t_79c530cdaa54a4 2
+devfn/processes/src/supervisor.ts
+  s_ce12272281eb3b::t_281bcd0847dca0 10-11,115,120-125,127,130,134-137,140
+devfn/proxy/test/proxy.test.ts
+  s_ce12272281eb3b::t_3903713693e31c 281,291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6a9a700a666f66b080191896d5e5126a4913c07",
+  "prompts": {},
+  "sessions": {
+    "s_ce12272281eb3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d2376f8-4af3-4920-96da-dff6a042ab4c",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
