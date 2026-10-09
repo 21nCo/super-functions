@@ -364,11 +364,13 @@ export class DevFnOrchestrator {
     }
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
     const stateDir = await realpath(requestedStateDir);
-    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () =>
-      await withRoutingLock(stateDir, async () => await this.upLocked(options, stateDir, identity, loadedPolicy)), { timeoutMs: 30_000 });
+    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => {
+      const start = await withRoutingLock(stateDir, async () => await this.prepareUpLocked(options, stateDir, identity, loadedPolicy));
+      return await start();
+    }, { timeoutMs: 30_000 });
   }
 
-  private async upLocked(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>): Promise<LifecycleReceipt> {
+  private async prepareUpLocked(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>): Promise<() => Promise<LifecycleReceipt>> {
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
     const plan = createPlan(options.config, options.profile);
     const profileHostnames = Object.entries(options.config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile));
@@ -426,9 +428,23 @@ export class DevFnOrchestrator {
       await registry.release({ invocationId, errorCode: "DEVFN_STARTUP_FINGERPRINT_FAILED" });
       throw error;
     }
+    const proxy = new CaddyProxyController(stateDir);
+    let activatedRoutes: Awaited<ReturnType<typeof proxy.upsert>> | undefined;
+    if (oldReady && (routes.length || oldReady.routes.length)) {
+      try {
+        // Caddy run/reload can fail after validate. Activate the final routes
+        // while the previous ready lifecycle and receipt are still intact.
+        const finalRoutes = await selectedProxyRoutes(options.config, plan, identity, ports, suffix, stateDir);
+        activatedRoutes = await proxy.upsert(finalRoutes, identity.instanceId);
+      } catch (error) {
+        await registry.release({ invocationId, errorCode: "DEVFN_PROXY_RELOAD_FAILED" });
+        throw error;
+      }
+    }
     if (oldReady) {
-      try { await this.stopExisting(oldReady, stateDir, registry); }
+      try { await this.stopExisting(oldReady, stateDir, registry, Boolean(activatedRoutes)); }
       catch (error) {
+        if (activatedRoutes) await proxy.upsert(oldReady.routes, identity.instanceId).catch(() => undefined);
         await registry.release({ invocationId, errorCode: "DEVFN_REPLACEMENT_PREPARE_FAILED" });
         throw error;
       }
@@ -436,7 +452,7 @@ export class DevFnOrchestrator {
     const receipt: LifecycleReceipt = {
       version: 1, projectId: options.config.project.id, instanceId: identity.instanceId, invocationId, profile: plan.profile,
       state: "starting", root: options.root, runtimeDir, stateDir: path.resolve(stateDir), startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      allocations, processes: [], services: [], startedNodes: [], routes: [], urls: {}, environmentOutputs: [],
+      allocations, processes: [], services: [], startedNodes: [], routes: activatedRoutes ?? [], urls: {}, environmentOutputs: [],
       startupFingerprints: fingerprints,
       portSpecFingerprints: portSpecFingerprints(options.config, plan.portNames),
     };
@@ -447,40 +463,41 @@ export class DevFnOrchestrator {
       await registry.release({ invocationId, errorCode: "DEVFN_RECEIPT_WRITE_FAILED" }).catch(() => undefined);
       throw error;
     }
-    const heartbeat = setInterval(() => { void registry.updateInvocation(invocationId, {}).catch(() => undefined); }, 60_000);
-    heartbeat.unref();
-    const supervisor = new ProcessSupervisor();
-    const compose = new ComposeController();
-    const proxy = new CaddyProxyController(stateDir);
-    try {
-      receipt.environmentOutputs = await writeEnvironmentOutputs(options.root, runtimeDir, options.config.environmentOutputs ?? [], environment);
-      for (const node of plan.nodes) {
-        await this.startSelectedNode(node, { options, identity, receipt, resolved, ports, allocations, supervisor, compose });
+    return async () => {
+      const heartbeat = setInterval(() => { void registry.updateInvocation(invocationId, {}).catch(() => undefined); }, 60_000);
+      heartbeat.unref();
+      const supervisor = new ProcessSupervisor();
+      const compose = new ComposeController();
+      try {
+        receipt.environmentOutputs = await writeEnvironmentOutputs(options.root, runtimeDir, options.config.environmentOutputs ?? [], environment);
+        for (const node of plan.nodes) {
+          await this.startSelectedNode(node, { options, identity, receipt, resolved, ports, allocations, supervisor, compose });
+          receipt.updatedAt = new Date().toISOString();
+          await writeReceipt(receipt);
+        }
+        if (plan.proxy && !activatedRoutes) {
+          const routes = await selectedProxyRoutes(options.config, plan, identity, ports, suffix, stateDir);
+          receipt.routes = await proxy.upsert(routes, identity.instanceId);
+        } else if (activatedRoutes) receipt.routes = activatedRoutes;
+        receipt.urls = resolveAllocationUrls(allocations, receipt.routes, selectedHttpPorts(options.config, plan), resolved.directUrls);
+        clearInterval(heartbeat);
+        await registry.markActive(invocationId, startupOwners(options.config, receipt));
+        receipt.state = "ready";
         receipt.updatedAt = new Date().toISOString();
         await writeReceipt(receipt);
+        return receipt;
+      } catch (error) {
+        const cleanup = await this.cleanup(receipt, registry, supervisor, compose, proxy, true);
+        receipt.state = "failed";
+        receipt.cleanup = cleanup;
+        receipt.error = { code: error && typeof error === "object" && "code" in error ? String(error.code) : "DEVFN_START_FAILED", message: error instanceof Error ? error.message : String(error) };
+        receipt.updatedAt = new Date().toISOString();
+        await writeReceipt(receipt);
+        throw new DevFnError("DEVFN_START_FAILED", `DevFn startup failed: ${receipt.error.message}`, { cleanup, causeCode: receipt.error.code });
+      } finally {
+        clearInterval(heartbeat);
       }
-      if (plan.proxy) {
-        const routes = await selectedProxyRoutes(options.config, plan, identity, ports, suffix, stateDir);
-        receipt.routes = await proxy.upsert(routes, identity.instanceId);
-      }
-      receipt.urls = resolveAllocationUrls(allocations, receipt.routes, selectedHttpPorts(options.config, plan), resolved.directUrls);
-      clearInterval(heartbeat);
-      await registry.markActive(invocationId, startupOwners(options.config, receipt));
-      receipt.state = "ready";
-      receipt.updatedAt = new Date().toISOString();
-      await writeReceipt(receipt);
-      return receipt;
-    } catch (error) {
-      const cleanup = await this.cleanup(receipt, registry, supervisor, compose, proxy, true);
-      receipt.state = "failed";
-      receipt.cleanup = cleanup;
-      receipt.error = { code: error && typeof error === "object" && "code" in error ? String(error.code) : "DEVFN_START_FAILED", message: error instanceof Error ? error.message : String(error) };
-      receipt.updatedAt = new Date().toISOString();
-      await writeReceipt(receipt);
-      throw new DevFnError("DEVFN_START_FAILED", `DevFn startup failed: ${receipt.error.message}`, { cleanup, causeCode: receipt.error.code });
-    } finally {
-      clearInterval(heartbeat);
-    }
+    };
   }
 
   private async prepareExisting(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>, registry: FilePortRegistry, deferReadyCleanup = false): Promise<LifecycleReceipt | undefined> {
@@ -506,8 +523,8 @@ export class DevFnOrchestrator {
     }
   }
 
-  private async stopExisting(existing: LifecycleReceipt, stateDir: string, registry: FilePortRegistry): Promise<void> {
-    const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
+  private async stopExisting(existing: LifecycleReceipt, stateDir: string, registry: FilePortRegistry, preserveRoutes = false): Promise<void> {
+    const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready", preserveRoutes);
     if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
     existing.cleanup = recovered;
     existing.state = "stopped";
@@ -557,7 +574,7 @@ export class DevFnOrchestrator {
     }
   }
 
-  private async cleanup(receipt: LifecycleReceipt, registry: FilePortRegistry, supervisor: ProcessSupervisor, compose: ComposeController, proxy: CaddyProxyController, failed: boolean): Promise<CleanupResult> {
+  private async cleanup(receipt: LifecycleReceipt, registry: FilePortRegistry, supervisor: ProcessSupervisor, compose: ComposeController, proxy: CaddyProxyController, failed: boolean, preserveRoutes = false): Promise<CleanupResult> {
     const result: CleanupResult = { stoppedProcesses: [], stoppedServices: [], removedProxy: false, releasedPorts: false, errors: [] };
     const historical = [
       ...receipt.processes.map((value) => ({ kind: "process" as const, value })),
@@ -583,7 +600,9 @@ export class DevFnOrchestrator {
         }
       }
     }
-    try { await proxy.removeInstance(receipt.instanceId); result.removedProxy = true; } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
+    if (!preserveRoutes) {
+      try { await proxy.removeInstance(receipt.instanceId); result.removedProxy = true; } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
+    }
     if (result.errors.length === 0) {
       try { await registry.release({ invocationId: receipt.invocationId, ...(failed ? { errorCode: receipt.error?.code ?? "DEVFN_START_FAILED" } : {}) }); result.releasedPorts = true; } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
     }

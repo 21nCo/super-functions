@@ -52,6 +52,8 @@ if (process.env.SECRET_TOKEN) console.log(process.env.SECRET_TOKEN);
 it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes when their hostname or TLS changes", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "devfn-route-replacement-"));
   const stateDir = path.join(root, "state");
+  const toolsDir = path.join(root, "tools");
+  const originalPath = process.env.PATH;
   const config = validateDevFnConfig({
     version: 1, project: { id: "route-fixture" }, ports: { native: {} },
     processes: { native: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["native"],
@@ -66,6 +68,16 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
     expect(first.routes).toHaveLength(1);
     config.hostnames!.native.hostname = "second.localhost";
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+    await mkdir(toolsDir);
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate) exit 0;; reload) exit 1;; esac\nexit 1\n", { mode: 0o700 });
+    try {
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
+    } finally { process.env.PATH = originalPath; }
+    expect((await readReceipt(config, root, first.instanceId))?.state).toBe("ready");
+    expect((await readReceipt(config, root, first.instanceId))?.invocationId).toBe(first.invocationId);
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/health`).then((response) => response.text())).toBe("ok");
+    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes[0].hostname).toBe(first.routes[0].hostname);
     const second = await orchestrator.up({ config, root, stateDir });
     expect(second.invocationId).not.toBe(first.invocationId);
     expect(second.routes[0].hostname).toContain("second.");
@@ -83,10 +95,18 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
     expect(third.routes[0].tls).toBe("internal");
     config.profiles.default.proxy = false;
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+    try {
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
+    } finally { process.env.PATH = originalPath; }
+    expect((await readReceipt(config, root, third.instanceId))?.invocationId).toBe(third.invocationId);
+    expect((await readReceipt(config, root, third.instanceId))?.state).toBe("ready");
+    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes[0].hostname).toBe(third.routes[0].hostname);
     const withoutProxy = await orchestrator.up({ config, root, stateDir });
     expect(withoutProxy.routes).toEqual([]);
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
   } finally {
+    process.env.PATH = originalPath;
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
     await stopFixtureProxy(stateDir);
     await rm(root, { recursive: true, force: true });

@@ -277,6 +277,44 @@ it("rejects an occupied Caddy listener before stopping a ready replacement", asy
   }
 }, 30_000);
 
+it("preserves a ready replacement target when Caddy starts failing after validation", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-late-caddy-failure-"));
+  const stateDir = path.join(root, "state");
+  const toolsDir = path.join(root, "tools");
+  const originalPath = process.env.PATH;
+  const orchestrator = new DevFnOrchestrator();
+  const original = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 5000 } } }, profiles: { default: { processes: ["app"], proxy: false } } });
+  try {
+    await writeFile(path.join(root, "server.mjs"),
+      "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    const first = await orchestrator.up({ config: original, root, stateDir });
+    const before = await new FilePortRegistry(path.join(stateDir, "registry.json")).read();
+    const siblingRoutes = { version: 1, routes: [{ id: "sibling", instanceId: "sibling", hostname: "sibling.localhost",
+      targetHost: "127.0.0.1", targetPort: first.allocations[0].port, tls: "off", updatedAt: new Date().toISOString() }] };
+    await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify(siblingRoutes));
+    await mkdir(toolsDir);
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate) exit 0;; run|reload) exit 1;; esac\nexit 1\n", { mode: 0o700 });
+    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+    const replacement = validateDevFnConfig({ ...original, profiles: { default: { processes: ["app"], proxy: true } },
+      hostnames: { app: { target: "app" } } });
+    await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
+    expect((await readReceipt(original, root, first.instanceId))?.invocationId).toBe(first.invocationId);
+    expect((await readReceipt(original, root, first.instanceId))?.state).toBe("ready");
+    const after = await new FilePortRegistry(path.join(stateDir, "registry.json")).read();
+    expect(after.allocations.filter((allocation) => allocation.invocationId === first.invocationId)).toEqual(before.allocations);
+    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual(siblingRoutes);
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("ready");
+    await expect(orchestrator.up({ config: original, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+  } finally {
+    process.env.PATH = originalPath;
+    await rm(path.join(stateDir, "proxy-routes.json"), { force: true });
+    await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
 it("allows a renamed service to reuse its own ready exact TCP lease", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-renamed-exact-"));
   const stateDir = path.join(root, "state");
@@ -329,6 +367,50 @@ it("waits for sibling routing coordination before down stops a ready process", a
   } finally {
     release();
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("lets a sibling reserve a port while another worktree waits for readiness", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-slow-readiness-"));
+  const stateDir = path.join(root, "state");
+  const marker = path.join(root, "starting");
+  const siblingRoot = path.join(root, "sibling");
+  const config = validateDevFnConfig({ version: 1, project: { id: "slow" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "slow.mjs", marker], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 8000 } } }, profiles: { default: { processes: ["app"] } } });
+  const orchestrator = new DevFnOrchestrator();
+  const siblingConfig = validateDevFnConfig({ version: 1, project: { id: "sibling" }, ports: { web: {} },
+    processes: { web: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["web"],
+      health: { type: "http", port: "web", timeoutMs: 5000 } } }, profiles: { default: { processes: ["web"] } } });
+  let started: Awaited<ReturnType<typeof orchestrator.up>> | undefined;
+  try {
+    await mkdir(siblingRoot);
+    await writeFile(path.join(siblingRoot, "server.mjs"),
+      "import { createServer } from 'node:http'; createServer((_request, response) => response.end('sibling')).listen(Number(process.env.DEVFN_PORT_WEB), '127.0.0.1');\n");
+    const siblingReady = await orchestrator.up({ config: siblingConfig, root: siblingRoot, stateDir });
+    await writeFile(path.join(root, "slow.mjs"),
+      "import { writeFileSync } from 'node:fs'; import { createServer } from 'node:http'; writeFileSync(process.argv[2], 'starting'); setTimeout(() => createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1'), 1800);\n");
+    const pending = orchestrator.up({ config, root, stateDir });
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (await access(marker).then(() => true).catch(() => false)) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(await access(marker).then(() => true).catch(() => false)).toBe(true);
+    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    const siblingPort = await allocateEphemeralPort();
+    const sibling = registry.reserve({ projectId: "sibling", instanceId: "sibling", invocationId: "sibling", profile: "default",
+      requests: [{ name: "api", spec: { preferred: siblingPort, exact: true } }] });
+    const down = orchestrator.down({ config: siblingConfig, root: siblingRoot, stateDir });
+    const early = await Promise.race([Promise.all([sibling, down]).then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 800))]);
+    started = await pending;
+    expect(early).toBe(true);
+    await sibling;
+    expect((await down).state).toBe("stopped");
+    expect((await readReceipt(siblingConfig, siblingRoot, siblingReady.instanceId))?.state).toBe("stopped");
+  } finally {
+    if (started) await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+    await orchestrator.down({ config: siblingConfig, root: siblingRoot, stateDir }).catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
 }, 30_000);
