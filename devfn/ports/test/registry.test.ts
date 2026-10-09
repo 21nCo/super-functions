@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import dgram from "node:dgram";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -588,6 +590,119 @@ esac
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(process.platform !== "darwin")("keeps a live recorded owner whose birth signature cannot be read as possibly running", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-unverified-owner-"));
+    const originalPath = process.env.PATH;
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    try {
+      const birthSignature = await processBirthSignature(process.pid);
+      expect(birthSignature).toBeTruthy();
+      await registry.reserve({ projectId: "app", instanceId: "one", invocationId: "ready", profile: "default", requests: [{ name: "api", spec: { range: [45300, 45399] } }] });
+      await registry.markActive("ready", { api: { process: { pid: process.pid, birthSignature: birthSignature! } } });
+      // macOS reads birth signatures through ps; a failing ps leaves the live PID unverifiable.
+      await writeFile(path.join(dir, "ps"), "#!/bin/sh\nexit 1\n", { mode: 0o700 });
+      process.env.PATH = `${dir}${path.delimiter}${originalPath ?? ""}`;
+      expect(await registry.instanceMayRun("one")).toBe(true);
+      expect((await registry.reconcile()).allocations[0].state).toBe("active");
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps counting a failed lifecycle's recorded owners through gc until they are verified dead", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-failed-owner-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    const child = spawn(process.execPath, ["-e", "setInterval(() => undefined, 1000)"], { stdio: "ignore" });
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    try {
+      let birthSignature: string | undefined;
+      for (let attempt = 0; attempt < 50 && !birthSignature; attempt += 1) {
+        birthSignature = await processBirthSignature(child.pid!);
+        if (!birthSignature) await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(birthSignature).toBeTruthy();
+      // The start recorded its node's identity, then stopped before its receipt listed it.
+      await registry.reserve({ projectId: "app", instanceId: "one", invocationId: "interrupted", profile: "default", requests: [] });
+      await registry.updateInvocation("interrupted", { state: "starting" });
+      await registry.beginLaunch("interrupted", "api");
+      await registry.recordOwners("interrupted", "api", [{ process: { pid: child.pid!, birthSignature: birthSignature! } }]);
+      expect(await registry.recoverInterrupted("one")).toBe(1);
+      await registry.gc();
+      expect((await registry.read()).invocations.map((item) => [item.id, item.state])).toEqual([["interrupted", "failed"]]);
+      expect(await registry.instanceMayRun("one")).toBe(true);
+
+      // A handled failure resolved its own launches before it ended.
+      await registry.reserve({ projectId: "app", instanceId: "two", invocationId: "handled", profile: "default", requests: [] });
+      await registry.beginLaunch("handled", "api");
+      await registry.release({ invocationId: "handled", errorCode: "DEVFN_START_FAILED" });
+      expect(await registry.instanceMayRun("two")).toBe(false);
+
+      child.kill("SIGKILL");
+      await exited;
+      expect(await registry.instanceMayRun("one")).toBe(false);
+      await registry.gc();
+      expect((await registry.read()).invocations).toEqual([]);
+    } finally {
+      child.kill("SIGKILL");
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the last listener claim through a route-free release while a listener remains on a claimed port", async () => await withCaddyAdminPort(async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-release-listener-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    const port = await allocateEphemeralPort();
+    const listener = dgram.createSocket("udp4");
+    try {
+      // A Caddy whose exit was never confirmed may still hold its HTTP/3 socket.
+      await new Promise<void>((resolve, reject) => { listener.once("error", reject); listener.bind(port, "127.0.0.1", () => resolve()); });
+      await registry.reserve({ projectId: "app", instanceId: "proxy", invocationId: "start", profile: "default", requests: [], proxyListenerPorts: [port] });
+      await registry.release({ invocationId: "start", errorCode: "DEVFN_PROXY_RELOAD_FAILED" });
+      expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", proxyClaimRetained: true });
+      const sibling = async (invocationId: string) => await registry.reserve({ projectId: "app", instanceId: "sibling", invocationId, profile: "default",
+        requests: [{ name: "api", spec: { preferred: port, exact: true } }] });
+      await expect(sibling("blocked")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "proxy" } });
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+      if (!await isPortAvailable(2019, "tcp", "127.0.0.1")) return;
+      expect((await sibling("accepted"))[0].port).toBe(port);
+    } finally {
+      await new Promise<void>((resolve) => { try { listener.close(() => resolve()); } catch { resolve(); } });
+      await rm(dir, { recursive: true, force: true });
+    }
+  }));
+
+  it("retires a verified-dead lifecycle's listener claim although a foreign process took its leased port", async () => await withCaddyAdminPort(async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-dead-claim-foreign-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    const foreign = net.createServer();
+    try {
+      if (!await isPortAvailable(2019, "tcp", "127.0.0.1")) return;
+      const child = spawn(process.execPath, ["-e", "setTimeout(() => undefined, 200)"], { stdio: "ignore" });
+      const birthSignature = await processBirthSignature(child.pid!);
+      await new Promise((resolve) => child.once("exit", resolve));
+      const appPort = await allocateEphemeralPort();
+      let listenerPort = await allocateEphemeralPort();
+      while (listenerPort === appPort) listenerPort = await allocateEphemeralPort();
+      await registry.reserve({ projectId: "app", instanceId: "dead", invocationId: "dead", profile: "default",
+        requests: [{ name: "api", spec: { preferred: appPort, exact: true } }], proxyListenerPorts: [listenerPort] });
+      await registry.markActive("dead", { api: { process: { pid: child.pid!, birthSignature: birthSignature ?? "gone" } } });
+      const state = await registry.read();
+      for (const item of [...state.invocations, ...state.allocations]) item.updatedAt = "2020-01-01T00:00:00.000Z";
+      await writeFile(registry.filePath, JSON.stringify(state));
+      await new Promise<void>((resolve) => foreign.listen(appPort, "127.0.0.1", resolve));
+      const reconciled = await registry.reconcile();
+      expect(reconciled.allocations[0].state).toBe("externally-occupied");
+      expect(reconciled.invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
+      const sibling = await registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: "sibling", profile: "default",
+        requests: [{ name: "api", spec: { preferred: listenerPort, exact: true } }] });
+      expect(sibling[0].port).toBe(listenerPort);
+    } finally {
+      if (foreign.listening) await new Promise<void>((resolve) => foreign.close(() => resolve()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  }));
 
   it("inspects container owners through their persisted Docker selector", async () => {
     let observedHost: string | undefined;

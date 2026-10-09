@@ -5,7 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { matchesProcessIdentity, processExists } from "@devfn/processes";
+import { processExists, processIdentityStatus } from "@devfn/processes";
 
 import { allocateEphemeralPort, bindProbe, connectionRefused, isPortAvailable, scanListenerState } from "./listeners.js";
 import { withFileLock, withRoutingLock } from "./lock.js";
@@ -168,7 +168,7 @@ async function refreshAllocation(allocation: PortAllocation, now: string, availa
   // Age ends a planned lease only on a free port: an occupied one may be held
   // by a node an interrupted start launched before its lease became active.
   if (allocation.state === "planned" && Date.now() - Date.parse(allocation.updatedAt) > ABANDONED_CLAIM_MS) allocation.state = portAvailable ? "stale" : "externally-occupied";
-  else if (allocation.state === "active" && allocation.process && !await matchesProcessOwner(allocation.process)) allocation.state = portAvailable ? "stale" : "externally-occupied";
+  else if (allocation.state === "active" && allocation.process && !await processOwnerMayRun(allocation.process)) allocation.state = portAvailable ? "stale" : "externally-occupied";
   else if (allocation.state === "active" && allocation.container && await inspectContainerRunning(allocation.container) === false) allocation.state = portAvailable ? "stale" : "externally-occupied";
   else if (allocation.state === "active" && !allocation.process && !allocation.container) allocation.state = portAvailable ? "stale" : "externally-occupied";
   else if (allocation.state === "externally-occupied" && portAvailable) allocation.state = "stale";
@@ -197,7 +197,11 @@ async function expireAbandonedProxyClaims(state: RegistryState, stateDir: string
     for (const allocation of state.allocations.filter((item) => item.invocationId === invocation.id && active(item) && !retainedForReplacement(state, item.invocationId))) {
       await refreshAllocation(allocation, now, available);
     }
-    if (state.allocations.some((item) => item.invocationId === invocation.id && active(item))) continue;
+    if (state.allocations.some((item) => item.invocationId === invocation.id && (item.state === "planned" || item.state === "active"))) continue;
+    // An occupied port proves its occupant is ours only while a recorded
+    // owner of this lifecycle may still run; otherwise it is foreign.
+    if (state.allocations.some((item) => item.invocationId === invocation.id && item.state === "externally-occupied") &&
+      await journalMayRun(state, invocation)) continue;
     // Inconclusive ownership evidence keeps the claim.
     if (!await retirable(invocation)) continue;
     Object.assign(invocation, { state: "failed", errorCode: "DEVFN_INTERRUPTED", updatedAt: now });
@@ -225,10 +229,33 @@ function allocationOwners(allocation: PortAllocation): LifecycleOwner[] {
 }
 
 /** Only a verified-dead identity is death evidence; a live or unverifiable one may still run. */
+async function processOwnerMayRun(owner: NonNullable<PortAllocation["process"]>): Promise<boolean> {
+  const status = await processIdentityStatus(owner.pid, owner.birthSignature);
+  return status === "running" || status === "unverified";
+}
+
 async function ownerMayRun(owner: LifecycleOwner): Promise<boolean> {
-  if (owner.process) return owner.process.birthSignature ? await matchesProcessOwner(owner.process) : processExists(owner.process.pid);
+  if (owner.process) return await processOwnerMayRun(owner.process);
   if (owner.container) return await inspectContainerRunning(owner.container) !== false;
   return true;
+}
+
+/**
+ * Whether anything an invocation launched may still run, judged only from its
+ * owner journal: a launch whose identity was never recorded, or a recorded
+ * process or container identity not verified dead. A stopped invocation ended
+ * only after its command stopped every owner. Failing or interrupting one
+ * does not stop owners its receipt never listed, so failed invocations count
+ * too. A running lifecycle with neither an owner journal nor a recorded owner
+ * predates the journal and proves nothing.
+ */
+async function journalMayRun(state: RegistryState, invocation: RegistryInvocation): Promise<boolean> {
+  if (invocation.state === "stopped") return false;
+  if (invocation.launching?.length) return true;
+  const owners = [...(invocation.owners ?? []), ...state.allocations.filter((item) => item.invocationId === invocation.id).flatMap(allocationOwners)];
+  if (!owners.length && !invocation.ownerJournal) return CLAIM_STATES.includes(invocation.state);
+  for (const owner of owners) if (await ownerMayRun(owner)) return true;
+  return false;
 }
 
 function stableOffset(value: string, size: number): number {
@@ -643,19 +670,29 @@ export class FilePortRegistry {
       }
       const stateDir = path.dirname(this.filePath);
       const released = (invocation: RegistryInvocation) => !(input.invocationId && invocation.id !== input.invocationId) && !(input.instanceId && invocation.instanceId !== input.instanceId);
-      // Another running lifecycle of the instance that claims the same ports
-      // keeps protecting them, and meets this rule when it ends in turn.
-      const covered = (invocation: RegistryInvocation) => state.invocations.some((other) => !released(other) && other.instanceId === invocation.instanceId &&
-        CLAIM_STATES.includes(other.state) && invocation.proxyListenerPorts!.every((port) => other.proxyListenerPorts?.includes(port)));
+      // Another claim on the same ports keeps protecting them, and meets this
+      // rule when it ends in turn: a running lifecycle of the same instance
+      // always, any other claim only once this instance has no routes left
+      // that could bring the listener back.
+      const covers = (invocation: RegistryInvocation, other: RegistryInvocation) => !released(other) && holdsProxyClaim(other) &&
+        invocation.proxyListenerPorts!.every((port) => other.proxyListenerPorts?.includes(port));
+      const covered = async (invocation: RegistryInvocation) =>
+        state.invocations.some((other) => covers(invocation, other) && other.instanceId === invocation.instanceId && CLAIM_STATES.includes(other.state)) ||
+        (state.invocations.some((other) => covers(invocation, other)) &&
+          await withFileLock(path.join(stateDir, "proxy.lock"), async () => await noOwnedProxyRoutes(stateDir, invocation.instanceId)).catch(() => false));
       for (const invocation of state.invocations) {
         if (!released(invocation)) continue;
-        // A lifecycle that ends before its routes are removed (a failed
-        // replacement or rollback) must not free the listener its routes
-        // still use; the shared evidence retires that claim later.
-        const retain = invocation.proxyClaimRetained === true || (holdsProxyClaim(invocation) && !covered(invocation) &&
-          !await withFileLock(path.join(stateDir, "proxy.lock"), async () => await noOwnedProxyRoutes(stateDir, invocation.instanceId)).catch(() => false));
+        // Otherwise the last claim on a listener ends only through the shared
+        // evidence: a lifecycle that ends before its routes are removed (a
+        // failed replacement or rollback) or while a Caddy it started may
+        // still listen (an unconfirmed exit) keeps its claim until then.
+        const retain = invocation.proxyClaimRetained === true || (holdsProxyClaim(invocation) && !await covered(invocation) &&
+          !await proxyClaimRetirable(stateDir, invocation.instanceId, invocation.proxyListenerPorts!));
         Object.assign(invocation, { state: input.errorCode ? "failed" : "stopped", updatedAt: now, ...(input.errorCode ? { errorCode: input.errorCode } : {}) });
         if (retain) invocation.proxyClaimRetained = true;
+        // The ending command resolved its own launches; owners it recorded
+        // stay as evidence.
+        delete invocation.launching;
       }
     });
   }
@@ -663,21 +700,17 @@ export class FilePortRegistry {
   /**
    * Whether a lifecycle of this instance may still run. Death evidence is
    * only a recorded process or container identity verified dead; lease age,
-   * stale leases and occupied ports prove nothing. A recently refreshed
-   * command, a launch whose identity was never recorded, a live or
-   * unverifiable owner, and a lifecycle with no owner journal and no recorded
-   * owner all count as possibly running. Ended invocations stopped their
-   * owners before they ended. Callers hold the routing lock across this check
-   * and the action it permits.
+   * stale leases, occupied ports and an ended or interrupted invocation state
+   * prove nothing. A recently refreshed command and any invocation whose
+   * owner journal may still run (see journalMayRun) count as possibly
+   * running. Callers hold the routing lock across this check and the action
+   * it permits.
    */
   public async instanceMayRun(instanceId: string): Promise<boolean> {
     const state = await withRoutingLock(path.dirname(this.filePath), async () => await this.read());
-    for (const invocation of state.invocations.filter((item) => item.instanceId === instanceId && CLAIM_STATES.includes(item.state))) {
-      if (invocation.state !== "ready" && recentlyRefreshed(invocation)) return true;
-      if (invocation.launching?.length) return true;
-      const owners = [...(invocation.owners ?? []), ...state.allocations.filter((item) => item.invocationId === invocation.id).flatMap(allocationOwners)];
-      if (!owners.length && !invocation.ownerJournal) return true;
-      for (const owner of owners) if (await ownerMayRun(owner)) return true;
+    for (const invocation of state.invocations.filter((item) => item.instanceId === instanceId)) {
+      if (CLAIM_STATES.includes(invocation.state) && invocation.state !== "ready" && recentlyRefreshed(invocation)) return true;
+      if (await journalMayRun(state, invocation)) return true;
     }
     return false;
   }
@@ -698,14 +731,20 @@ export class FilePortRegistry {
     return await this.transaction(async (state) => {
       await expireAbandonedProxyClaims(state, path.dirname(this.filePath), new Date().toISOString(), this.availabilityCheck);
       const before = state.allocations.length;
-      // A collected lease's owner stays death evidence for its lifecycle.
+      // A collected lease's owner stays evidence for its lifecycle.
       for (const allocation of state.allocations) {
         if (allocation.state !== "stale" && allocation.state !== "released") continue;
-        const invocation = state.invocations.find((item) => item.id === allocation.invocationId && CLAIM_STATES.includes(item.state));
+        const invocation = state.invocations.find((item) => item.id === allocation.invocationId);
         if (invocation) addOwners(invocation, allocationOwners(allocation));
       }
       state.allocations = state.allocations.filter((allocation) => allocation.state !== "stale" && allocation.state !== "released");
-      state.invocations = state.invocations.filter((invocation) => !["failed", "stopped"].includes(invocation.state) || invocation.proxyClaimRetained);
+      // An ended invocation whose recorded owners may still run is the only
+      // evidence that keeps its instance's routes, so it is kept as well.
+      const kept: RegistryInvocation[] = [];
+      for (const invocation of state.invocations) {
+        if (!["failed", "stopped"].includes(invocation.state) || invocation.proxyClaimRetained || await journalMayRun(state, invocation)) kept.push(invocation);
+      }
+      state.invocations = kept;
       return before - state.allocations.length;
     });
   }
@@ -713,10 +752,6 @@ export class FilePortRegistry {
 
 export function isProcessAlive(pid: number): boolean {
   return processExists(pid);
-}
-
-async function matchesProcessOwner(owner: NonNullable<PortAllocation["process"]>): Promise<boolean> {
-  return await matchesProcessIdentity(owner.pid, owner.birthSignature);
 }
 
 type DockerInspect = (file: string, args: string[], options: { env: NodeJS.ProcessEnv; timeout: number }) => Promise<{ stdout: string }>;

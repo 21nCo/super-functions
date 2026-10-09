@@ -10,7 +10,7 @@ import { expect, it, vi } from "vitest";
 import { ProcessSupervisor, processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController, proxyListenerPorts, registerDomain } from "@devfn/proxy";
 import { validateDevFnConfig } from "@devfn/config";
-import { allocateEphemeralPort, connectionRefused, FilePortRegistry, isPortAvailable, withFileLock, withRoutingLock } from "@devfn/ports";
+import { allocateEphemeralPort, bindProbe, connectionRefused, FilePortRegistry, isPortAvailable, withFileLock, withRoutingLock } from "@devfn/ports";
 import { DevFnOrchestrator, domainAliases, readReceipt, resolveAllocationUrls, resolveInstanceIdentity, resolveLocalHostname } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
@@ -39,7 +39,7 @@ const withoutPhysicalProxyPreflight = async <T>(action: () => Promise<T>): Promi
   try { return await action(); } finally { preflight.mockRestore(); available.mockRestore(); }
 };
 
-it("protects Caddy listener ports for selected proxy routes while preserving no-proxy v0.1 ports", async () => await withoutPhysicalProxyPreflight(async () => {
+it("protects Caddy listener ports for selected proxy routes while preserving no-proxy v0.1 ports", async () => await withCaddyAdminPort(async () => await withoutPhysicalProxyPreflight(async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-listener-reservation-"));
   const { httpPort, httpsPort } = proxyListenerPorts();
   const freePreferred = await allocateEphemeralPort();
@@ -72,14 +72,21 @@ it("protects Caddy listener ports for selected proxy routes while preserving no-
         expect(registry.allocations[0].protocol).toBe(protocol);
         if (proxy) {
           expect(registry.invocations[0]).toMatchObject({ state: "failed", proxyListenerPorts: [httpPort, httpsPort] });
-          const released = await new FilePortRegistry(path.join(stateDir, "registry.json"), undefined, async () => true).reserve({ projectId: name, instanceId: "later-sibling", invocationId: "later-sibling", profile: "default",
+          const laterSibling = new FilePortRegistry(path.join(stateDir, "registry.json"), undefined, async () => true).reserve({ projectId: name, instanceId: "later-sibling", invocationId: "later-sibling", profile: "default",
             requests: [{ name: "listener", spec: { preferred: httpPort, exact: true } }] });
-          expect(released[0].port).toBe(httpPort);
+          // The failed start's claim ends only when no listener provably
+          // remains on its ports: a host process already listening there, or
+          // a privileged UDP bind this user is denied (Linux 80/443), keeps it.
+          const absenceUnprovable = Boolean(await foreignProxyListenerNote()) || !await isPortAvailable(2019, "tcp", "127.0.0.1") ||
+            (await Promise.all([httpPort, httpsPort].map((port) => bindProbe(port, "udp", "127.0.0.1")))).some((probe) => probe === "denied");
+          if (absenceUnprovable) {
+            await expect(laterSibling).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+          } else expect((await laterSibling)[0].port).toBe(httpPort);
         }
       }
     }
   } finally { await rm(root, { recursive: true, force: true }); }
-}), 30_000);
+})), 150_000);
 
 it("retires a proven abandoned proxy claim before first-start exact-port preflight", async () => await withCaddyAdminPort(async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-preflight-abandoned-"));

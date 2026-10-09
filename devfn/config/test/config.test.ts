@@ -3,9 +3,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
+import { classifyProcessIdentity, discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
 
 describe("DevFn configuration", () => {
+  it("treats a recorded process as gone only when its PID is absent or a readable birth signature differs", () => {
+    expect(classifyProcessIdentity(false, "birth")).toBe("exited");
+    expect(classifyProcessIdentity(true, "birth", "birth")).toBe("running");
+    expect(classifyProcessIdentity(true, "birth", "other")).toBe("identity-mismatch");
+    expect(classifyProcessIdentity(true, "birth", undefined)).toBe("unverified");
+    expect(classifyProcessIdentity(true, undefined, "birth")).toBe("unverified");
+  });
+
   it("rejects case-colliding allowlist and secret keys at schema validation", () => {
     const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
     expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: ["MODE", "mode"] } } }))

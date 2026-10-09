@@ -1,5 +1,5 @@
 export { createProcessEnvironment, resolveAdapterCommand } from "./adapters.js";
-export { matchesProcessIdentity, processBirthSignature, processExists } from "./identity.js";
+export { classifyProcessIdentity, matchesProcessIdentity, processBirthSignature, processExists, processIdentityStatus, type ProcessIdentityStatus } from "./identity.js";
 export { checkReadinessNow, resolveHttpReadinessUrl, waitForReadiness, type ReadinessInput } from "./readiness.js";
 export { createStreamingRedactor, type StreamingRedactor } from "./redaction.js";
 export { ProcessSupervisor } from "./supervisor.js";

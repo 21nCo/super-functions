@@ -200,6 +200,49 @@ it("removes routes only for instances with conclusive no-lifecycle evidence", as
 
 const AGED = "2020-01-01T00:00:00.000Z";
 
+it.skipIf(process.platform !== "darwin")("keeps the routes of an instance whose live owner's birth signature cannot be read", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-unverified-owner-"));
+  const stateDir = path.join(root, "state");
+  const toolsDir = path.join(root, "tools");
+  const originalPath = process.env.PATH;
+  const live = execFile(process.execPath, ["-e", "setInterval(() => undefined, 1000)"]);
+  try {
+    await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Fixture process has no birth signature.");
+    await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+    let liveSignature: string | undefined;
+    for (let attempt = 0; attempt < 50 && !liveSignature; attempt += 1) {
+      liveSignature = await processBirthSignature(live.pid!);
+      if (!liveSignature) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const exited = execFile(process.execPath, ["-e", "setTimeout(() => undefined, 200)"]);
+    const exitedSignature = await processBirthSignature(exited.pid!);
+    await new Promise((resolve) => exited.once("exit", resolve));
+    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    const ports: Record<string, number> = {};
+    for (const [instanceId, owner] of [["dead", { pid: exited.pid!, birthSignature: exitedSignature ?? "gone" }], ["unverified", { pid: live.pid!, birthSignature: liveSignature! }]] as const) {
+      ports[instanceId] = await allocateEphemeralPort();
+      await registry.reserve({ projectId: "app", instanceId, invocationId: instanceId, profile: "default", requests: [{ name: "api", spec: { preferred: ports[instanceId], exact: true } }] });
+      await registry.markActive(instanceId, { api: { process: owner } });
+    }
+    await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: Object.entries(ports).map(([instanceId, targetPort]) => ({
+      id: `${instanceId}:app`, instanceId, hostname: `${instanceId}.localhost`, targetHost: "127.0.0.1", targetPort, tls: "off", updatedAt: new Date().toISOString() })) }));
+    // macOS reads birth signatures through ps; this one cannot read the live owner's.
+    await writeFile(path.join(toolsDir, "ps"), `#!/bin/sh\ncase " $* " in *" ${live.pid} "*) exit 1;; esac\nexec /bin/ps "$@"\n`, { mode: 0o700 });
+    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+    expect(await processBirthSignature(live.pid!)).toBeUndefined();
+    expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual(["dead"]);
+    expect(await routedInstances(stateDir)).toEqual(["unverified"]);
+  } finally {
+    live.kill("SIGKILL");
+    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+    await rm(root, { recursive: true, force: true });
+  }
+}, 60_000);
+
+
 async function routedInstances(stateDir: string): Promise<string[]> {
   const committed = JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")) as { routes: Array<{ instanceId: string }> };
   return [...new Set(committed.routes.map((route) => route.instanceId))];
