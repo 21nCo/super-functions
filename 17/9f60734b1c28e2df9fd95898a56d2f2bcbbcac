@@ -1,0 +1,43 @@
+devfn/cli/SECURITY.md
+  s_ce12272281eb3b::t_ea91652d9311b1 8
+devfn/compose/src/index.ts
+  s_ce12272281eb3b::t_81dbc713e2c370 58-59,63-73,1514-1515,1602-1625
+devfn/compose/test/override.test.ts
+  s_ce12272281eb3b::t_6033820b6ad1e8 862-900
+devfn/core/README.md
+  s_ce12272281eb3b::t_bc6358ab1690cb 5
+devfn/core/src/orchestrator.ts
+  s_ce12272281eb3b::t_ee8eefe789c259 9,387-443,691-699,720-723,730,736-737,750,773,776,779-782
+devfn/core/test/teardown-evidence.test.ts
+  s_ce12272281eb3b::t_5dcdf3b8cf3374 1-245
+devfn/ports/README.md
+  s_ce12272281eb3b::t_a624e683dcf1a3 7
+devfn/ports/src/index.ts
+  s_ce12272281eb3b::t_864fac4390481e 6
+devfn/ports/src/registry.ts
+  s_ce12272281eb3b::t_e1c65fcf9c048a 12,247-248,600-605,610,624-625,701-702,704
+devfn/ports/src/types.ts
+  s_ce12272281eb3b::t_0a0085374b909e 59,61-72
+devfn/ports/test/registry.test.ts
+  s_ce12272281eb3b::t_69cbb7a61aa133 565,629,638,653-655,677-678
+devfn/processes/src/supervisor.ts
+  s_ce12272281eb3b::t_d5b0abd701dd6a 1,10,34-47,88-89,107,122-127,153-160
+devfn/processes/src/wrapper.ts
+  s_ce12272281eb3b::t_72d4422a9fc52b 16-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "179f60734b1c28e2df9fd95898a56d2f2bcbbcac",
+  "prompts": {},
+  "sessions": {
+    "s_ce12272281eb3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d2376f8-4af3-4920-96da-dff6a042ab4c",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
