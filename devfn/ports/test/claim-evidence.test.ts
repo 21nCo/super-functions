@@ -1,3 +1,4 @@
+import dgram from "node:dgram";
 import http from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -5,11 +6,15 @@ import path from "node:path";
 import net from "node:net";
 import { expect, it, vi } from "vitest";
 
-const scan = vi.hoisted(() => ({ hidden: false }));
+const scan = vi.hoisted(() => ({ hidden: false, deniedUdpPort: 0 }));
 vi.mock("../src/listeners.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/listeners.js")>();
   return {
     ...actual,
+    // An unprivileged process cannot bind a privileged UDP port, so that
+    // bind proves nothing about a hidden HTTP/3 listener there.
+    bindProbe: async (port: number, protocol?: "tcp" | "udp", host?: string) => protocol === "udp" && port === scan.deniedUdpPort
+      ? "denied" as const : await actual.bindProbe(port, protocol, host),
     // A non-dumpable owner (setcap Caddy on Linux) is invisible to same-user
     // socket inspection even though inspection itself succeeds.
     scanListenerState: async (includeDocker?: boolean) => scan.hidden
@@ -19,7 +24,7 @@ vi.mock("../src/listeners.js", async (importOriginal) => {
 });
 
 import { processBirthSignature } from "@devfn/processes";
-import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, withFileLock } from "../src/index.js";
+import { allocateEphemeralPort, connectionRefused, FilePortRegistry, isPortAvailable, withFileLock } from "../src/index.js";
 
 const withCaddyAdminPort = async <T>(action: () => Promise<T>): Promise<T> =>
   await withFileLock(path.join(tmpdir(), "devfn-test-caddy-admin.lock"), action, { timeoutMs: 120_000 });
@@ -34,14 +39,20 @@ async function abandonedClaim(dir: string, port: number): Promise<FilePortRegist
   return registry;
 }
 
-const sibling = (registry: FilePortRegistry, port: number, id: string) => registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: id,
-  profile: "default", requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] });
+const sibling = (registry: FilePortRegistry, port: number, id: string, protocol: "tcp" | "udp" = "udp") => registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: id,
+  profile: "default", requests: [{ name: "api", spec: { preferred: port, exact: true, protocol } }] });
+
+async function serveAdminConfig(config: () => unknown): Promise<http.Server> {
+  const admin = http.createServer((_request, response) => response.end(JSON.stringify(config())));
+  await new Promise<void>((resolve, reject) => admin.once("error", reject).listen(2019, "127.0.0.1", resolve));
+  return admin;
+}
 
 async function listen(server: net.Server, port: number, host: string): Promise<void> {
   await new Promise<void>((resolve, reject) => server.once("error", reject).listen({ port, host, ipv6Only: host.includes(":") }, resolve));
 }
 
-it("retains an abandoned claim whose loopback listener is hidden from successful socket inspection", async () => {
+it("retains an abandoned claim whose loopback listener is hidden from successful socket inspection", async () => await withCaddyAdminPort(async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "devfn-hidden-claim-"));
   const port = await allocateEphemeralPort();
   const listener = net.createServer((socket) => socket.destroy());
@@ -62,7 +73,65 @@ it("retains an abandoned claim whose loopback listener is hidden from successful
     if (listener.listening) await new Promise<void>((resolve) => listener.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   }
-});
+}), 150_000);
+
+it("retains an abandoned claim while a hidden HTTP/3 UDP listener remains on either loopback family", async () => await withCaddyAdminPort(async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "devfn-hidden-udp-claim-"));
+  const port = await allocateEphemeralPort();
+  scan.hidden = true;
+  let socket: dgram.Socket | undefined;
+  try {
+    const registry = await abandonedClaim(dir, port);
+    const hosts = await isPortAvailable(0, "tcp", "::1") ? ["::1", "127.0.0.1"] : ["127.0.0.1"];
+    for (const host of hosts) {
+      socket = dgram.createSocket(host.includes(":") ? "udp6" : "udp4");
+      await new Promise<void>((resolve, reject) => socket!.once("error", reject).bind(port, host, resolve));
+      // TCP on both families refuses and binds; only Caddy's UDP socket remains.
+      await expect(sibling(registry, port, `tcp-${host}`, "tcp")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "abandoned" } });
+      expect((await registry.read()).invocations[0].state).toBe("starting");
+      await new Promise<void>((resolve) => socket!.close(() => resolve()));
+      socket = undefined;
+    }
+    expect((await sibling(registry, port, "free", "tcp"))[0]).toMatchObject({ port, protocol: "tcp" });
+  } finally {
+    scan.hidden = false;
+    socket?.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+}), 150_000);
+
+it("keeps a privileged claim whose UDP bind is denied unless a verified owner's configuration excludes the port", async () => await withCaddyAdminPort(async () => {
+  const hosts = await isPortAvailable(0, "tcp", "::1") ? ["127.0.0.1", "::1"] : ["127.0.0.1"];
+  let port: number | undefined;
+  for (let candidate = 1023; candidate > 900 && port === undefined; candidate -= 1) {
+    if ((await Promise.all(hosts.map(async (host) => await connectionRefused(candidate, host)))).every(Boolean)) port = candidate;
+  }
+  if (port === undefined) throw new Error("No refused privileged loopback port is available for the fixture.");
+  const dir = await mkdtemp(path.join(tmpdir(), "devfn-privileged-udp-claim-"));
+  let config: unknown = { apps: { http: { servers: { srv0: { listen: [`127.0.0.1:${port}`] } } } } };
+  let admin: http.Server | undefined;
+  scan.hidden = true;
+  scan.deniedUdpPort = port;
+  try {
+    const registry = await abandonedClaim(dir, port);
+    // No owner: a refused TCP connection says nothing about UDP.
+    await expect(sibling(registry, port, "ownerless", "tcp")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "abandoned" } });
+    const birthSignature = await processBirthSignature(process.pid);
+    expect(birthSignature).toBeTruthy();
+    await writeFile(path.join(dir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+    admin = await serveAdminConfig(() => config);
+    await expect(sibling(registry, port, "configured", "tcp")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "abandoned" } });
+    expect((await registry.read()).invocations[0].state).toBe("starting");
+    config = { apps: { http: { servers: {} } } };
+    expect((await sibling(registry, port, "excluded", "tcp"))[0]).toMatchObject({ port, protocol: "tcp" });
+    expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
+  } finally {
+    scan.hidden = false;
+    scan.deniedUdpPort = 0;
+    if (admin?.listening) await new Promise<void>((resolve) => admin!.close(() => resolve()));
+    await rm(dir, { recursive: true, force: true });
+  }
+}), 150_000);
 
 it("retains a privileged-port claim while a hidden listener still accepts", async () => {
   // macOS lets unprivileged processes bind privileged ports on the wildcard

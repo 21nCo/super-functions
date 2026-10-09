@@ -305,7 +305,7 @@ describe("FilePortRegistry", () => {
       expect((await sibling("udp"))[0].port).toBe(port);
     } finally { await rm(dir, { recursive: true, force: true }); }
   }), 150_000);
-  it("claims proxy listeners atomically across TCP and UDP and releases failed claims", async () => {
+  it("claims proxy listeners atomically across TCP and UDP and releases failed claims", async () => await withCaddyAdminPort(async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-proxy-"));
     const port = 18443;
     const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => port + 1, async () => true);
@@ -329,7 +329,40 @@ describe("FilePortRegistry", () => {
     await registry.release({ invocationId: "reallocated" });
     await registry.recoverInterrupted("proxy");
     expect((await request("legacy", "recovered", "tcp"))[0].port).toBe(port);
-  });
+  }), 150_000);
+
+  it("keeps an interrupted or failed lifecycle's listener claim until its routes are removed", async () => await withCaddyAdminPort(async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-interrupted-claim-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), undefined, async () => true);
+    const port = await allocateEphemeralPort();
+    const routeFile = path.join(dir, "proxy-routes.json");
+    const sibling = (id: string) => registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: id, profile: "default",
+      requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] });
+    try {
+      // An activation committed its route, then its command was interrupted.
+      await registry.reserve({ projectId: "app", instanceId: "proxy", invocationId: "interrupted", profile: "default", requests: [], proxyListenerPorts: [port] });
+      await writeFile(routeFile, JSON.stringify({ version: 1, routes: [{ id: "proxy:app", instanceId: "proxy", hostname: "app.localhost",
+        targetHost: "127.0.0.1", targetPort: port + 1, tls: "off", updatedAt: new Date().toISOString() }] }));
+      await expect(registry.recoverInterrupted("proxy")).resolves.toBe(1);
+      expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED", proxyClaimRetained: true });
+      await expect(sibling("after-recovery")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "proxy" } });
+      // The next lifecycle fails before it reconciles those routes.
+      await registry.reserve({ projectId: "app", instanceId: "proxy", invocationId: "unprepared", profile: "default", requests: [] });
+      await registry.release({ invocationId: "unprepared", errorCode: "DEVFN_ENDPOINT_RESOLUTION_FAILED" });
+      await registry.gc();
+      await expect(sibling("after-preparation-failure")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "proxy" } });
+      // A claiming lifecycle that fails while its routes remain keeps its claim too.
+      await registry.reserve({ projectId: "app", instanceId: "proxy", invocationId: "rollback", profile: "default", requests: [], proxyListenerPorts: [port] });
+      await registry.release({ invocationId: "rollback", errorCode: "DEVFN_PROXY_RELOAD_FAILED" });
+      expect((await registry.read()).invocations.find((item) => item.id === "rollback")).toMatchObject({ state: "failed", proxyClaimRetained: true });
+      await expect(registry.reserve({ projectId: "app", instanceId: "proxy", invocationId: "own-exact", profile: "default",
+        requests: [{ name: "api", spec: { preferred: port, exact: true } }] })).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT",
+        details: { instanceId: "proxy", action: expect.stringContaining("devfn down") } });
+      await rm(routeFile);
+      expect((await sibling("after-routes-removed"))[0]).toMatchObject({ port, protocol: "udp" });
+      expect((await registry.read()).invocations.filter((item) => item.proxyClaimRetained)).toEqual([]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  }), 150_000);
 
   it("serializes a proxy claim against a concurrent sibling listener reservation", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-proxy-race-"));

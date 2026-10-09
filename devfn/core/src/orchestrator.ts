@@ -315,7 +315,11 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
       if (Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||
         Object.entries(current).some(([name, fingerprint]) => receipt.startupFingerprints?.[name] !== fingerprint)) return false;
     }
-  } catch { return false; }
+  } catch (error) {
+    // A busy proxy proves nothing about this lifecycle; never replace it on that basis.
+    if (error && typeof error === "object" && "code" in error && error.code === "DEVFN_REGISTRY_LOCK_TIMEOUT") throw error;
+    return false;
+  }
   const compose = new ComposeController();
   const supervisor = new ProcessSupervisor();
   const processReady = await Promise.all(receipt.processes.map(async (managed, index) => {
@@ -341,6 +345,42 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     });
   }));
   return processReady.every(Boolean) && serviceReady.every(Boolean);
+}
+
+/**
+ * Remove proxy routes no lifecycle can still own, for example after a
+ * worktree was deleted while running. Holding an instance's lifecycle lock
+ * proves no command of it runs; registry evidence must then show no live or
+ * unprovable lease owner. Live or ambiguous instances keep their routes.
+ */
+export async function recoverOrphanedProxyRoutes(requestedStateDir: string): Promise<string[]> {
+  let stateDir: string;
+  try { stateDir = await realpath(requestedStateDir); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const proxy = new CaddyProxyController(stateDir);
+  const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+  const recovered: string[] = [];
+  for (const instanceId of await proxy.routedInstanceIds()) {
+    let entered = false;
+    try {
+      await withFileLock(path.join(stateDir, `lifecycle-${instanceId}.lock`), async () => {
+        entered = true;
+        await withRoutingLock(stateDir, async () => {
+          if (await registry.hasLiveLifecycle(instanceId)) return;
+          await proxy.removeInstance(instanceId);
+          recovered.push(instanceId);
+        });
+      }, { timeoutMs: 1_000 });
+    } catch (error) {
+      // A lifecycle command of this instance is running; it owns its routes.
+      if (!entered && error && typeof error === "object" && "code" in error && error.code === "DEVFN_REGISTRY_LOCK_TIMEOUT") continue;
+      throw error;
+    }
+  }
+  return recovered;
 }
 
 export class DevFnOrchestrator {
@@ -441,11 +481,24 @@ export class DevFnOrchestrator {
     // An interrupted replacement can leave committed routes the prior receipt
     // never recorded, so the proxy's own state decides what to reconcile.
     let reconcileRoutes = false;
-    try { reconcileRoutes = oldReady !== undefined && (routes.length > 0 || oldReady.routes.length > 0 || await proxy.hasInstanceRoutes(identity.instanceId)); }
-    catch (error) {
+    let priorRoutes: Awaited<ReturnType<typeof proxy.instanceRouteState>> | undefined;
+    try {
+      reconcileRoutes = oldReady !== undefined && (routes.length > 0 || oldReady.routes.length > 0 || await proxy.hasInstanceRoutes(identity.instanceId));
+      if (reconcileRoutes) priorRoutes = await proxy.instanceRouteState(identity.instanceId);
+    } catch (error) {
       await registry.release({ invocationId, errorCode: "DEVFN_PROXY_CONFIG_INVALID" });
       throw error;
     }
+    // Restore this instance's routes as they were before preactivation, and
+    // only when its committed or pending route state actually changed: a
+    // rejected candidate leaves both untouched and keeps its own error.
+    const restorePriorRoutes = async (): Promise<void> => {
+      if (!priorRoutes) return;
+      const before = new Set([priorRoutes.committed, priorRoutes.pending].filter(Boolean).map((value) => JSON.stringify(value)));
+      const after = await proxy.instanceRouteState(identity.instanceId).catch(() => undefined);
+      if (after && [after.committed, after.pending].filter(Boolean).every((value) => before.has(JSON.stringify(value)))) return;
+      await proxy.upsert(priorRoutes.committed, identity.instanceId);
+    };
     if (oldReady && reconcileRoutes) {
       try {
         // Caddy run/reload can fail after validate. Activate the final routes
@@ -453,14 +506,13 @@ export class DevFnOrchestrator {
         const finalRoutes = await selectedProxyRoutes(options.config, plan, identity, ports, suffix, stateDir);
         activatedRoutes = await proxy.upsert(finalRoutes, identity.instanceId);
       } catch (error) {
-        await registry.release({ invocationId, errorCode: "DEVFN_PROXY_RELOAD_FAILED" });
-        // Caddy rejects the candidate before the committed route file is
-        // replaced; its controller also discards the pending journal.
-        if (error && typeof error === "object" && "code" in error && error.code === "DEVFN_PROXY_RELOAD_FAILED") throw error;
-        try { await proxy.upsert(oldReady.routes, identity.instanceId); }
+        try { await restorePriorRoutes(); }
         catch (rollbackError) {
+          // The invocation's listener claim stays while its routes remain.
+          await registry.release({ invocationId, errorCode: "DEVFN_PROXY_RELOAD_FAILED" }).catch(() => undefined);
           throw new DevFnError("DEVFN_RUNTIME_INVALID", `Proxy activation failed and prior routes could not be restored: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
         }
+        await registry.release({ invocationId, errorCode: "DEVFN_PROXY_RELOAD_FAILED" });
         throw error;
       }
     }
@@ -474,8 +526,8 @@ export class DevFnOrchestrator {
     try {
       await registry.updateInvocation(invocationId, { state: "starting" });
     } catch (error) {
+      if (activatedRoutes) await restorePriorRoutes().catch(() => undefined);
       await registry.release({ invocationId, errorCode: "DEVFN_RECEIPT_WRITE_FAILED" }).catch(() => undefined);
-      if (activatedRoutes && oldReady) await proxy.upsert(oldReady.routes, identity.instanceId);
       throw error;
     }
     return async () => {
@@ -493,8 +545,8 @@ export class DevFnOrchestrator {
           clearInterval(heartbeat);
           // Part of the prior lifecycle may still run, so it keeps its receipt,
           // leases and routes for an explicit down.
+          if (activatedRoutes) await restorePriorRoutes().catch(() => undefined);
           await registry.release({ invocationId, errorCode: "DEVFN_REPLACEMENT_STOP_FAILED" }).catch(() => undefined);
-          if (activatedRoutes) await proxy.upsert(oldReady.routes, identity.instanceId).catch(() => undefined);
           oldReady.cleanup = stopped;
           oldReady.state = "degraded";
           oldReady.updatedAt = new Date().toISOString();

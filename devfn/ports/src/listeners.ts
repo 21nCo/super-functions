@@ -6,21 +6,29 @@ import type { ListenerInfo, ListenerScanResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
-export async function isPortAvailable(port: number, protocol: "tcp" | "udp" = "tcp", host = "127.0.0.1"): Promise<boolean> {
+export type BindProbe = "available" | "occupied" | "denied";
+
+/** Bind one address once. "denied" (no privilege for the port) proves nothing about occupancy. */
+export async function bindProbe(port: number, protocol: "tcp" | "udp" = "tcp", host = "127.0.0.1"): Promise<BindProbe> {
+  const outcome = (error: NodeJS.ErrnoException): BindProbe => error.code === "EACCES" || error.code === "EPERM" ? "denied" : "occupied";
   if (protocol === "udp") {
     const dgram = await import("node:dgram");
-    return await new Promise<boolean>((resolve) => {
-      const socket = dgram.createSocket("udp4");
-      socket.once("error", () => { socket.close(); resolve(false); });
-      socket.bind(port, host, () => { socket.close(() => resolve(true)); });
+    return await new Promise<BindProbe>((resolve) => {
+      const socket = dgram.createSocket(net.isIPv6(host) ? "udp6" : "udp4");
+      socket.once("error", (error: NodeJS.ErrnoException) => { socket.close(); resolve(outcome(error)); });
+      socket.bind(port, host, () => { socket.close(() => resolve("available")); });
     });
   }
-  return await new Promise<boolean>((resolve) => {
+  return await new Promise<BindProbe>((resolve) => {
     const server = net.createServer();
     server.unref();
-    server.once("error", () => resolve(false));
-    server.listen({ port, host, exclusive: true }, () => server.close(() => resolve(true)));
+    server.once("error", (error: NodeJS.ErrnoException) => resolve(outcome(error)));
+    server.listen({ port, host, exclusive: true }, () => server.close(() => resolve("available")));
   });
+}
+
+export async function isPortAvailable(port: number, protocol: "tcp" | "udp" = "tcp", host = "127.0.0.1"): Promise<boolean> {
+  return await bindProbe(port, protocol, host) === "available";
 }
 
 /**

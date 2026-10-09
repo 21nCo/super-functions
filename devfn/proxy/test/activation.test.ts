@@ -130,6 +130,24 @@ adminTest("commits a confirmed Caddy start and reports instance routes live only
   expect(await proxy.instanceRoutesLive("fixture", activated)).toBe(false);
 });
 
+adminTest("waits for a sibling's proxy transition before judging an instance's routes live", async () => {
+  process.env.DEVFN_TEST_RUN_MODE = "pingback";
+  let liveConfigCommitted = true;
+  const proxy = new CaddyProxyController(stateDir, undefined, undefined, async () => true, async () => liveConfigCommitted);
+  const activated = await proxy.upsert([route("fixture")]);
+  expect(await proxy.instanceRoutesLive("fixture", activated)).toBe(true);
+  let check: Promise<boolean> | undefined;
+  await withFileLock(path.join(stateDir, "proxy.lock"), async () => {
+    // A sibling reloaded Caddy and has not yet renamed its committed files,
+    // so the live configuration differs from the committed one.
+    liveConfigCommitted = false;
+    check = proxy.instanceRoutesLive("fixture", activated);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    liveConfigCommitted = true;
+  });
+  expect(await check).toBe(true);
+});
+
 adminTest("accepts an owner hidden from socket inspection only when its live admin config is DevFn's committed config", async () => {
   process.env.DEVFN_TEST_RUN_MODE = "pingback";
   const { httpPort, httpsPort } = proxyListenerPorts();

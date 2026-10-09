@@ -324,12 +324,20 @@ export class CaddyProxyController {
   }
 
   /**
-   * Lock-free readiness evidence for one instance: its committed (and any
-   * pending) routes equal the expected routes, and when it has routes the
-   * recorded DevFn Caddy is alive, serves the configuration rendered from
-   * that route state, and accepts on its listener ports.
+   * Readiness evidence for one instance: its committed (and any pending)
+   * routes equal the expected routes, and when it has routes the recorded
+   * DevFn Caddy is alive, serves the configuration rendered from that route
+   * state, and accepts on its listener ports. A sibling activation changes
+   * the live configuration before its committed files, so this waits for
+   * the proxy lock rather than mistaking that window for a dead lifecycle;
+   * a lock timeout is an error, not evidence.
    */
   public async instanceRoutesLive(instanceId: string, expected: readonly ProxyRoute[]): Promise<boolean> {
+    await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
+    return await withFileLock(this.lockPath, async () => await this.instanceRoutesLiveLocked(instanceId, expected), { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
+  }
+
+  private async instanceRoutesLiveLocked(instanceId: string, expected: readonly ProxyRoute[]): Promise<boolean> {
     const comparable = (routes: readonly ProxyRoute[]) => canonicalJson([...routes]
       .map(({ updatedAt: _updated, certificateDigest: _digest, ...route }) => route)
       .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -365,6 +373,22 @@ export class CaddyProxyController {
       if ((await this.readState(file))?.routes.some((route) => route.instanceId === instanceId)) return true;
     }
     return false;
+  }
+
+  /** Lock-free: this instance's routes in the committed and, when present, pending state. */
+  public async instanceRouteState(instanceId: string): Promise<{ committed: ProxyRoute[]; pending?: ProxyRoute[] }> {
+    const [committed, pending] = await Promise.all([this.readState(this.statePath), this.readState(this.pendingPath)]);
+    const own = (state: ProxyState | undefined) => state?.routes.filter((route) => route.instanceId === instanceId) ?? [];
+    return { committed: own(committed), ...(pending ? { pending: own(pending) } : {}) };
+  }
+
+  /** Lock-free: every instance named by committed or pending route state. */
+  public async routedInstanceIds(): Promise<string[]> {
+    const ids = new Set<string>();
+    for (const file of [this.statePath, this.pendingPath]) {
+      for (const route of (await this.readState(file))?.routes ?? []) ids.add(route.instanceId);
+    }
+    return [...ids].sort();
   }
 
   private async read(): Promise<ProxyState> {

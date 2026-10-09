@@ -43,6 +43,8 @@ export interface RegistryInvocation {
   updatedAt: string;
   errorCode?: string;
   proxyListenerPorts?: number[];
+  /** An ended invocation keeps its listener claim until conclusive evidence retires it. */
+  proxyClaimRetained?: true;
   replacingInvocationId?: string;
 }
 

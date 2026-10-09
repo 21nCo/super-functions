@@ -13,7 +13,7 @@ import {
   resolveDevFnManifestPath,
   trustProject,
 } from "@devfn/config";
-import { DevFnError, DevFnOrchestrator, readRegisteredDomains, registerDomain, resolveInstanceIdentity, unregisterDomain } from "@devfn/core";
+import { DevFnError, DevFnOrchestrator, readRegisteredDomains, recoverOrphanedProxyRoutes, registerDomain, resolveInstanceIdentity, unregisterDomain } from "@devfn/core";
 import { FilePortRegistry, renderPortInventory } from "@devfn/ports";
 import { defaultStateDir } from "@devfn/config";
 
@@ -48,7 +48,7 @@ Commands:
   status               Show processes, services, ports, and health
   logs [name]          Show process or Compose logs
   doctor               Diagnose runtimes, Docker, ports, leases, and proxy
-  ports [gc|report]    Inspect, reconcile, collect, or report port state
+  ports [gc|report]    Inspect, reconcile, collect (incl. orphaned routes), or report port state
   url [name]           Print resolved local URLs
   domains [list|register|unregister]  Manage machine-owned development domains
 
@@ -150,7 +150,13 @@ type LoadedConfig = Awaited<ReturnType<typeof trustedConfig>>;
 async function portsCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
   const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
   const action = args.positionals[0];
-  if (action === "gc") { await registry.reconcile(); return { ok: true, removed: await registry.gc() }; }
+  if (action === "gc") {
+    // Orphaned routes go first so their target ports and listener claims can
+    // be collected in the same run.
+    const recoveredRoutes = await recoverOrphanedProxyRoutes(stateDir);
+    await registry.reconcile();
+    return { ok: true, removed: await registry.gc(), recoveredRoutes };
+  }
   if (action !== undefined && action !== "report") throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown ports action ${action}. Expected gc or report.`);
   const state = await registry.reconcile();
   if (action === undefined) return { ok: true, revision: state.revision, allocations: state.allocations.filter((item) => item.state !== "released") };
