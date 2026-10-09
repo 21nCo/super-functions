@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { closeSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -42,5 +43,17 @@ describe("process supervision", () => {
       await expect(prepareProcessLog(logPath, true)).rejects.toThrow(/symlinked process log/);
       expect(await readFile(target, "utf8")).toBe("preserve-me\n");
     } finally { await rm(root, { recursive: true, force: true }); }
+  });
+});
+
+describe("process identity", () => {
+  it("refuses to signal a live process whose identity cannot be verified", async () => {
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
+    try {
+      const managed = { name: "app", pid: child.pid!, command: [], cwd: tmpdir(), logPath: "", startedAt: new Date().toISOString() };
+      await expect(new ProcessSupervisor().stop(managed)).rejects.toMatchObject({ code: "DEVFN_PROCESS_IDENTITY_UNVERIFIED" });
+      expect(await new ProcessSupervisor().status(managed)).toBe("unverified");
+      expect(child.exitCode).toBeNull();
+    } finally { child.kill("SIGKILL"); }
   });
 });

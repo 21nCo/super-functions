@@ -20,7 +20,7 @@ vi.mock("@devfn/proxy", async (importOriginal) => {
 
 import { validateDevFnConfig } from "@devfn/config";
 import { FilePortRegistry } from "@devfn/ports";
-import { processBirthSignature, processExists } from "@devfn/processes";
+import { gatedLauncherStatus, processBirthSignature, processExists, ProcessError, ProcessSupervisor } from "@devfn/processes";
 import { DevFnOrchestrator, readReceipt, recoverOrphanedProxyRoutes, resolveInstanceIdentity } from "../src/index.js";
 import { writeReceipt } from "../src/runtime.js";
 
@@ -68,6 +68,23 @@ async function withLifecycle(prefix: string, action: (fixture: { root: string; s
     if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
+}
+
+/** Start a gated launch from a CLI process that dies once the launch runs, as an interrupted devfn up would. */
+async function launchFromDyingCli(root: string): Promise<{ pid: number; birthSignature?: string }> {
+  const launcherFile = path.join(root, "launcher.json");
+  // The launched command keeps a child standing in for the Compose plugin.
+  const command = "require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' }); setTimeout(() => {}, 60000);";
+  await writeFile(path.join(root, "launch-cli.mjs"), `import { runGatedCommand } from ${JSON.stringify(new URL("../../processes/dist/index.js", import.meta.url).href)};
+import { writeFileSync } from "node:fs";
+await runGatedCommand(process.execPath, ["-e", ${JSON.stringify(command)}], { onLaunched: async (launcher) => {
+  writeFileSync(${JSON.stringify(launcherFile)}, JSON.stringify(launcher));
+  setTimeout(() => process.exit(9), 300);
+} });
+`);
+  const exit = await new Promise<number | null>((resolve) => spawn(process.execPath, [path.join(root, "launch-cli.mjs")], { stdio: "ignore" }).once("exit", resolve));
+  if (exit !== 9) throw new Error(`The launching CLI exited with ${exit}.`);
+  return JSON.parse(await readFile(launcherFile, "utf8")) as { pid: number; birthSignature?: string };
 }
 
 it("runs a process command only after its identity is recorded, so an interrupted launch never starts it", async () => {
@@ -198,6 +215,82 @@ exit 1
     expect(stopped).toMatchObject({ state: "stopped", cleanup: { errors: [] } });
     expect(stopped.cleanup?.stoppedServices).toEqual(["db"]);
     expect((await readFile(dockerLog, "utf8")).trim().split("\n")).toEqual(["stop launched-a launched-b", "rm -f launched-a launched-b"]);
+    expect(await routedInstances(stateDir)).toEqual([]);
+  });
+}, 120_000);
+
+it("keeps an owner that is still running after its stop was refused on identity grounds, through down, replace and gc", async () => {
+  await withLifecycle("devfn-teardown-refused-stop-", async ({ root, stateDir, registry, instanceId }) => {
+    const orchestrator = new DevFnOrchestrator();
+    const ready = await orchestrator.up({ config, root, stateDir });
+    const pid = ready.processes[0].pid;
+    // The identity read inside stop fails transiently; the status reads around
+    // it verify the same owner still running.
+    const refused = vi.spyOn(ProcessSupervisor.prototype, "stop").mockRejectedValue(
+      new ProcessError("DEVFN_PROCESS_OWNERSHIP_MISMATCH", `PID ${pid} no longer matches the DevFn process identity.`));
+    try {
+      const down = await orchestrator.down({ config, root, stateDir });
+      expect(refused).toHaveBeenCalled();
+      expect(down.state).toBe("degraded");
+      expect(down.cleanup).toMatchObject({ removedProxy: false, releasedPorts: false, stoppedProcesses: [] });
+      expect(down.cleanup?.errors.join("\n")).toMatch(/identity cannot be verified/);
+      await expect(orchestrator.up({ config, root, stateDir, replace: true })).rejects.toMatchObject({ code: "DEVFN_RUNTIME_INVALID", details: { priorStopped: false } });
+      expect(processExists(pid)).toBe(true);
+      await registry.gc();
+      expect((await registry.read()).invocations.find((item) => item.id === ready.invocationId)).toMatchObject({ state: "stopping" });
+      expect(await registry.instanceMayRun(instanceId)).toBe(true);
+      expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual([]);
+      expect(await routedInstances(stateDir)).toEqual([instanceId]);
+    } finally { refused.mockRestore(); }
+
+    const stopped = await orchestrator.down({ config, root, stateDir });
+    expect(stopped).toMatchObject({ state: "stopped", cleanup: { errors: [], stoppedProcesses: ["app"] } });
+    expect(await waitFor(() => !processExists(pid))).toBe(true);
+  });
+}, 120_000);
+
+it.skipIf(process.platform === "win32")("keeps an interrupted Compose launch whose launcher left a process running, despite an empty container scan, until it is gone", async () => {
+  await withLifecycle("devfn-teardown-pending-launch-", async ({ root, stateDir, toolsDir, registry, instanceId }) => {
+    const orchestrator = new DevFnOrchestrator();
+    const ready = await orchestrator.up({ config, root, stateDir });
+    const dockerLog = path.join(toolsDir, "docker-log");
+    // Docker lists nothing yet: the pending launch has not created its container.
+    await writeFile(path.join(toolsDir, "docker"), `#!/bin/sh
+echo "$*" >> "${dockerLog}"
+exit 0
+`, { mode: 0o700 });
+    // The CLI died inside a recorded docker compose up launch; its launcher
+    // was then killed, but the plugin it started still runs.
+    const launch = { projectName: "devfn-fixture", composeService: "db", preExisting: false, existingContainerIds: [], runningContainerIds: [] };
+    await registry.beginLaunch(ready.invocationId, "db", launch);
+    const launcher = await launchFromDyingCli(root);
+    await registry.beginLaunch(ready.invocationId, "db", { ...launch, launcher });
+    try {
+      process.kill(launcher.pid, "SIGKILL");
+      expect(await waitFor(async () => await gatedLauncherStatus(launcher) !== "running")).toBe(true);
+      expect(await gatedLauncherStatus(launcher)).toBe("unverified");
+
+      const blocked = await orchestrator.down({ config, root, stateDir });
+      expect(blocked.state).toBe("degraded");
+      expect(blocked.cleanup?.errors.join("\n")).toMatch(/interrupted launch of Compose service db .*may still create or start containers/);
+      expect(blocked.cleanup).toMatchObject({ removedProxy: false, releasedPorts: false });
+      await expect(readFile(dockerLog, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(orchestrator.up({ config, root, stateDir, replace: true })).rejects.toMatchObject({ code: "DEVFN_RUNTIME_INVALID", details: { priorStopped: false } });
+      await registry.gc();
+      expect((await registry.read()).invocations.find((item) => item.id === ready.invocationId)).toMatchObject({ launching: ["db"], composeLaunches: { db: { launcher } } });
+      expect(await registry.instanceMayRun(instanceId)).toBe(true);
+      expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual([]);
+      expect(await routedInstances(stateDir)).toEqual([instanceId]);
+    } finally {
+      try { process.kill(-launcher.pid, "SIGKILL"); } catch { /* already gone */ }
+    }
+
+    // Once nothing the launch ran remains, the scan is conclusive.
+    expect(await waitFor(async () => await gatedLauncherStatus(launcher) === "gone")).toBe(true);
+    const stopped = await orchestrator.down({ config, root, stateDir });
+    expect(stopped).toMatchObject({ state: "stopped", cleanup: { errors: [] } });
+    expect(stopped.cleanup?.stoppedServices).toEqual(["db"]);
+    expect((await readFile(dockerLog, "utf8")).trim().split("\n")[0]).toMatch(/^ps -a -q --no-trunc --filter label=com.docker.compose.project=devfn-fixture/);
     expect(await routedInstances(stateDir)).toEqual([]);
   });
 }, 120_000);

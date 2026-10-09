@@ -600,7 +600,9 @@ export class FilePortRegistry {
   /**
    * Journal a Compose launch before it starts, so an interruption before its
    * identity is recorded stays ambiguous and teardown can still find what it
-   * created. A process command runs only after its identity is recorded.
+   * created. It is journaled again with its launcher identity before the
+   * launcher may run. A process command runs only after its identity is
+   * recorded.
    */
   public async beginLaunch(invocationId: string, node: string, compose: ComposeLaunchRecord): Promise<void> {
     await this.transaction((state) => {

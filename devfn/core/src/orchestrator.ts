@@ -387,7 +387,9 @@ export async function recoverOrphanedProxyRoutes(requestedStateDir: string): Pro
 /**
  * Stop a recorded process only through its verified identity. An exited PID
  * or a readable different birth signature proves it gone; a live PID whose
- * identity cannot be read may still be it, so teardown cannot complete.
+ * identity cannot be read may still be it, so teardown cannot complete. A
+ * stop refused on identity grounds proves nothing by itself: only a later
+ * status of stopped or identity-mismatch does.
  */
 async function stopVerifiedProcess(managed: ManagedProcess, supervisor: ProcessSupervisor, result: CleanupResult): Promise<void> {
   const unverified = () => `Process ${managed.name} (PID ${managed.pid}) may still run but its identity cannot be verified; DevFn will not signal it. Stop it, then rerun devfn down.`;
@@ -396,20 +398,24 @@ async function stopVerifiedProcess(managed: ManagedProcess, supervisor: ProcessS
   if (status !== "running") return;
   try {
     await supervisor.stop(managed);
-    const after = await supervisor.status(managed);
-    if (after === "running" || after === "unverified") { result.errors.push(`Process ${managed.name} (PID ${managed.pid}) did not exit when stopped.`); return; }
-    result.stoppedProcesses.push(managed.name);
   } catch (error) {
-    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "DEVFN_PROCESS_OWNERSHIP_MISMATCH") throw error;
-    if (await supervisor.status(managed) === "unverified") result.errors.push(unverified());
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    if (code !== "DEVFN_PROCESS_OWNERSHIP_MISMATCH" && code !== "DEVFN_PROCESS_IDENTITY_UNVERIFIED") throw error;
+    const after = await supervisor.status(managed);
+    if (after === "running" || after === "unverified") result.errors.push(unverified());
+    return;
   }
+  const after = await supervisor.status(managed);
+  if (after === "running" || after === "unverified") { result.errors.push(`Process ${managed.name} (PID ${managed.pid}) did not exit when stopped.`); return; }
+  result.stoppedProcesses.push(managed.name);
 }
 
 /**
  * The registry journal outlives the receipt and can hold what the receipt
  * never listed: an owner of a receipt rewritten outside DevFn, or a Compose
- * launch interrupted before its identity was recorded. Each is stopped by
- * verified identity or reported; none is assumed gone.
+ * launch interrupted before its identity was recorded, which resolves only
+ * once its launcher is verified gone. Each is stopped by verified identity or
+ * reported; none is assumed gone.
  */
 async function stopJournaledOwners(receipt: LifecycleReceipt, registry: FilePortRegistry, supervisor: ProcessSupervisor, compose: ComposeController, result: CleanupResult): Promise<void> {
   let invocation: RegistryInvocation | undefined;
@@ -719,8 +725,9 @@ export class DevFnOrchestrator {
     // are journaled in the registry, which outlives the worktree, so orphan
     // recovery can tell a running interrupted start from a dead one. Each
     // identity is in the receipt before the journal, so teardown of the
-    // receipt reaches every journaled owner; a Compose launch is journaled
-    // before it runs, and a process command runs only once both hold it.
+    // receipt reaches every journaled owner; a Compose launch and its
+    // launcher are journaled before the launcher runs, and a process command
+    // runs only once both hold it.
     if (node.kind === "service") {
       const spec = options.config.services![node.name];
       await compose.start({

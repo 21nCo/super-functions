@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { resolveContainedPath } from "@devfn/config";
 
 import { createProcessEnvironment, resolveAdapterCommand } from "./adapters.js";
-import { matchesProcessIdentity, processBirthSignature, processExists, processIdentityStatus } from "./identity.js";
+import { processBirthSignature, processExists, processIdentityStatus } from "./identity.js";
 import { waitForReadiness } from "./readiness.js";
 import { ProcessError, type ManagedProcess, type StartProcessInput } from "./types.js";
 
@@ -135,9 +135,15 @@ export class ProcessSupervisor {
   }
 
   public async stop(managed: ManagedProcess, timeoutMs = managed.shutdownTimeoutMs ?? 10_000): Promise<void> {
-    if (!processExists(managed.pid)) return;
-    if (!await matchesProcessIdentity(managed.pid, managed.birthSignature)) {
+    const identity = await processIdentityStatus(managed.pid, managed.birthSignature);
+    if (identity === "exited") return;
+    if (identity === "identity-mismatch") {
       throw new ProcessError("DEVFN_PROCESS_OWNERSHIP_MISMATCH", `PID ${managed.pid} no longer matches the DevFn process identity.`, { name: managed.name, pid: managed.pid });
+    }
+    // An unreadable identity may still be this process; it is never signalled
+    // and never reported gone.
+    if (identity === "unverified") {
+      throw new ProcessError("DEVFN_PROCESS_IDENTITY_UNVERIFIED", `PID ${managed.pid} may still be ${managed.name}, but its identity cannot be verified; DevFn will not signal it.`, { name: managed.name, pid: managed.pid });
     }
     try {
       await terminateProcess(managed.pid);

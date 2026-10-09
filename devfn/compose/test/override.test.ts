@@ -1,15 +1,48 @@
-import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { checkReadinessNow } from "@devfn/processes";
+import { checkReadinessNow, gatedLauncherStatus, runGatedCommand } from "@devfn/processes";
 import { describe, expect, it } from "vitest";
-import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
+import { ComposeController, composeProjectName, type ComposeLaunch, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
 import { assertComposeSourceGraphBounded } from "../src/source-files.js";
 
 const execFileAsync = promisify(execFile);
 const MOCK_COMPOSE_HASH = "a".repeat(64);
+// No such process or group exists, so it never signals anything real.
+const ABSENT_LAUNCHER = { pid: 2_147_483_646 };
+
+/** A controller whose docker compose up goes through the stub, as if its gated launcher was recorded first. */
+function stubbed(run: NonNullable<ConstructorParameters<typeof ComposeController>[0]>): ComposeController {
+  return new ComposeController(run, async (file, args, options) => {
+    await options.onLaunched(ABSENT_LAUNCHER);
+    return await run(file, args, options) as { stdout: string; stderr: string };
+  });
+}
+
+/**
+ * Start a gated launch from a CLI process that dies once the launch runs, as
+ * an interrupted devfn up would. The launched command keeps a child standing
+ * in for the Compose plugin that can still create containers.
+ */
+async function launchFromDyingCli(): Promise<{ pid: number; birthSignature?: string }> {
+  const dir = await mkdtemp(path.join(tmpdir(), "devfn-dying-cli-"));
+  try {
+    const launcherFile = path.join(dir, "launcher.json");
+    const command = "require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' }); setTimeout(() => {}, 60000);";
+    await writeFile(path.join(dir, "cli.mjs"), `import { runGatedCommand } from ${JSON.stringify(new URL("../../processes/dist/index.js", import.meta.url).href)};
+import { writeFileSync } from "node:fs";
+await runGatedCommand(process.execPath, ["-e", ${JSON.stringify(command)}], { onLaunched: async (launcher) => {
+  writeFileSync(${JSON.stringify(launcherFile)}, JSON.stringify(launcher));
+  setTimeout(() => process.exit(9), 300);
+} });
+`);
+    const exit = await new Promise<number | null>((resolve) => spawn(process.execPath, [path.join(dir, "cli.mjs")], { stdio: "ignore" }).once("exit", resolve));
+    if (exit !== 9) throw new Error(`The launching CLI exited with ${exit}.`);
+    return JSON.parse(await readFile(launcherFile, "utf8")) as { pid: number; birthSignature?: string };
+  } finally { await rm(dir, { recursive: true, force: true }); }
+}
 
 describe("ComposeController", () => {
   it("merges unique Compose resources by effective target across short and long forms", async () => {
@@ -387,9 +420,9 @@ describe("ComposeController", () => {
     }
   }, 60_000);
   it("exposes availability as a non-throwing diagnostic", async () => {
-    const available = new ComposeController(async () => ({ stdout: "2.24.4", stderr: "" }));
-    const tooOld = new ComposeController(async () => ({ stdout: "Docker Compose version v2.23.99", stderr: "" }));
-    const unavailable = new ComposeController(async () => { throw new Error("missing"); });
+    const available = stubbed(async () => ({ stdout: "2.24.4", stderr: "" }));
+    const tooOld = stubbed(async () => ({ stdout: "Docker Compose version v2.23.99", stderr: "" }));
+    const unavailable = stubbed(async () => { throw new Error("missing"); });
     expect(await available.available()).toBe(true);
     expect(await tooOld.available()).toBe(false);
     expect(await unavailable.available()).toBe(false);
@@ -423,7 +456,7 @@ describe("ComposeController", () => {
     const spec = { adapter: "compose" as const, service: "web", envAllowlist: ["API_TOKEN"], secretEnv: ["API_TOKEN"],
       health: { type: "command" as const, command: [process.execPath, "-e", "if (!process.env.API_TOKEN || process.env.DEVFN_URL_WEB !== 'http://127.0.0.1:4100') process.exit(1)"] } };
     let psCalls = 0;
-    const controller = new ComposeController(async (_file, args) => {
+    const controller = stubbed(async (_file, args) => {
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("ps")) return { stdout: ++psCalls >= 3 ? "container-id\n" : "", stderr: "" };
       if (args[0] === "inspect") return { stdout: "true\n", stderr: "" };
@@ -472,7 +505,7 @@ describe("ComposeController", () => {
   it("passes the effective environment to every Compose query and lifecycle command", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-"));
     const calls: Array<{ args: readonly string[]; cwd?: string; appPort?: string; dockerHost?: string }> = [];
-    const controller = new ComposeController(async (_file, args, options) => {
+    const controller = stubbed(async (_file, args, options) => {
       calls.push({ args, cwd: options.cwd, appPort: options.env?.APP_PORT, dockerHost: options.env?.DOCKER_HOST });
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("ps")) return { stdout: calls.filter((call) => call.args.includes("ps")).length === 3 ? "container-id\n" : "", stderr: "" };
@@ -501,7 +534,7 @@ describe("ComposeController", () => {
     const original = process.env.DOCKER_HOST;
     process.env.DOCKER_HOST = "tcp://ambient.example:2376";
     const observed: Array<string | undefined> = [];
-    const controller = new ComposeController(async (_file, _args, options) => {
+    const controller = stubbed(async (_file, _args, options) => {
       observed.push(options.env?.DOCKER_HOST);
       return { stdout: "true\n", stderr: "" };
     });
@@ -521,7 +554,7 @@ describe("ComposeController", () => {
     const runCase = async (projectName: string | undefined) => {
       const calls: readonly string[][] = [];
       let psCalls = 0;
-      const controller = new ComposeController(async (_file, args) => {
+      const controller = stubbed(async (_file, args) => {
         (calls as string[][]).push([...args]);
         if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
         if (args.includes("ps")) { psCalls += 1; return { stdout: `${projectName || psCalls < 3 ? "old-id" : "new-id"}\n`, stderr: "" }; }
@@ -559,7 +592,7 @@ describe("ComposeController", () => {
     try {
       for (const running of [true, false]) {
         const calls: string[][] = [];
-        const controller = new ComposeController(async (_file, args) => {
+        const controller = stubbed(async (_file, args) => {
           calls.push([...args]);
           if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
           if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
@@ -580,7 +613,7 @@ describe("ComposeController", () => {
     try {
       for (const change of ["command", "port"] as const) for (const running of [true, false]) {
         const calls: string[][] = [];
-        const controller = new ComposeController(async (_file, args) => {
+        const controller = stubbed(async (_file, args) => {
           calls.push([...args]);
           if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
           if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
@@ -607,7 +640,7 @@ describe("ComposeController", () => {
     try {
       for (const [published, actual, allowed] of [["", "44001", true], ["44000-44010", "44001", true], ["44000-44010", "44011", false]] as const) {
         const calls: string[][] = [];
-        const controller = new ComposeController(async (_file, args) => {
+        const controller = stubbed(async (_file, args) => {
           calls.push([...args]);
           if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
           if (args.includes("ps")) return { stdout: "old-id\n", stderr: "" };
@@ -639,7 +672,7 @@ describe("ComposeController", () => {
       for (const running of [true, false]) {
         for (const removed of ["DEVFN_URL_API", "DEVFN_PORT_API"]) {
           const calls: string[][] = [];
-          const controller = new ComposeController(async (_file, args) => {
+          const controller = stubbed(async (_file, args) => {
             calls.push([...args]);
             if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
             if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
@@ -663,7 +696,7 @@ describe("ComposeController", () => {
       for (const running of [true, false]) {
         for (const literal of ["MODE", "PROFILE_MODE"]) {
           const calls: string[][] = [];
-          const controller = new ComposeController(async (_file, args) => {
+          const controller = stubbed(async (_file, args) => {
             calls.push([...args]);
             if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
             if (args.includes("ps")) return { stdout: args.includes("-a") || running ? "old-id\n" : "", stderr: "" };
@@ -760,7 +793,7 @@ describe("ComposeController", () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-mixed-"));
     const calls: string[][] = [];
     let allCalls = 0;
-    const controller = new ComposeController(async (_file, args) => {
+    const controller = stubbed(async (_file, args) => {
       calls.push([...args]);
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("ps") && args.includes("-a")) { allCalls += 1; return { stdout: allCalls === 1 ? "running-id\nstopped-id\n" : "running-id\nstopped-id\ncreated-id\n", stderr: "" }; }
@@ -784,7 +817,7 @@ describe("ComposeController", () => {
 
   it("treats already-removed containers as an idempotent cleanup", async () => {
     let present = true;
-    const controller = new ComposeController(async (_file, args) => {
+    const controller = stubbed(async (_file, args) => {
       if ((args[0] === "stop" || args[0] === "rm") && !present) throw Object.assign(new Error("container missing"), { stderr: "Error: No such container: created-id" });
       if (args[0] === "rm") present = false;
       return { stdout: "", stderr: "" };
@@ -797,7 +830,7 @@ describe("ComposeController", () => {
   it("does not reclaim a container owned by another DevFn lifecycle", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-other-owner-"));
     const calls: string[][] = [];
-    const controller = new ComposeController(async (_file, args) => {
+    const controller = stubbed(async (_file, args) => {
       calls.push([...args]);
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("ps")) return { stdout: "old-id\n", stderr: "" };
@@ -815,7 +848,7 @@ describe("ComposeController", () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-replace-"));
     const calls: string[][] = [];
     let psCalls = 0;
-    const controller = new ComposeController(async (_file, args) => {
+    const controller = stubbed(async (_file, args) => {
       calls.push([...args]);
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("ps")) { psCalls += 1; return { stdout: `${psCalls < 3 ? "old-id" : "new-id"}\n`, stderr: "" }; }
@@ -837,7 +870,7 @@ describe("ComposeController", () => {
     let psCalls = 0;
     let cleanupFails = true;
     let recovery: ManagedComposeService | undefined;
-    const controller = new ComposeController(async (_file, args) => {
+    const controller = stubbed(async (_file, args) => {
       calls.push([...args]);
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("ps")) {
@@ -860,26 +893,29 @@ describe("ComposeController", () => {
     expect(calls.some((args) => args.includes("rm"))).toBe(true);
   });
 
-  it("journals a launch before Compose runs and stops what an interrupted launch started, leaving containers that already ran", async () => {
+  it("journals a launch and then its launcher before Compose runs and stops what an interrupted launch started, leaving containers that already ran", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-launch-"));
     const order: string[] = [];
     let psCalls = 0;
-    const launching = new ComposeController(async (_file, args) => {
+    const launching = stubbed(async (_file, args) => {
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("up")) { order.push("up"); throw new Error("interrupted"); }
       if (args.includes("ps")) return { stdout: ++psCalls >= 3 ? "created\n" : "", stderr: "" };
       return { stdout: "", stderr: "" };
     });
     try {
-      let launch: Parameters<NonNullable<Parameters<ComposeController["start"]>[0]["onLaunch"]>>[0] | undefined;
+      const launches: ComposeLaunch[] = [];
       await expect(launching.start({ name: "db", spec: { adapter: "compose", service: "db" }, root, runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {},
-        onLaunch: async (value) => { order.push("journal"); launch = value; } })).rejects.toBeDefined();
-      expect(order).toEqual(["journal", "up"]);
-      expect(launch).toMatchObject({ name: "db", composeService: "db", preExisting: false, existingContainerIds: [], runningContainerIds: [] });
+        onLaunch: async (value) => { order.push("journal"); launches.push(value); } })).rejects.toBeDefined();
+      expect(order).toEqual(["journal", "journal", "up"]);
+      expect(launches[0]).toMatchObject({ name: "db", composeService: "db", preExisting: false, existingContainerIds: [], runningContainerIds: [] });
+      expect(launches[0].launcher).toBeUndefined();
+      expect(launches[1]).toEqual({ ...launches[0], launcher: ABSENT_LAUNCHER });
     } finally { await rm(root, { recursive: true, force: true }); }
 
+
     const calls: string[][] = [];
-    const docker = (found: string) => new ComposeController(async (_file, args) => {
+    const docker = (found: string) => stubbed(async (_file, args) => {
       calls.push(args);
       if (args[0] === "ps") return { stdout: found, stderr: "" };
       return { stdout: "", stderr: "" };
@@ -895,7 +931,82 @@ describe("ComposeController", () => {
     expect(calls.slice(1)).toEqual([["stop", "stopped-before", "new"], ["rm", "-f", "new"]]);
 
     // An unreachable Docker endpoint proves nothing about what the launch started.
-    await expect(new ComposeController(async () => { throw new Error("Cannot connect to the Docker daemon"); })
+    await expect(stubbed(async () => { throw new Error("Cannot connect to the Docker daemon"); })
       .stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_STOP_FAILED" });
   });
+
+  it.skipIf(process.platform === "win32")("resolves an interrupted launch only once its launcher and everything it started are gone", async () => {
+    const calls: string[][] = [];
+    const emptyScan = stubbed(async (_file, args) => { calls.push(args); return { stdout: "", stderr: "" }; });
+    const base = { name: "db", projectName: "devfn-owner", composeService: "db", preExisting: false, existingContainerIds: [], runningContainerIds: [] };
+
+    // A launcher whose own process died leaves its child running: unresolved,
+    // and the scan is not trusted.
+    const orphaned = await launchFromDyingCli();
+    try {
+      expect(await gatedLauncherStatus(orphaned)).toBe("running");
+      process.kill(orphaned.pid, "SIGKILL");
+      while (await gatedLauncherStatus(orphaned) === "running") await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(await gatedLauncherStatus(orphaned)).toBe("unverified");
+      await expect(emptyScan.stopLaunch({ ...base, launcher: orphaned })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_STOP_FAILED" });
+      expect(calls).toEqual([]);
+    } finally { try { process.kill(-orphaned.pid, "SIGKILL"); } catch { /* already gone */ } }
+    while (await gatedLauncherStatus(orphaned) !== "gone") await new Promise((resolve) => setTimeout(resolve, 20));
+    await emptyScan.stopLaunch({ ...base, launcher: orphaned });
+    expect(calls.map((args) => args[0])).toEqual(["ps"]);
+
+    // A verified launcher is stopped with everything it started before the scan.
+    calls.length = 0;
+    const pending = await launchFromDyingCli();
+    try {
+      await emptyScan.stopLaunch({ ...base, launcher: pending });
+      expect(await gatedLauncherStatus(pending)).toBe("gone");
+      expect(calls.map((args) => args[0])).toEqual(["ps"]);
+    } finally { try { process.kill(-pending.pid, "SIGKILL"); } catch { /* already gone */ } }
+  });
+});
+
+// The launcher wrapper exists only in the built processes package, so these
+// run here rather than in its own sources' tests.
+describe("gated Compose launcher", () => {
+  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it("runs a command only after its launcher identity is recorded, and never when recording fails", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-gated-"));
+    const marker = path.join(root, "ran");
+    const touch = ["-e", `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'x'); process.stdout.write('out'); process.stderr.write('err');`];
+    try {
+      let launcherAlive = false;
+      const output = await runGatedCommand(process.execPath, touch, { onLaunched: async (launcher) => {
+        launcherAlive = await gatedLauncherStatus(launcher) === "running";
+        await delay(200);
+        await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
+      } });
+      expect(launcherAlive).toBe(true);
+      expect(output).toEqual({ stdout: "out", stderr: "err" });
+
+      await rm(marker);
+      let recorded: { pid: number; birthSignature?: string } | undefined;
+      await expect(runGatedCommand(process.execPath, touch, { onLaunched: async (launcher) => { recorded = launcher; throw new Error("journal unavailable"); } })).rejects.toThrow("journal unavailable");
+      expect(await gatedLauncherStatus(recorded!)).toBe("gone");
+      await delay(200);
+      await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
+
+      await expect(runGatedCommand(process.execPath, ["-e", "process.stderr.write('denied'); process.exit(3)"], { onLaunched: async () => undefined }))
+        .rejects.toMatchObject({ code: 3, stderr: "denied" });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it.skipIf(process.platform === "win32")("stops a timed-out launcher, or one that exited, with everything it started", async () => {
+    let recorded: { pid: number; birthSignature?: string } | undefined;
+    const script = "require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' }); setTimeout(() => {}, 60000);";
+    await expect(runGatedCommand(process.execPath, ["-e", script], { timeout: 500, onLaunched: async (launcher) => { recorded = launcher; } })).rejects.toMatchObject({ killed: true });
+    expect(await gatedLauncherStatus(recorded!)).toBe("gone");
+
+    // A command that exits but leaves a process behind returns only once that is gone too.
+    const leftover = "require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' }).unref();";
+    await runGatedCommand(process.execPath, ["-e", leftover], { onLaunched: async (launcher) => { recorded = launcher; } });
+    expect(await gatedLauncherStatus(recorded!)).toBe("gone");
+  });
+
 });

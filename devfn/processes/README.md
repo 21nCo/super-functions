@@ -1,3 +1,3 @@
 # @devfn/processes
 
-Native process groups, durable logs, HTTP/TCP/command/log readiness, PID-birth ownership checks, and graceful termination. It is deliberately browser- and artifact-model-neutral so ProbeFn can adopt it later without depending on DevFn orchestration.
+Native process groups, durable logs, HTTP/TCP/command/log readiness, PID-birth ownership checks, and graceful termination. `runGatedCommand` runs a command that creates outside resources only after its launcher identity has been recorded, and `gatedLauncherStatus`/`stopGatedLauncher` resolve such a launch only once the launcher and its process group are gone. `stop` never signals a live PID whose start identity cannot be read (`DEVFN_PROCESS_IDENTITY_UNVERIFIED`). It is deliberately browser- and artifact-model-neutral so ProbeFn can adopt it later without depending on DevFn orchestration.

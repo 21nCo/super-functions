@@ -70,6 +70,8 @@ export interface ComposeLaunchRecord {
   existingContainerIds: string[];
   runningContainerIds: string[];
   dockerEnvironment?: Record<string, string>;
+  /** The gated launcher, recorded before it may create or start anything. */
+  launcher?: ProcessOwner;
 }
 
 export interface RegistryState {

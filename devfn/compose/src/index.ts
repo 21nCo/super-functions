@@ -6,7 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { assertEnvironmentKeyCasing, isCredentialKey, resolveContainedPath, type ComposeServiceSpec } from "@devfn/config";
-import { waitForReadiness } from "@devfn/processes";
+import { runGatedCommand, stopGatedLauncher, waitForReadiness, type GatedCommandRunner } from "@devfn/processes";
 import { createScopedPathInterpolator, readComposeEnvDefinitions, selectedInterpolationReferences, simpleInterpolation } from "./path-interpolation.js";
 import { assertComposeSourceGraphBounded, composeInterpolationEnvFiles, normalizeComposeRawService, reconcileComposeUniqueResources, type ComposeSourceInventory } from "./source-files.js";
 
@@ -55,7 +55,10 @@ export interface ComposeStartInput {
   environment?: Record<string, string>;
   /** Host-side environment used only by command readiness probes. */
   readinessEnvironment?: Record<string, string>;
-  /** Called before Compose creates or starts anything, with what it may create or start. */
+  /**
+   * Called before Compose creates or starts anything, with what it may create
+   * or start, then again with the launcher identity before the launcher may run.
+   */
   onLaunch?: (launch: ComposeLaunch) => Promise<void>;
   onStarted?: (service: ManagedComposeService) => Promise<void>;
 }
@@ -69,6 +72,8 @@ export interface ComposeLaunch {
   existingContainerIds: string[];
   runningContainerIds: string[];
   dockerEnvironment?: Record<string, string>;
+  /** The gated docker compose up launcher; absent until recorded, and it runs only once recorded. */
+  launcher?: { pid: number; birthSignature?: string };
 }
 
 export class ComposeError extends Error {
@@ -1390,7 +1395,7 @@ export function renderComposeOverride(spec: ComposeServiceSpec, ports: Record<st
 }
 
 export class ComposeController {
-  public constructor(private readonly run = execFileAsync) {}
+  public constructor(private readonly run = execFileAsync, private readonly launch: GatedCommandRunner = runGatedCommand) {}
 
   public async available(cwd?: string, environment?: NodeJS.ProcessEnv): Promise<boolean> {
     try {
@@ -1511,10 +1516,14 @@ export class ComposeController {
     }
     let containerIds: string[] = [];
     const startedAt = new Date().toISOString();
-    await input.onLaunch?.({ name: input.name, projectName, composeService: input.spec.service, preExisting: preservePreExisting,
-      existingContainerIds: before, runningContainerIds: beforeRunning, dockerEnvironment });
+    const launch: ComposeLaunch = { name: input.name, projectName, composeService: input.spec.service, preExisting: preservePreExisting,
+      existingContainerIds: before, runningContainerIds: beforeRunning, dockerEnvironment };
+    await input.onLaunch?.(launch);
     try {
-      await this.run("docker", [...baseArgs, "up", "-d", ...(preservePreExisting ? ["--no-recreate"] : []), "--no-deps", input.spec.service], { cwd: input.root, env: environment, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
+      // Only this command creates or starts containers. It outlives DevFn, so
+      // it runs only after its launcher identity is journaled.
+      await this.launch("docker", [...baseArgs, "up", "-d", ...(preservePreExisting ? ["--no-recreate"] : []), "--no-deps", input.spec.service], { cwd: input.root, env: environment, timeout: 120_000, maxBuffer: 10 * 1024 * 1024,
+        onLaunched: async (launcher) => { await input.onLaunch?.({ ...launch, launcher }); } });
       containerIds = await this.containerIds(baseArgs, input.spec.service, input.root, environment, true);
       if (containerIds.length === 0) throw new Error("Compose returned no container IDs.");
       const startedContainerIds = preservePreExisting ? containerIds.filter((id) => preExistingIds.has(id) && !previouslyRunning.has(id)) : containerIds;
@@ -1602,9 +1611,19 @@ export class ComposeController {
   /**
    * Stop what an interrupted launch may have created or started, found by its
    * Compose project and service labels. Containers that ran before the launch
-   * are left running, as a recorded launch would leave them.
+   * are left running, as a recorded launch would leave them. The label scan is
+   * conclusive only once nothing more can be created: a recorded launcher must
+   * be stopped by its verified identity and every process it started gone; an
+   * unrecorded launcher never ran.
    */
   public async stopLaunch(launch: ComposeLaunch): Promise<void> {
+    if (launch.launcher) {
+      try { await stopGatedLauncher(launch.launcher); }
+      catch (error) {
+        throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `The interrupted launch of Compose service ${launch.name} (launcher PID ${launch.launcher.pid}) may still create or start containers; stop it, then rerun devfn down.`,
+          { cause: error instanceof Error ? error.message : String(error) });
+      }
+    }
     let ids: string[];
     try {
       ids = (await this.run("docker", ["ps", "-a", "-q", "--no-trunc", "--filter", `label=com.docker.compose.project=${launch.projectName}`,
