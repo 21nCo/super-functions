@@ -1,0 +1,19 @@
+devfn/core/test/replacement-contract.test.ts
+  s_fd2012bf034554::t_3fd740d9d779c1 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "20bea1aaaeb3bd8224239654f109fff4d3cad90d",
+  "prompts": {},
+  "sessions": {
+    "s_fd2012bf034554": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bba569bd-afce-4b37-bbb1-2a85837124dd",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
