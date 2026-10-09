@@ -10,9 +10,9 @@ vi.mock("@devfn/proxy", async (importOriginal) => {
   return {
     ...actual,
     CaddyProxyController: class extends actual.CaddyProxyController {
-      // The command stub stands in for a Caddy that holds its listeners
-      // until the test says otherwise.
-      constructor(stateDir: string) { super(stateDir, undefined, undefined, async () => listeners.accepting); }
+      // The command stub stands in for a Caddy that holds its listeners and
+      // serves the committed configuration until the test says otherwise.
+      constructor(stateDir: string) { super(stateDir, undefined, undefined, async () => listeners.accepting, async () => listeners.accepting); }
       // Physical owner and listener preflight is covered by the proxy suites.
       override async assertActivationReady(): Promise<void> {}
     },
@@ -73,6 +73,45 @@ it("reports degraded for a dead Caddy owner, a lost listener or an interrupted r
     expect((await orchestrator.down({ config, root, stateDir })).state).toBe("stopped");
   } finally {
     listeners.accepting = true;
+    await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+    await rm(root, { recursive: true, force: true });
+  }
+}, 60_000);
+
+it("removes routes preactivated by an interrupted replacement when the profile no longer selects a proxy", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-reverted-"));
+  const stateDir = path.join(root, "state");
+  const toolsDir = path.join(root, "tools");
+  const originalPath = process.env.PATH;
+  const orchestrator = new DevFnOrchestrator();
+  const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 20_000 } } },
+    profiles: { default: { processes: ["app"], proxy: false } } });
+  try {
+    await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
+    await writeFile(path.join(root, "server.mjs"),
+      "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
+    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Fixture process has no birth signature.");
+    await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+
+    const first = await orchestrator.up({ config, root, stateDir });
+    expect(first.routes).toEqual([]);
+    // A replacement that selected a proxy committed its route, then stopped
+    // before its receipt; the manifest was then reverted to no proxy.
+    await new CaddyProxyController(stateDir).upsert([{ id: `${first.instanceId}:app`, instanceId: first.instanceId,
+      hostname: "app.localhost", targetHost: "127.0.0.1", targetPort: await allocateEphemeralPort(), tls: "off" }], first.instanceId);
+    expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded" });
+    const repaired = await orchestrator.up({ config, root, stateDir });
+    expect(repaired.routes).toEqual([]);
+    const committed = JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")) as { routes: Array<{ instanceId: string }> };
+    expect(committed.routes.filter((route) => route.instanceId === first.instanceId)).toEqual([]);
+    expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
+  } finally {
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
     if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
     await rm(root, { recursive: true, force: true });

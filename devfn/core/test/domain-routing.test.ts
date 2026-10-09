@@ -1,5 +1,6 @@
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
+import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
@@ -9,7 +10,7 @@ import { expect, it, vi } from "vitest";
 import { ProcessSupervisor, processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController, proxyListenerPorts, registerDomain } from "@devfn/proxy";
 import { validateDevFnConfig } from "@devfn/config";
-import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, withFileLock, withRoutingLock } from "@devfn/ports";
+import { allocateEphemeralPort, connectionRefused, FilePortRegistry, isPortAvailable, withFileLock, withRoutingLock } from "@devfn/ports";
 import { DevFnOrchestrator, domainAliases, readReceipt, resolveAllocationUrls, resolveInstanceIdentity, resolveLocalHostname } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
@@ -19,7 +20,26 @@ const execFileAsync = promisify(execFile);
 const withCaddyAdminPort = async <T>(action: () => Promise<T>): Promise<T> =>
   await withFileLock(path.join(tmpdir(), "devfn-test-caddy-admin.lock"), action, { timeoutMs: 120_000 });
 
-it("protects Caddy listener ports for selected proxy routes while preserving no-proxy v0.1 ports", async () => await withCaddyAdminPort(async () => {
+// These fixtures stand in for DevFn's Caddy on its fixed listener ports. A
+// host process already listening there makes them inapplicable on that host;
+// they are reported skipped, never passed.
+const foreignProxyListenerNote = async (): Promise<string | undefined> => {
+  for (const port of Object.values(proxyListenerPorts())) {
+    if (!await connectionRefused(port)) return `Another process already listens on DevFn Caddy port ${port}.`;
+  }
+  return undefined;
+};
+
+// Linux CI has no Caddy and cannot bind 80/443 unprivileged. Fixtures whose
+// contract is not the physical listener preflight replace it; the proxy
+// suites and the replacement fixtures below cover that preflight itself.
+const withoutPhysicalProxyPreflight = async <T>(action: () => Promise<T>): Promise<T> => {
+  const preflight = vi.spyOn(CaddyProxyController.prototype, "assertActivationReady").mockResolvedValue(undefined);
+  const available = vi.spyOn(CaddyProxyController.prototype, "available").mockResolvedValue(false);
+  try { return await action(); } finally { preflight.mockRestore(); available.mockRestore(); }
+};
+
+it("protects Caddy listener ports for selected proxy routes while preserving no-proxy v0.1 ports", async () => await withoutPhysicalProxyPreflight(async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-listener-reservation-"));
   const { httpPort, httpsPort } = proxyListenerPorts();
   const freePreferred = await allocateEphemeralPort();
@@ -59,15 +79,19 @@ it("protects Caddy listener ports for selected proxy routes while preserving no-
       }
     }
   } finally { await rm(root, { recursive: true, force: true }); }
-}), 150_000);
+}), 30_000);
 
-it("retires a proven abandoned proxy claim before first-start exact-port preflight", async () => {
+it("retires a proven abandoned proxy claim before first-start exact-port preflight", async () => await withCaddyAdminPort(async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-preflight-abandoned-"));
   const stateDir = path.join(root, "state");
   const port = await allocateEphemeralPort();
   const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
   const started = path.join(root, "started");
+  // The live owner's admin configuration is the evidence that it no longer
+  // listens on the claimed port.
+  const admin = http.createServer((_request, response) => response.end(JSON.stringify({ admin: { listen: "127.0.0.1:2019" } })));
   try {
+    await new Promise<void>((resolve, reject) => admin.once("error", reject).listen(2019, "127.0.0.1", resolve));
     await registry.reserve({ projectId: "old", instanceId: "abandoned", invocationId: "old", profile: "default", requests: [], proxyListenerPorts: [port] });
     const state = await registry.read();
     state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
@@ -81,8 +105,11 @@ it("retires a proven abandoned proxy claim before first-start exact-port preflig
     await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
     await expect(access(started)).resolves.toBeUndefined();
     expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
+  } finally {
+    if (admin.listening) await new Promise<void>((resolve) => admin.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
+}), 150_000);
 
 it("keeps a ready process and its lease when a changed exact port is externally bound", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-preflight-bound-"));
@@ -238,7 +265,9 @@ it("keeps a ready service when replacement selects a sibling proxy listener or h
   }
 });
 
-it("rejects an occupied Caddy listener before stopping a ready replacement", async () => await withCaddyAdminPort(async () => {
+it("rejects an occupied Caddy listener before stopping a ready replacement", async ({ skip }) => await withCaddyAdminPort(async () => {
+  const held = await foreignProxyListenerNote();
+  if (held) skip(held);
   const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-physical-preflight-"));
   const stateDir = path.join(root, "state");
   const orchestrator = new DevFnOrchestrator();
@@ -287,7 +316,9 @@ it("rejects an occupied Caddy listener before stopping a ready replacement", asy
   }
 }), 150_000);
 
-it("preserves a ready replacement target when Caddy starts failing after validation", async () => await withCaddyAdminPort(async () => {
+it("preserves a ready replacement target when Caddy starts failing after validation", async ({ skip }) => await withCaddyAdminPort(async () => {
+  const held = await foreignProxyListenerNote();
+  if (held) skip(held);
   const root = await mkdtemp(path.join(tmpdir(), "devfn-late-caddy-failure-"));
   const stateDir = path.join(root, "state");
   const toolsDir = path.join(root, "tools");
@@ -608,7 +639,9 @@ it("does not hold the shared routing lock during a prior health probe", async ()
 it("rejects proxy activation behind a sibling listener lease before changing either lifecycle", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-sibling-"));
   const stateDir = path.join(root, "machine-state");
-  const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+  // The sibling lease is planted as registry state; an unprivileged Linux
+  // test process cannot bind port 80 to prove it free.
+  const registry = new FilePortRegistry(path.join(stateDir, "registry.json"), undefined, async () => true);
   const port = proxyListenerPorts().httpPort;
   const started = path.join(root, "started");
   const config = validateDevFnConfig({ version: 1, project: { id: "proxy-fixture" },
@@ -647,7 +680,7 @@ it("refuses an unregistered or differently owned domain before lifecycle state e
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-it("starts local-only preflight despite an invalid machine domain registry", async () => await withCaddyAdminPort(async () => {
+it("starts local-only preflight despite an invalid machine domain registry", async () => await withoutPhysicalProxyPreflight(async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-local-preflight-"));
   const stateDir = path.join(root, "machine-state");
   const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
@@ -659,7 +692,7 @@ it("starts local-only preflight despite an invalid machine domain registry", asy
     await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
     await expect(access(path.join(stateDir, "registry.json"))).resolves.toBeUndefined();
   } finally { await rm(root, { recursive: true, force: true }); }
-}), 150_000);
+}), 30_000);
 
 it("keeps registered-domain aliases and routes isolated across two Git worktrees", async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "devfn-domain-worktrees-"));

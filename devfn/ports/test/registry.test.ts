@@ -37,7 +37,7 @@ describe("FilePortRegistry", () => {
       } finally { await rm(dir, { recursive: true, force: true }); }
     });
   }
-  it("retains an expired cross-protocol proxy claim when an IPv6 listener is hidden from OS inspection", async () => {
+  it("retains an expired cross-protocol proxy claim when an IPv6 listener is hidden from OS inspection", async () => await withCaddyAdminPort(async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-ipv6-claim-"));
     const port = await allocateEphemeralPort();
     const registry = new FilePortRegistry(path.join(dir, "registry.json"));
@@ -64,6 +64,10 @@ describe("FilePortRegistry", () => {
         expect((await registry.read()).invocations[0].state).toBe("starting");
         await new Promise<void>((resolve) => listener.close(() => resolve()));
       }
+      // A live owner whose configuration cannot be read may still listen.
+      await expect(registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: "sibling-owner", profile: "default",
+        requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] })).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+      await rm(path.join(dir, "proxy-owner.json"));
       expect((await registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: "sibling-free", profile: "default",
         requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] }))[0].port).toBe(port);
     } finally {
@@ -71,7 +75,7 @@ describe("FilePortRegistry", () => {
       if (listener.listening) await new Promise<void>((resolve) => listener.close(() => resolve()));
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }), 150_000);
 
   for (const invocationState of ["planning", "starting", "ready", "stopping"] as const) {
     it(`reclaims an abandoned ${invocationState} claim with a reused owner PID`, async () => await withCaddyAdminPort(async () => {
@@ -144,35 +148,6 @@ describe("FilePortRegistry", () => {
       await registry.reconcile();
       expect(await leaseState("old")).toBe("stale");
     } finally { await rm(dir, { recursive: true, force: true }); }
-  });
-
-  it("releases a route-free claim with a verified live admin owner, but retains a bound listener", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "devfn-live-admin-claim-"));
-    const port = await allocateEphemeralPort();
-    const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => port + 1, async () => true);
-    const birthSignature = await processBirthSignature(process.pid);
-    expect(birthSignature).toBeTruthy();
-    const sibling = (id: string) => registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: id, profile: "default",
-      requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] });
-    const listener = net.createServer();
-    try {
-      await registry.reserve({ projectId: "app", instanceId: "abandoned", invocationId: "old", profile: "default",
-        requests: [], proxyListenerPorts: [port] });
-      await registry.updateInvocation("old", { state: "starting" });
-      await writeFile(path.join(dir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
-      const state = await registry.read();
-      state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
-      await writeFile(registry.filePath, JSON.stringify(state));
-      await new Promise<void>((resolve, reject) => listener.once("error", reject).listen(port, "127.0.0.1", resolve));
-      await expect(sibling("bound")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "abandoned" } });
-      expect((await registry.read()).invocations[0].state).toBe("starting");
-      await new Promise<void>((resolve) => listener.close(() => resolve()));
-      expect((await sibling("free"))[0]).toMatchObject({ port, protocol: "udp", source: "exact" });
-      expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
-    } finally {
-      if (listener.listening) await new Promise<void>((resolve) => listener.close(() => resolve()));
-      await rm(dir, { recursive: true, force: true });
-    }
   });
 
   it("reclaims an abandoned starting proxy claim after its lease becomes stale", async () => await withCaddyAdminPort(async () => {
@@ -268,6 +243,33 @@ describe("FilePortRegistry", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   }), 150_000);
 
+  it("keeps a port targeted by committed or pending proxy routes from sibling reservations", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-routed-target-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), undefined, async () => true);
+    const port = await allocateEphemeralPort();
+    const request = (exact: boolean) => [{ name: "api", spec: { preferred: port, exact } }];
+    try {
+      for (const name of ["proxy-routes.json", "proxy-routes.pending.json"]) {
+        // An interrupted replacement can leave a route on a port whose lease
+        // was already released; the route still sends traffic there.
+        await writeFile(path.join(dir, name), JSON.stringify({ version: 1, routes: [{ id: "routed:app", instanceId: "routed",
+          hostname: "app.localhost", targetHost: "127.0.0.1", targetPort: port, tls: "off", updatedAt: new Date().toISOString() }] }));
+        await expect(registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: `exact-${name}`, profile: "default", requests: request(true) }))
+          .rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { port, instanceId: "routed" } });
+        await expect(registry.assertReplacementAvailable([], "sibling", request(true), async () => undefined))
+          .rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { port, instanceId: "routed" } });
+        const moved = await registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: `preferred-${name}`, profile: "default", requests: request(false) });
+        expect(moved[0].port).not.toBe(port);
+        await registry.release({ invocationId: `preferred-${name}` });
+        // The routed instance itself repairs the route onto this port.
+        expect((await registry.reserve({ projectId: "app", instanceId: "routed", invocationId: `owner-${name}`, profile: "default", requests: request(true) }))[0].port).toBe(port);
+        await registry.release({ invocationId: `owner-${name}` });
+        await rm(path.join(dir, name));
+      }
+      expect((await registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: "unrouted", profile: "default", requests: request(true) }))[0].port).toBe(port);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
   it("keeps an abandoned listener claim when route or owner evidence is malformed", async () => await withCaddyAdminPort(async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-claim-invalid-state-"));
     const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => 18449, async () => true);
@@ -287,8 +289,10 @@ describe("FilePortRegistry", () => {
           targetHost: "127.0.0.1", targetPort: port + 1, tls: "off", updatedAt: new Date().toISOString() }] }));
         await registry.reconcile();
         await registry.gc();
+        expect((await registry.read()).invocations[0].state).toBe("starting");
+        // Unreadable routes cannot prove which target ports they still use.
         for (const protocol of ["tcp", "udp"] as const) {
-          await expect(sibling(protocol)).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "abandoned" } });
+          await expect(sibling(protocol)).rejects.toMatchObject({ code: "DEVFN_REGISTRY_INVALID" });
         }
         await rm(path.join(dir, name));
       }

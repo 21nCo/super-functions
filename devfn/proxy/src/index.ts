@@ -7,7 +7,7 @@ import net from "node:net";
 import { lookup } from "node:dns/promises";
 import { promisify } from "node:util";
 
-import { isPortAvailable, parsePersistedProxyRoutes, parseProxyOwner, proxyOwnerStatus, scanListenerState, withFileLock, withRoutingLock, type ProxyOwner } from "@devfn/ports";
+import { connectionRefused, isPortAvailable, parsePersistedProxyRoutes, parseProxyOwner, proxyOwnerStatus, scanListenerState, withFileLock, withRoutingLock, type ProxyOwner } from "@devfn/ports";
 import { matchesProcessIdentity, processBirthSignature } from "@devfn/processes";
 import { domainContains, DomainError, readRegisteredDomains, verifyCertificate, verifyLocalDns } from "./domains.js";
 export { DomainError, domainContains, normalizeDomain, readRegisteredDomains, registerDomain, unregisterDomain, verifyCertificate, verifyLocalDns, type RegisteredDomain } from "./domains.js";
@@ -107,16 +107,6 @@ async function ipv6LoopbackAvailable(): Promise<boolean> {
   finally { if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve())); }
 }
 
-async function privilegedListenerAbsent(port: number, host: string): Promise<boolean> {
-  return await new Promise<boolean>((resolve) => {
-    const socket = net.connect({ port, host });
-    socket.setTimeout(500);
-    socket.once("connect", () => { socket.destroy(); resolve(false); });
-    socket.once("error", (error: NodeJS.ErrnoException) => { socket.destroy(); resolve(error.code === "ECONNREFUSED"); });
-    socket.once("timeout", () => { socket.destroy(); resolve(false); });
-  });
-}
-
 /** TCP listener ports a rendered configuration binds: every site uses HTTP; TLS sites also use HTTPS. */
 export function proxyListenerPortsFor(routes: readonly Pick<ProxyRoute, "tls">[], ports = proxyListenerPorts()): number[] {
   if (!routes.length) return [];
@@ -164,7 +154,8 @@ export class CaddyProxyController {
   private readonly certificateDir: string;
 
   public constructor(private readonly stateDir: string, private readonly resolveDns: typeof lookup = lookup, private readonly dnsTimeoutMs = 5_000,
-    private readonly acceptsListener: (port: number, host: string) => Promise<boolean> = listenerAccepts) {
+    private readonly acceptsListener: (port: number, host: string) => Promise<boolean> = listenerAccepts,
+    private readonly liveConfigProbe?: () => Promise<boolean>) {
     this.statePath = path.join(stateDir, "proxy-routes.json");
     this.pendingPath = path.join(stateDir, "proxy-routes.pending.json");
     this.configPath = path.join(stateDir, "Caddyfile");
@@ -175,6 +166,11 @@ export class CaddyProxyController {
 
   private certificatePaths(digest: string): { certificateFile: string; keyFile: string } {
     return { certificateFile: path.join(this.certificateDir, `${digest}.crt.pem`), keyFile: path.join(this.certificateDir, `${digest}.key.pem`) };
+  }
+
+  private renderState(state: ProxyState, ipv6Loopback: boolean): string {
+    return renderCaddyfile(state.routes.map((route) => route.certificateDigest
+      ? { ...route, ...this.certificatePaths(route.certificateDigest) } : route), ipv6Loopback);
   }
 
   private async snapshotCertificate(route: ProxyRoute, validate: boolean): Promise<string> {
@@ -302,7 +298,7 @@ export class CaddyProxyController {
             [recordedHost, host, "*", "[::]", "::"].includes(listener.host))) continue;
           if (ownedPorts.includes(port) && await this.acceptsListener(port, host)) continue;
           if (!await isPortAvailable(port, "tcp", host) &&
-            (port >= 1024 || !scan.inspection.tcp || !await privilegedListenerAbsent(port, host))) {
+            (port >= 1024 || !scan.inspection.tcp || !await connectionRefused(port, host))) {
             throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", `Caddy listener port ${port} is unavailable on ${host}.`);
           }
         }
@@ -330,7 +326,8 @@ export class CaddyProxyController {
   /**
    * Lock-free readiness evidence for one instance: its committed (and any
    * pending) routes equal the expected routes, and when it has routes the
-   * recorded DevFn Caddy is alive and accepting on their listener ports.
+   * recorded DevFn Caddy is alive, serves the configuration rendered from
+   * that route state, and accepts on its listener ports.
    */
   public async instanceRoutesLive(instanceId: string, expected: readonly ProxyRoute[]): Promise<boolean> {
     const comparable = (routes: readonly ProxyRoute[]) => canonicalJson([...routes]
@@ -346,12 +343,28 @@ export class CaddyProxyController {
       if (!expected.length) return true;
       const owner = parseProxyOwner(await readFile(this.ownerPath, "utf8"));
       if (await proxyOwnerStatus(owner) !== "active") return false;
-      const hosts = await ipv6LoopbackAvailable() ? ["127.0.0.1", "::1"] : ["127.0.0.1"];
+      // Accepting sockets alone could belong to another process after the
+      // owner's sites were changed through its admin API. The owner must run
+      // the configuration DevFn rendered from the committed (or, during a
+      // journaled transition, pending) route state.
+      const ipv6 = await ipv6LoopbackAvailable();
+      const config = await readFile(this.configPath, "utf8");
+      if (![committed, pending].some((state) => state && this.renderState(state, ipv6) === config)) return false;
+      if (!await (this.liveConfigProbe ?? (() => this.ownerConfigMatches()))()) return false;
+      const hosts = ipv6 ? ["127.0.0.1", "::1"] : ["127.0.0.1"];
       for (const port of proxyListenerPortsFor(committed?.routes ?? [])) {
         for (const host of hosts) if (!await this.acceptsListener(port, host)) return false;
       }
       return true;
     } catch { return false; }
+  }
+
+  /** Lock-free: whether committed or pending route state names this instance. */
+  public async hasInstanceRoutes(instanceId: string): Promise<boolean> {
+    for (const file of [this.statePath, this.pendingPath]) {
+      if ((await this.readState(file))?.routes.some((route) => route.instanceId === instanceId)) return true;
+    }
+    return false;
   }
 
   private async read(): Promise<ProxyState> {
@@ -402,9 +415,7 @@ export class CaddyProxyController {
     }
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
     const candidate = `${this.configPath}.candidate`;
-    const renderedRoutes = next.routes.map((route) => route.certificateDigest
-      ? { ...route, ...this.certificatePaths(route.certificateDigest) } : route);
-    await writeFile(candidate, renderCaddyfile(renderedRoutes, await ipv6LoopbackAvailable()), { encoding: "utf8", mode: 0o600 });
+    await writeFile(candidate, this.renderState(next, await ipv6LoopbackAvailable()), { encoding: "utf8", mode: 0o600 });
     try { await execFileAsync("caddy", ["validate", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
     catch (error) { await rm(candidate, { force: true }); throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Caddy rejected the generated route configuration.", { cause: error instanceof Error ? error.message : String(error) }); }
     let owner: ProxyOwner | null;
@@ -471,64 +482,70 @@ export class CaddyProxyController {
         if (!recovering) await rm(this.pendingPath, { force: true });
         throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to prepare DevFn Caddy startup confirmation.", { cause: error instanceof Error ? error.message : String(error) });
       }
-      const pingbackAddress = pingback.address();
-      const child = spawn("caddy", ["run", "--config", candidate, "--adapter", "caddyfile", "--pingback", `127.0.0.1:${typeof pingbackAddress === "object" && pingbackAddress ? pingbackAddress.port : 0}`],
-        { detached: process.platform !== "win32", stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
-      child.stdin?.once("error", () => undefined);
-      child.stdin?.end(nonce);
-      const spawnFailure = new Promise<Error | null>((resolve) => {
-        child.once("error", resolve);
-        child.once("exit", (code) => resolve(new Error(`Caddy exited with ${code ?? "unknown"}.`)));
-      });
-      const deadline = Date.now() + 10_000;
-      let ready = false;
-      let birthSignature: string | undefined;
-      for (let attempt = 0; child.pid && attempt < 10 && !birthSignature; attempt += 1) {
-        birthSignature = await processBirthSignature(child.pid);
-        if (!birthSignature) await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      const stopSpawnedChild = async (): Promise<void> => {
-        try {
-          if (!child.pid) return;
-          if (birthSignature && await matchesProcessIdentity(child.pid, birthSignature)) process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM");
-          else child.kill("SIGTERM");
-        } catch { /* already exited */ }
+      const closePingback = async (): Promise<void> => {
+        for (const socket of pingbackSockets) socket.destroy();
+        if (pingback.listening) await new Promise<void>((resolve) => pingback.close(() => resolve()));
       };
-      if (child.pid && birthSignature) {
-        try { await writeFile(this.ownerPath, `${JSON.stringify({ pid: child.pid, birthSignature, startedAt: new Date().toISOString() })}\n`, { mode: 0o600 }); }
-        catch (error) {
+      // Every exit from here, including a failed owner record, closes the
+      // confirmation listener and any connection Caddy opened to it.
+      try {
+        const pingbackAddress = pingback.address();
+        const child = spawn("caddy", ["run", "--config", candidate, "--adapter", "caddyfile", "--pingback", `127.0.0.1:${typeof pingbackAddress === "object" && pingbackAddress ? pingbackAddress.port : 0}`],
+          { detached: process.platform !== "win32", stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
+        child.stdin?.once("error", () => undefined);
+        child.stdin?.end(nonce);
+        const spawnFailure = new Promise<Error | null>((resolve) => {
+          child.once("error", resolve);
+          child.once("exit", (code) => resolve(new Error(`Caddy exited with ${code ?? "unknown"}.`)));
+        });
+        const deadline = Date.now() + 10_000;
+        let ready = false;
+        let birthSignature: string | undefined;
+        for (let attempt = 0; child.pid && attempt < 10 && !birthSignature; attempt += 1) {
+          birthSignature = await processBirthSignature(child.pid);
+          if (!birthSignature) await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const stopSpawnedChild = async (): Promise<void> => {
+          try {
+            if (!child.pid) return;
+            if (birthSignature && await matchesProcessIdentity(child.pid, birthSignature)) process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM");
+            else child.kill("SIGTERM");
+          } catch { /* already exited */ }
+        };
+        if (child.pid && birthSignature) {
+          try { await writeFile(this.ownerPath, `${JSON.stringify({ pid: child.pid, birthSignature, startedAt: new Date().toISOString() })}\n`, { mode: 0o600 }); }
+          catch (error) {
+            await stopSpawnedChild();
+            await rm(candidate, { force: true });
+            if (!recovering) await rm(this.pendingPath, { force: true });
+            throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to persist the DevFn Caddy owner record.", { cause: error instanceof Error ? error.message : String(error) });
+          }
+        }
+        let started = false;
+        void confirmed.then(() => { started = true; });
+        while (Date.now() < deadline) {
+          if (await Promise.race([spawnFailure, confirmed.then(() => null), new Promise<null>((resolve) => setTimeout(() => resolve(null), 100))])) break;
+          if (!child.pid || !birthSignature || !await matchesProcessIdentity(child.pid, birthSignature)) break;
+          if (!started) continue;
+          ready = await readAdminConfig() !== undefined;
+          for (const port of ready ? proxyListenerPortsFor(next.routes) : []) {
+            for (const host of await ipv6LoopbackAvailable() ? ["127.0.0.1", "::1"] : ["127.0.0.1"]) ready &&= await this.acceptsListener(port, host);
+          }
+          // A listener check after confirmation also proves Caddy survived it.
+          if (ready && !await matchesProcessIdentity(child.pid, birthSignature)) ready = false;
+          break;
+        }
+        if (!ready || !child.pid || !birthSignature) {
           await stopSpawnedChild();
+          await rm(this.ownerPath, { force: true });
           await rm(candidate, { force: true });
           if (!recovering) await rm(this.pendingPath, { force: true });
-          throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to persist the DevFn Caddy owner record.", { cause: error instanceof Error ? error.message : String(error) });
+          const privileged = proxyListenerPortsFor(next.routes).filter((port) => port < 1024);
+          throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", `Unable to start the DevFn-owned Caddy proxy and confirm its listeners.${process.platform === "linux" && privileged.length
+            ? ` Binding ports ${privileged.join(" and ")} needs net.ipv4.ip_unprivileged_port_start at or below ${Math.min(...privileged)} or cap_net_bind_service on the Caddy binary; DevFn changes neither.` : ""}`);
         }
-      }
-      let started = false;
-      void confirmed.then(() => { started = true; });
-      while (Date.now() < deadline) {
-        if (await Promise.race([spawnFailure, confirmed.then(() => null), new Promise<null>((resolve) => setTimeout(() => resolve(null), 100))])) break;
-        if (!child.pid || !birthSignature || !await matchesProcessIdentity(child.pid, birthSignature)) break;
-        if (!started) continue;
-        ready = await readAdminConfig() !== undefined;
-        for (const port of ready ? proxyListenerPortsFor(next.routes) : []) {
-          for (const host of await ipv6LoopbackAvailable() ? ["127.0.0.1", "::1"] : ["127.0.0.1"]) ready &&= await this.acceptsListener(port, host);
-        }
-        // A listener check after confirmation also proves Caddy survived it.
-        if (ready && !await matchesProcessIdentity(child.pid, birthSignature)) ready = false;
-        break;
-      }
-      for (const socket of pingbackSockets) socket.destroy();
-      await new Promise<void>((resolve) => pingback.close(() => resolve()));
-      if (!ready || !child.pid || !birthSignature) {
-        await stopSpawnedChild();
-        await rm(this.ownerPath, { force: true });
-        await rm(candidate, { force: true });
-        if (!recovering) await rm(this.pendingPath, { force: true });
-        const privileged = proxyListenerPortsFor(next.routes).filter((port) => port < 1024);
-        throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", `Unable to start the DevFn-owned Caddy proxy and confirm its listeners.${process.platform === "linux" && privileged.length
-          ? ` Binding ports ${privileged.join(" and ")} needs net.ipv4.ip_unprivileged_port_start at or below ${Math.min(...privileged)} or cap_net_bind_service on the Caddy binary; DevFn changes neither.` : ""}`);
-      }
-      child.unref();
+        child.unref();
+      } finally { await closePingback(); }
     }
     await rename(candidate, this.configPath);
     // A rejected activation is a rollback, not a replay. Its pending journal

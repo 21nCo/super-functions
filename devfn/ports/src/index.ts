@@ -1,4 +1,4 @@
-export { allocateEphemeralPort, isPortAvailable, parseDockerListeners, parseWindowsNetstatListeners, scanListenerState, scanListeners } from "./listeners.js";
+export { allocateEphemeralPort, connectionRefused, isPortAvailable, parseDockerListeners, parseWindowsNetstatListeners, scanListenerState, scanListeners } from "./listeners.js";
 export { withFileLock, withRoutingLock } from "./lock.js";
 export { parsePersistedProxyRoutes, type PersistedProxyRoute } from "./proxy-state.js";
 export { parseProxyOwner, proxyOwnerStatus, type ProxyOwner } from "./proxy-owner.js";

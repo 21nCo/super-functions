@@ -1,15 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import http from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { matchesProcessIdentity, processExists } from "@devfn/processes";
 
-import { allocateEphemeralPort, isPortAvailable, scanListenerState } from "./listeners.js";
+import { allocateEphemeralPort, connectionRefused, isPortAvailable, scanListenerState } from "./listeners.js";
 import { withFileLock, withRoutingLock } from "./lock.js";
 import { PortRegistryError, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput, type ReservationRequest } from "./types.js";
-import { parsePersistedProxyRoutes } from "./proxy-state.js";
+import { parsePersistedProxyRoutes, type PersistedProxyRoute } from "./proxy-state.js";
 import { parseProxyOwner, proxyOwnerStatus } from "./proxy-owner.js";
 
 const EMPTY: RegistryState = { version: 1, revision: 0, allocations: [], invocations: [] };
@@ -21,41 +22,99 @@ function proxyListenerMigration(port: number): string {
 }
 
 // Route files are owned by the proxy. A missing file proves no routes there;
-// an unreadable or malformed file cannot prove that a claim is safe to drop.
-async function noOwnedProxyRoutes(stateDir: string, instanceId: string): Promise<boolean> {
+// an unreadable or malformed file proves nothing about its routes.
+async function readPersistedRoutes(stateDir: string): Promise<PersistedProxyRoute[]> {
+  const routes: PersistedProxyRoute[] = [];
   for (const name of ["proxy-routes.json", "proxy-routes.pending.json"]) {
     let state: unknown;
     try { state = JSON.parse(await readFile(path.join(stateDir, name), "utf8")); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      return false;
+      throw error;
     }
-    let routes;
-    try { routes = parsePersistedProxyRoutes(state); }
-    catch { return false; }
-    for (const route of routes) {
-      if (route.instanceId === instanceId) return false;
+    routes.push(...parsePersistedProxyRoutes(state));
+  }
+  return routes;
+}
+
+async function noOwnedProxyRoutes(stateDir: string, instanceId: string): Promise<boolean> {
+  try { return !(await readPersistedRoutes(stateDir)).some((route) => route.instanceId === instanceId); }
+  catch { return false; }
+}
+
+// A committed or pending route keeps sending traffic to its target port until
+// a route transition replaces or removes it, even after the target's lease
+// ended (for example after an interrupted replacement).
+async function routedTargetPorts(stateDir: string, exceptInstanceId: string): Promise<Map<number, string>> {
+  let routes: PersistedProxyRoute[];
+  try { routes = await readPersistedRoutes(stateDir); }
+  catch (error) {
+    throw new PortRegistryError("DEVFN_REGISTRY_INVALID", "Proxy route state is unreadable, so the ports its routes target cannot be protected.",
+      { cause: error instanceof Error ? error.message : String(error) });
+  }
+  return new Map(routes.filter((route) => route.instanceId !== exceptInstanceId).map((route) => [route.targetPort, route.instanceId]));
+}
+
+function routedPortAction(instanceId: string): string {
+  return `Stop or restart instance ${instanceId} so its proxy routes no longer target this port, or change this service's port.`;
+}
+
+// Caddy's admin origin check rejects fetch's browser-style request headers.
+async function readCaddyConfig(): Promise<{ config: unknown } | undefined> {
+  return await new Promise((resolve) => {
+    const request = http.get({ host: "127.0.0.1", port: 2019, path: "/config/", timeout: 1000 }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk: string) => { body += chunk; });
+      response.on("end", () => {
+        try { resolve(response.statusCode === 200 ? { config: JSON.parse(body) } : undefined); } catch { resolve(undefined); }
+      });
+    });
+    request.once("timeout", () => request.destroy());
+    request.once("error", () => resolve(undefined));
+  });
+}
+
+/** Ports named by a Caddy configuration's HTTP server listeners, or undefined when they cannot be determined. */
+function configuredListenerPorts(config: unknown): Set<number> | undefined {
+  const ports = new Set<number>();
+  if (config === null) return ports;
+  if (typeof config !== "object") return undefined;
+  const apps = (config as { apps?: unknown }).apps;
+  if (apps === undefined) return ports;
+  if (!apps || typeof apps !== "object") return undefined;
+  const servers = (apps as { http?: { servers?: unknown } }).http?.servers;
+  if (servers === undefined || servers === null) return ports;
+  if (typeof servers !== "object") return undefined;
+  for (const server of Object.values(servers)) {
+    const listen = (server as { listen?: unknown } | null)?.listen;
+    if (!Array.isArray(listen)) return undefined;
+    for (const address of listen) {
+      const match = typeof address === "string" ? address.match(/:(\d+)(?:-(\d+))?$/) : null;
+      if (!match) return undefined;
+      const first = Number(match[1]);
+      const last = Number(match[2] ?? match[1]);
+      if (last < first || last - first > 65535) return undefined;
+      for (let port = first; port <= last; port += 1) ports.add(port);
     }
   }
-  return true;
+  return ports;
 }
 
 async function proxyClaimHasNoBoundListener(stateDir: string, ports: readonly number[]): Promise<boolean> {
   if (!ports.length || ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)) return false;
   const scanned = await scanListenerState(false);
-  if (scanned.listeners.some((listener) => listener.protocol === "tcp" && ports.includes(listener.port)) ||
-    (!scanned.inspection.tcp && ports.some((port) => port < 1024))) return false;
-  // Binding is a second check for ordinary ports; privileged Linux ports
-  // require OS listener inspection because an unprivileged bind can fail even
-  // when no listener exists.
-  for (const port of ports) if (port >= 1024 && !await isPortAvailable(port, "tcp", "127.0.0.1")) return false;
-  // When OS inspection is unavailable, an IPv4 bind cannot rule out a Caddy
-  // listener on ::1 (or an IPv6 wildcard). Keep the cross-protocol claim if
-  // IPv6 exists but its listener port cannot be bound conclusively.
-  if (!scanned.inspection.tcp && await isPortAvailable(0, "tcp", "::1")) {
-    for (const port of ports) {
-      if (!await isPortAvailable(port, "tcp", "::1") || !await isPortAvailable(port, "tcp", "::")) return false;
-    }
+  if (scanned.listeners.some((listener) => ports.includes(listener.port))) return false;
+  // Successful socket inspection can still miss a listener whose owner is
+  // non-dumpable (a setcap Caddy on Linux), so absence needs direct proof on
+  // every loopback family. A refused connection proves it for any port; an
+  // ordinary port must also bind for TCP and for Caddy's HTTP/3 UDP socket.
+  const hosts = await isPortAvailable(0, "tcp", "::1") ? ["127.0.0.1", "::1"] : ["127.0.0.1"];
+  for (const port of ports) {
+    for (const host of hosts) if (!await connectionRefused(port, host)) return false;
+    if (port < 1024) continue;
+    for (const host of hosts) if (!await isPortAvailable(port, "tcp", host)) return false;
+    if (!await isPortAvailable(port, "udp", "127.0.0.1")) return false;
   }
   let owner;
   try { owner = parseProxyOwner(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")); }
@@ -64,9 +123,14 @@ async function proxyClaimHasNoBoundListener(stateDir: string, ports: readonly nu
   }
   const status = owner ? await proxyOwnerStatus(owner) : "dead";
   if (status === "unverified") return false;
-  // A verified Caddy may retain its admin listener after all sites are gone.
+  // A verified Caddy may keep its admin listener after all sites are gone; its
+  // own configuration must then show no listener on the claimed ports.
+  if (status === "active") {
+    const live = await readCaddyConfig();
+    const configured = live && configuredListenerPorts(live.config);
+    return configured !== undefined && !ports.some((port) => configured.has(port));
+  }
   // For an absent/dead/reused owner, an occupied admin port is ambiguous.
-  if (status === "active") return true;
   return await isPortAvailable(2019, "tcp", "127.0.0.1");
 }
 
@@ -213,6 +277,12 @@ export class FilePortRegistry {
         occupied.add(occupancyKey(value, "tcp"));
         occupied.add(occupancyKey(value, "udp"));
       }
+      const routedBy = await routedTargetPorts(path.dirname(this.filePath), input.instanceId);
+      for (const port of routedBy.keys()) {
+        if (!state.allocations.some((item) => item.invocationId === input.replacingInvocationId && item.state === "active" && item.port === port && item.protocol === "tcp")) {
+          occupied.add(occupancyKey(port, "tcp"));
+        } else routedBy.delete(port);
+      }
       const stable = new Map(
         state.allocations
           .filter((item) => item.projectId === input.projectId && item.instanceId === input.instanceId && item.state !== "externally-occupied")
@@ -239,6 +309,11 @@ export class FilePortRegistry {
                 : `Change this service's exact port or stop proxy instance ${claimant} before retrying.`;
               throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is claimed by proxy instance ${claimant}. ${action}`,
                 { service: name, port: spec.preferred, instanceId: claimant, action });
+            }
+            const router = protocol === "tcp" ? routedBy.get(spec.preferred) : undefined;
+            if (router) {
+              throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is still targeted by proxy routes of instance ${router}. ${routedPortAction(router)}`,
+                { service: name, port: spec.preferred, instanceId: router, action: routedPortAction(router) });
             }
             throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is occupied.`, { service: name, port: spec.preferred });
           }
@@ -378,6 +453,7 @@ export class FilePortRegistry {
       // for this preflight; prepareExisting will recover the stale receipt.
       const readyReplacement = replacingInvocationId && state.invocations.some((item) => item.id === replacingInvocationId &&
         item.instanceId === exceptInstanceId && item.state === "ready");
+      const routedBy = await routedTargetPorts(path.dirname(this.filePath), exceptInstanceId);
       for (const request of requests) {
         const port = request.spec.exact ? request.spec.preferred : undefined;
         if (port === undefined) continue;
@@ -396,6 +472,9 @@ export class FilePortRegistry {
         const host = request.spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1";
         const owned = Boolean(readyReplacement) && state.allocations.some((item) => active(item) && item.invocationId === replacingInvocationId &&
           item.instanceId === exceptInstanceId && item.port === port && item.protocol === protocol && item.host === host);
+        const router = protocol === "tcp" ? routedBy.get(port) : undefined;
+        if (router && !owned) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is still targeted by proxy routes of instance ${router}. ${routedPortAction(router)}`,
+          { port, service: request.name, instanceId: router, action: routedPortAction(router) });
         if (!owned && !await this.availabilityCheck(port, protocol, host)) {
           throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is occupied.`, { port, service: request.name });
         }

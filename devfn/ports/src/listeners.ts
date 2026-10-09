@@ -23,6 +23,21 @@ export async function isPortAvailable(port: number, protocol: "tcp" | "udp" = "t
   });
 }
 
+/**
+ * A refused TCP connection proves no socket listens on that address and port,
+ * including wildcard listeners, without the privilege a bind would need and
+ * even when the listener's owner is hidden from socket inspection.
+ */
+export async function connectionRefused(port: number, host = "127.0.0.1", timeoutMs = 500): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    const socket = net.connect({ port, host });
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => { socket.destroy(); resolve(false); });
+    socket.once("error", (error: NodeJS.ErrnoException) => { socket.destroy(); resolve(error.code === "ECONNREFUSED"); });
+    socket.once("timeout", () => { socket.destroy(); resolve(false); });
+  });
+}
+
 export async function allocateEphemeralPort(host = "127.0.0.1", protocol: "tcp" | "udp" = "tcp"): Promise<number> {
   if (protocol === "udp") {
     const dgram = await import("node:dgram");

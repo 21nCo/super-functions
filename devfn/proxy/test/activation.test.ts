@@ -1,9 +1,19 @@
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 
 const scan = vi.hoisted(() => ({ unattributable: false }));
+const faults = vi.hoisted(() => ({ ownerWrite: false }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  const writeFile: typeof actual.writeFile = async (file, ...rest) => {
+    if (faults.ownerWrite && String(file).endsWith("proxy-owner.json")) throw Object.assign(new Error("EACCES: owner record"), { code: "EACCES" });
+    return await actual.writeFile(file, ...rest);
+  };
+  return { ...actual, default: { ...actual, writeFile }, writeFile };
+});
 vi.mock("@devfn/ports", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@devfn/ports")>();
   return {
@@ -71,6 +81,7 @@ exit 1
 
 async function tearDown(): Promise<void> {
   scan.unattributable = false;
+  faults.ownerWrite = false;
   await stopOwner();
   process.env = { ...originalEnv };
   await rm(stateDir, { recursive: true, force: true });
@@ -107,6 +118,14 @@ adminTest("commits a confirmed Caddy start and reports instance routes live only
   accepting = false;
   expect(await proxy.instanceRoutesLive("fixture", activated)).toBe(false);
   accepting = true;
+  // Accepting sockets alone do not prove the owner still serves these routes:
+  // its live configuration must still be the committed one.
+  await writeFile(path.join(toolsDir, "admin.json"), JSON.stringify({ admin: { listen: "127.0.0.1:2019" }, apps: { http: { servers: {} } } }));
+  expect(await proxy.instanceRoutesLive("fixture", activated)).toBe(false);
+  await writeFile(path.join(toolsDir, "admin.json"), JSON.stringify({ admin: { listen: "127.0.0.1:2019" } }));
+  expect(await proxy.instanceRoutesLive("fixture", activated)).toBe(true);
+  await writeFile(path.join(stateDir, "Caddyfile"), "{\n}\n");
+  expect(await proxy.instanceRoutesLive("fixture", activated)).toBe(false);
   await stopOwner();
   expect(await proxy.instanceRoutesLive("fixture", activated)).toBe(false);
 });
@@ -127,4 +146,24 @@ adminTest("accepts an owner hidden from socket inspection only when its live adm
   await writeFile(path.join(toolsDir, "admin.json"), JSON.stringify({ admin: { listen: "127.0.0.1:2019" }, apps: { foreign: {} } }));
   await expect(inspected.assertActivationReady([route("sibling")], "sibling")).rejects.toMatchObject({ code: "DEVFN_PROXY_OWNERSHIP_CONFLICT" });
   expect(probed).toEqual([]);
+});
+
+adminTest("closes its startup confirmation listener when the owner record cannot be written", async () => {
+  process.env.DEVFN_TEST_RUN_MODE = "pingback";
+  faults.ownerWrite = true;
+  const createServer = net.createServer.bind(net);
+  const servers: net.Server[] = [];
+  const spy = vi.spyOn(net, "createServer").mockImplementation(((...args: Parameters<typeof net.createServer>) => {
+    const server = createServer(...args);
+    servers.push(server);
+    return server;
+  }) as typeof net.createServer);
+  try {
+    await expect(new CaddyProxyController(stateDir, undefined, undefined, async () => true).upsert([route("fixture")]))
+      .rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
+  } finally { spy.mockRestore(); }
+  expect(servers.length).toBeGreaterThan(0);
+  expect(servers.filter((server) => server.listening)).toEqual([]);
+  await expect(access(path.join(stateDir, "proxy-routes.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  for (let attempt = 0; attempt < 50 && await isPortAvailable(2019) === false; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
 });

@@ -438,7 +438,15 @@ export class DevFnOrchestrator {
     }
     const proxy = new CaddyProxyController(stateDir);
     let activatedRoutes: Awaited<ReturnType<typeof proxy.upsert>> | undefined;
-    if (oldReady && (routes.length || oldReady.routes.length)) {
+    // An interrupted replacement can leave committed routes the prior receipt
+    // never recorded, so the proxy's own state decides what to reconcile.
+    let reconcileRoutes = false;
+    try { reconcileRoutes = oldReady !== undefined && (routes.length > 0 || oldReady.routes.length > 0 || await proxy.hasInstanceRoutes(identity.instanceId)); }
+    catch (error) {
+      await registry.release({ invocationId, errorCode: "DEVFN_PROXY_CONFIG_INVALID" });
+      throw error;
+    }
+    if (oldReady && reconcileRoutes) {
       try {
         // Caddy run/reload can fail after validate. Activate the final routes
         // while the previous ready lifecycle and receipt are still intact.
@@ -512,7 +520,7 @@ export class DevFnOrchestrator {
           receipt.routes = await proxy.upsert(routes, identity.instanceId);
         } else if (activatedRoutes) receipt.routes = activatedRoutes;
         receipt.urls = resolveAllocationUrls(allocations, receipt.routes, selectedHttpPorts(options.config, plan), resolved.directUrls);
-        if (oldReady?.routes.length && !receipt.routes.length) await proxy.removeInstance(identity.instanceId);
+        if (!receipt.routes.length && await proxy.hasInstanceRoutes(identity.instanceId)) await proxy.removeInstance(identity.instanceId);
         clearInterval(heartbeat);
         await registry.markActive(invocationId, startupOwners(options.config, receipt));
         receipt.state = "ready";
