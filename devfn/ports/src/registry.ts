@@ -49,6 +49,14 @@ async function proxyClaimHasNoBoundListener(stateDir: string, ports: readonly nu
   // require OS listener inspection because an unprivileged bind can fail even
   // when no listener exists.
   for (const port of ports) if (port >= 1024 && !await isPortAvailable(port, "tcp", "127.0.0.1")) return false;
+  // When OS inspection is unavailable, an IPv4 bind cannot rule out a Caddy
+  // listener on ::1 (or an IPv6 wildcard). Keep the cross-protocol claim if
+  // IPv6 exists but its listener port cannot be bound conclusively.
+  if (!scanned.inspection.tcp && await isPortAvailable(0, "tcp", "::1")) {
+    for (const port of ports) {
+      if (!await isPortAvailable(port, "tcp", "::1") || !await isPortAvailable(port, "tcp", "::")) return false;
+    }
+  }
   let owner;
   try { owner = parseProxyOwner(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")); }
   catch (error) {
@@ -325,6 +333,36 @@ export class FilePortRegistry {
       const conflict = state.allocations.find((item) => active(item) && item.instanceId !== exceptInstanceId && ports.includes(item.port));
       if (conflict) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${conflict.port} is leased by ${conflict.instanceId}/${conflict.service}. ${proxyListenerMigration(conflict.port)}`,
         { port: conflict.port, instanceId: conflict.instanceId, service: conflict.service, action: proxyListenerMigration(conflict.port) });
+    });
+  }
+
+  /** Validate a replacement before its old service and leases are removed. */
+  public async assertReplacementAvailable(ports: readonly number[], exceptInstanceId: string,
+    requests: readonly ReservationRequest[], checkRoutes: () => Promise<void>): Promise<void> {
+    await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
+    await withFileLock(this.lockPath, async () => {
+      const state = await this.read();
+      for (const request of requests) {
+        const port = request.spec.exact ? request.spec.preferred : undefined;
+        if (port === undefined) continue;
+        const lease = state.allocations.find((item) => active(item) && item.instanceId !== exceptInstanceId && item.port === port && item.protocol === (request.spec.protocol ?? "tcp"));
+        if (lease) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is leased by ${lease.instanceId}/${lease.service}.`,
+          { port, service: request.name, instanceId: lease.instanceId });
+        const claimant = state.invocations.find((item) => item.instanceId !== exceptInstanceId && ["planning", "starting", "ready"].includes(item.state) && item.proxyListenerPorts?.includes(port));
+        if (claimant) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is claimed by proxy instance ${claimant.instanceId}.`,
+          { port, service: request.name, instanceId: claimant.instanceId });
+      }
+      for (const port of ports) {
+        const self = requests.find((request) => request.spec.exact && request.spec.preferred === port);
+        if (self) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${self.name} is claimed by this profile's proxy; change the service's exact port before activating proxy routes.`,
+          { port, service: self.name, instanceId: exceptInstanceId });
+        const lease = state.allocations.find((item) => active(item) && item.instanceId !== exceptInstanceId && item.port === port);
+        if (lease) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${port} is leased by ${lease.instanceId}/${lease.service}. ${proxyListenerMigration(port)}`,
+          { port, instanceId: lease.instanceId, service: lease.service, action: proxyListenerMigration(port) });
+      }
+      // Lock order is registry, then proxy, matching claim expiry. No sibling
+      // can change either persisted surface during this ownership check.
+      await checkRoutes();
     });
   }
 

@@ -372,8 +372,12 @@ export class DevFnOrchestrator {
     const plan = createPlan(options.config, options.profile);
     const profileHostnames = Object.entries(options.config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile));
     const listenerPorts = plan.proxy && profileHostnames.length ? Object.values(proxyListenerPorts()) : [];
-    if (listenerPorts.length) await registry.assertProxyListenerAvailable(listenerPorts, identity.instanceId,
-      plan.portNames.map((name) => ({ name, spec: options.config.ports?.[name] ?? {} })));
+    const preflightPorts = Object.fromEntries(plan.portNames.map((name) => [name, 1]));
+    const routes = await selectedProxyRoutes(options.config, plan, identity, preflightPorts,
+      loadedPolicy?.policy.hostnameSuffix ?? ".localhost", stateDir);
+    await registry.assertReplacementAvailable(listenerPorts, identity.instanceId,
+      plan.portNames.map((name) => ({ name, spec: options.config.ports?.[name] ?? {} })),
+      async () => { if (routes.length) await new CaddyProxyController(stateDir).assertRouteOwnershipAvailable(routes, identity.instanceId); });
     await this.prepareExisting(options, stateDir, identity, loadedPolicy, registry);
     await registry.recoverInterrupted(identity.instanceId);
     const publicNodes = plan.nodes.filter((node) => node.kind === "process" && options.config.processes?.[node.name]?.exposure === "public").map((node) => node.name);

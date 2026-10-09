@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
@@ -9,6 +9,42 @@ import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, renderPolicyI
 import { inspectContainerRunning } from "../src/registry.js";
 
 describe("FilePortRegistry", () => {
+  it("retains an expired cross-protocol proxy claim when an IPv6 listener is hidden from OS inspection", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-ipv6-claim-"));
+    const port = await allocateEphemeralPort();
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    let listener = net.createServer();
+    const previousPath = process.env.PATH;
+    try {
+      await registry.reserve({ projectId: "app", instanceId: "proxy", invocationId: "old", profile: "default", requests: [], proxyListenerPorts: [port] });
+      await registry.updateInvocation("old", { state: "starting" });
+      const state = await registry.read();
+      state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
+      await writeFile(registry.filePath, JSON.stringify(state));
+      const birthSignature = await processBirthSignature(process.pid);
+      expect(birthSignature).toBeTruthy();
+      await writeFile(path.join(dir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+      const toolsDir = path.join(dir, "tools");
+      await mkdir(toolsDir);
+      await symlink("/bin/ps", path.join(toolsDir, "ps"));
+      process.env.PATH = toolsDir;
+      for (const host of ["::1", "::"]) {
+        listener = net.createServer();
+        await new Promise<void>((resolve, reject) => listener.once("error", reject).listen({ port, host, ipv6Only: true }, resolve));
+        await expect(registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: `sibling-${host}`, profile: "default",
+          requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] })).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+        expect((await registry.read()).invocations[0].state).toBe("starting");
+        await new Promise<void>((resolve) => listener.close(() => resolve()));
+      }
+      expect((await registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: "sibling-free", profile: "default",
+        requests: [{ name: "api", spec: { preferred: port, exact: true, protocol: "udp" } }] }))[0].port).toBe(port);
+    } finally {
+      process.env.PATH = previousPath;
+      if (listener.listening) await new Promise<void>((resolve) => listener.close(() => resolve()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   for (const invocationState of ["planning", "starting", "ready"] as const) {
     it(`reclaims an abandoned ${invocationState} claim with a reused owner PID`, async () => {
       const dir = await mkdtemp(path.join(tmpdir(), "devfn-reused-proxy-owner-"));

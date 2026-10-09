@@ -181,6 +181,22 @@ export class CaddyProxyController {
     }
   }
 
+  /** Read-only ownership check for an orchestrator replacement preflight. */
+  public async assertRouteOwnershipAvailable(routes: readonly Omit<ProxyRoute, "updatedAt">[], instanceId: string): Promise<void> {
+    if (routes.some((route) => route.instanceId !== instanceId)) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "One preflight must name routes for one instance.");
+    await withFileLock(this.lockPath, async () => {
+      for (const file of [this.statePath, this.pendingPath]) {
+        const state = await this.readState(file);
+        if (!state) continue;
+        const siblings = state.routes.filter((route) => route.instanceId !== instanceId);
+        if (routes.some((route) => siblings.some((saved) => saved.id === route.id))) {
+          throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "A selected proxy route ID is already owned by another instance.");
+        }
+        renderCaddyfile([...siblings, ...routes.map((route) => ({ ...route, updatedAt: "preflight" }))]);
+      }
+    });
+  }
+
   private async read(): Promise<ProxyState> {
     const pending = await this.readState(this.pendingPath);
     if (pending) {
