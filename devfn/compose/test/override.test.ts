@@ -859,4 +859,43 @@ describe("ComposeController", () => {
     expect(calls.filter((args) => args.includes("stop"))).toHaveLength(2);
     expect(calls.some((args) => args.includes("rm"))).toBe(true);
   });
+
+  it("journals a launch before Compose runs and stops what an interrupted launch started, leaving containers that already ran", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-launch-"));
+    const order: string[] = [];
+    let psCalls = 0;
+    const launching = new ComposeController(async (_file, args) => {
+      if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+      if (args.includes("up")) { order.push("up"); throw new Error("interrupted"); }
+      if (args.includes("ps")) return { stdout: ++psCalls >= 3 ? "created\n" : "", stderr: "" };
+      return { stdout: "", stderr: "" };
+    });
+    try {
+      let launch: Parameters<NonNullable<Parameters<ComposeController["start"]>[0]["onLaunch"]>>[0] | undefined;
+      await expect(launching.start({ name: "db", spec: { adapter: "compose", service: "db" }, root, runtimeDir: path.join(root, "runtime"), instanceId: "owner", ports: {},
+        onLaunch: async (value) => { order.push("journal"); launch = value; } })).rejects.toBeDefined();
+      expect(order).toEqual(["journal", "up"]);
+      expect(launch).toMatchObject({ name: "db", composeService: "db", preExisting: false, existingContainerIds: [], runningContainerIds: [] });
+    } finally { await rm(root, { recursive: true, force: true }); }
+
+    const calls: string[][] = [];
+    const docker = (found: string) => new ComposeController(async (_file, args) => {
+      calls.push(args);
+      if (args[0] === "ps") return { stdout: found, stderr: "" };
+      return { stdout: "", stderr: "" };
+    });
+    const base = { name: "db", projectName: "devfn-owner", composeService: "db", dockerEnvironment: { DOCKER_HOST: "unix:///fixture.sock" } };
+    await docker("fresh-a\nfresh-b\n").stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] });
+    expect(calls[0]).toEqual(["ps", "-a", "-q", "--no-trunc", "--filter", "label=com.docker.compose.project=devfn-owner", "--filter", "label=com.docker.compose.service=db"]);
+    expect(calls.slice(1)).toEqual([["stop", "fresh-a", "fresh-b"], ["rm", "-f", "fresh-a", "fresh-b"]]);
+
+    // A reused service keeps the container that ran before the launch.
+    calls.length = 0;
+    await docker("ran-before\nstopped-before\nnew\n").stopLaunch({ ...base, preExisting: true, existingContainerIds: ["ran-before", "stopped-before"], runningContainerIds: ["ran-before"] });
+    expect(calls.slice(1)).toEqual([["stop", "stopped-before", "new"], ["rm", "-f", "new"]]);
+
+    // An unreachable Docker endpoint proves nothing about what the launch started.
+    await expect(new ComposeController(async () => { throw new Error("Cannot connect to the Docker daemon"); })
+      .stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_STOP_FAILED" });
+  });
 });

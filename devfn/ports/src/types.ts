@@ -56,8 +56,20 @@ export interface RegistryInvocation {
   /** Set by reserve: every started node's owner identity is recorded here, so an empty list proves none started. */
   ownerJournal?: true;
   owners?: LifecycleOwner[];
-  /** Nodes whose launch began but whose owner identity is not recorded yet. */
+  /** Compose nodes whose launch began but whose owner identity is not recorded yet. */
   launching?: string[];
+  /** What each launching Compose node may create or start, so teardown can find it without a recorded identity. */
+  composeLaunches?: Record<string, ComposeLaunchRecord>;
+}
+
+export interface ComposeLaunchRecord {
+  projectName: string;
+  composeService: string;
+  /** Pre-existing containers are reused, not recreated; those already running are never stopped. */
+  preExisting: boolean;
+  existingContainerIds: string[];
+  runningContainerIds: string[];
+  dockerEnvironment?: Record<string, string>;
 }
 
 export interface RegistryState {

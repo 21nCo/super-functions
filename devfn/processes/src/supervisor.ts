@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, constants, fchmodSync, mkdirSync, openSync } from "node:fs";
 import { lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { resolveContainedPath } from "@devfn/config";
 
 import { createProcessEnvironment, resolveAdapterCommand } from "./adapters.js";
-import { matchesProcessIdentity, processBirthSignature, processExists } from "./identity.js";
+import { matchesProcessIdentity, processBirthSignature, processExists, processIdentityStatus } from "./identity.js";
 import { waitForReadiness } from "./readiness.js";
 import { ProcessError, type ManagedProcess, type StartProcessInput } from "./types.js";
 
@@ -29,6 +29,20 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boole
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline && processExists(pid)) await delay(50);
   return !processExists(pid);
+}
+
+/** Let the wrapper run its command and wait until it detached from the channel. */
+async function openLaunchGate(child: ChildProcess): Promise<void> {
+  if (!child.connected) throw new ProcessError("DEVFN_PROCESS_START_FAILED", "Process wrapper exited before its launch gate opened.");
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new ProcessError("DEVFN_PROCESS_START_FAILED", "Process wrapper did not acknowledge its launch gate.")), 10_000);
+    child.once("disconnect", () => { clearTimeout(timer); resolve(); });
+    child.send("start", (error) => {
+      if (!error) return;
+      clearTimeout(timer);
+      reject(new ProcessError("DEVFN_PROCESS_START_FAILED", "Unable to open the process launch gate.", { cause: error.message }));
+    });
+  });
 }
 
 export async function prepareProcessLog(logPath: string, resetSensitiveHistory: boolean): Promise<{ logFd: number; logOffset: number }> {
@@ -71,7 +85,8 @@ export class ProcessSupervisor {
       env: { ...environment, DEVFN_WRAPPED_COMMAND: JSON.stringify(command), DEVFN_REDACT_KEYS: JSON.stringify(input.spec.secretEnv ?? []) },
       detached: process.platform !== "win32",
       windowsHide: true,
-      stdio: ["ignore", logFd, logFd],
+      // The IPC channel gates the command until its identity is recorded.
+      stdio: ["ignore", logFd, logFd, "ipc"],
     });
     let exited = false;
     child.once("exit", () => { exited = true; });
@@ -89,6 +104,7 @@ export class ProcessSupervisor {
       if (!birthSignature) await delay(20);
     }
     if (!birthSignature) {
+      if (child.connected) child.disconnect();
       try { if (process.platform !== "win32") process.kill(-child.pid, "SIGTERM"); else child.kill(); } catch { /* process may already have exited */ }
       throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Could not establish a birth identity for ${input.name}; refusing unmanaged supervision.`);
     }
@@ -103,7 +119,12 @@ export class ProcessSupervisor {
       ...(input.spec.shutdownTimeoutMs === undefined ? {} : { shutdownTimeoutMs: input.spec.shutdownTimeoutMs }),
     };
     try {
-      await input.onStarted?.(managed);
+      try {
+        await input.onStarted?.(managed);
+        await openLaunchGate(child);
+      } finally {
+        if (child.connected) child.disconnect();
+      }
       await waitForReadiness({ health: input.spec.health, ports: input.ports ?? {}, logPath, logOffset, cwd, environment, isAlive: () => !exited && processExists(managed.pid) });
       managed.readyAt = new Date().toISOString();
       return managed;
@@ -129,8 +150,13 @@ export class ProcessSupervisor {
     }
   }
 
-  public async status(managed: ManagedProcess): Promise<"running" | "stopped" | "identity-mismatch"> {
-    if (!processExists(managed.pid)) return "stopped";
-    return await matchesProcessIdentity(managed.pid, managed.birthSignature) ? "running" : "identity-mismatch";
+  /**
+   * "stopped" and "identity-mismatch" prove the recorded process is gone;
+   * "unverified" is a live PID whose identity cannot be read, which may
+   * still be that process and must never be treated as stopped.
+   */
+  public async status(managed: ManagedProcess): Promise<"running" | "stopped" | "identity-mismatch" | "unverified"> {
+    const status = await processIdentityStatus(managed.pid, managed.birthSignature);
+    return status === "exited" ? "stopped" : status;
   }
 }

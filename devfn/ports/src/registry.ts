@@ -9,7 +9,7 @@ import { processExists, processIdentityStatus } from "@devfn/processes";
 
 import { allocateEphemeralPort, bindProbe, connectionRefused, isPortAvailable, scanListenerState } from "./listeners.js";
 import { withFileLock, withRoutingLock } from "./lock.js";
-import { PortRegistryError, type LifecycleOwner, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput, type ReservationRequest } from "./types.js";
+import { PortRegistryError, type ComposeLaunchRecord, type LifecycleOwner, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput, type ReservationRequest } from "./types.js";
 import { parsePersistedProxyRoutes, type PersistedProxyRoute } from "./proxy-state.js";
 import { parseProxyOwner, proxyOwnerStatus } from "./proxy-owner.js";
 
@@ -244,7 +244,8 @@ async function ownerMayRun(owner: LifecycleOwner): Promise<boolean> {
  * Whether anything an invocation launched may still run, judged only from its
  * owner journal: a launch whose identity was never recorded, or a recorded
  * process or container identity not verified dead. A stopped invocation ended
- * only after its command stopped every owner. Failing or interrupting one
+ * only after teardown verified every receipt and journal owner dead or
+ * stopped it by identity, and resolved every launch. Failing or interrupting one
  * does not stop owners its receipt never listed, so failed invocations count
  * too. A running lifecycle with neither an owner journal nor a recorded owner
  * predates the journal and proves nothing.
@@ -596,12 +597,17 @@ export class FilePortRegistry {
     });
   }
 
-  /** Journal a node launch before it starts, so an interruption before its identity is recorded stays ambiguous. */
-  public async beginLaunch(invocationId: string, node: string): Promise<void> {
+  /**
+   * Journal a Compose launch before it starts, so an interruption before its
+   * identity is recorded stays ambiguous and teardown can still find what it
+   * created. A process command runs only after its identity is recorded.
+   */
+  public async beginLaunch(invocationId: string, node: string, compose: ComposeLaunchRecord): Promise<void> {
     await this.transaction((state) => {
       const invocation = state.invocations.find((item) => item.id === invocationId);
       if (!invocation) throw new PortRegistryError("DEVFN_REGISTRY_INVALID", `Invocation ${invocationId} is not registered.`);
       if (!invocation.launching?.includes(node)) (invocation.launching ??= []).push(node);
+      (invocation.composeLaunches ??= {})[node] = compose;
       invocation.updatedAt = new Date().toISOString();
     });
   }
@@ -615,6 +621,8 @@ export class FilePortRegistry {
       if (owners.length && invocation.launching) {
         invocation.launching = invocation.launching.filter((item) => item !== node);
         if (!invocation.launching.length) delete invocation.launching;
+        if (invocation.composeLaunches) delete invocation.composeLaunches[node];
+        if (invocation.composeLaunches && !Object.keys(invocation.composeLaunches).length) delete invocation.composeLaunches;
       }
       invocation.updatedAt = new Date().toISOString();
     });
@@ -690,9 +698,10 @@ export class FilePortRegistry {
           !await proxyClaimRetirable(stateDir, invocation.instanceId, invocation.proxyListenerPorts!));
         Object.assign(invocation, { state: input.errorCode ? "failed" : "stopped", updatedAt: now, ...(input.errorCode ? { errorCode: input.errorCode } : {}) });
         if (retain) invocation.proxyClaimRetained = true;
-        // The ending command resolved its own launches; owners it recorded
-        // stay as evidence.
+        // Teardown resolved the launches before it released them; owners
+        // recorded stay as evidence.
         delete invocation.launching;
+        delete invocation.composeLaunches;
       }
     });
   }

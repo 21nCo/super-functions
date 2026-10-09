@@ -562,7 +562,7 @@ esac
       await age();
       // Journaled and launched nothing yet: nothing of it can run.
       expect(await registry.instanceMayRun("one")).toBe(false);
-      await registry.beginLaunch("start", "api");
+      await registry.beginLaunch("start", "api", { projectName: "devfn-app", composeService: "api", preExisting: false, existingContainerIds: [], runningContainerIds: [] });
       await age();
       // A launch whose identity is not recorded yet is ambiguous.
       expect(await registry.instanceMayRun("one")).toBe(true);
@@ -626,7 +626,7 @@ esac
       // The start recorded its node's identity, then stopped before its receipt listed it.
       await registry.reserve({ projectId: "app", instanceId: "one", invocationId: "interrupted", profile: "default", requests: [] });
       await registry.updateInvocation("interrupted", { state: "starting" });
-      await registry.beginLaunch("interrupted", "api");
+      await registry.beginLaunch("interrupted", "api", { projectName: "devfn-app", composeService: "api", preExisting: false, existingContainerIds: [], runningContainerIds: [] });
       await registry.recordOwners("interrupted", "api", [{ process: { pid: child.pid!, birthSignature: birthSignature! } }]);
       expect(await registry.recoverInterrupted("one")).toBe(1);
       await registry.gc();
@@ -635,7 +635,7 @@ esac
 
       // A handled failure resolved its own launches before it ended.
       await registry.reserve({ projectId: "app", instanceId: "two", invocationId: "handled", profile: "default", requests: [] });
-      await registry.beginLaunch("handled", "api");
+      await registry.beginLaunch("handled", "api", { projectName: "devfn-app", composeService: "api", preExisting: false, existingContainerIds: [], runningContainerIds: [] });
       await registry.release({ invocationId: "handled", errorCode: "DEVFN_START_FAILED" });
       expect(await registry.instanceMayRun("two")).toBe(false);
 
@@ -650,7 +650,9 @@ esac
     }
   });
 
-  it("keeps the last listener claim through a route-free release while a listener remains on a claimed port", async () => await withCaddyAdminPort(async () => {
+  it("keeps the last listener claim through a route-free release while a listener remains on a claimed port", async ({ skip }) => await withCaddyAdminPort(async () => {
+    // Retirement needs conclusive listener evidence, which a busy Caddy admin port denies.
+    if (!await isPortAvailable(2019, "tcp", "127.0.0.1")) skip("127.0.0.1:2019 is in use, so listener absence cannot be proven on this host.");
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-release-listener-"));
     const registry = new FilePortRegistry(path.join(dir, "registry.json"));
     const port = await allocateEphemeralPort();
@@ -665,7 +667,6 @@ esac
         requests: [{ name: "api", spec: { preferred: port, exact: true } }] });
       await expect(sibling("blocked")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "proxy" } });
       await new Promise<void>((resolve) => listener.close(() => resolve()));
-      if (!await isPortAvailable(2019, "tcp", "127.0.0.1")) return;
       expect((await sibling("accepted"))[0].port).toBe(port);
     } finally {
       await new Promise<void>((resolve) => { try { listener.close(() => resolve()); } catch { resolve(); } });
@@ -673,12 +674,12 @@ esac
     }
   }));
 
-  it("retires a verified-dead lifecycle's listener claim although a foreign process took its leased port", async () => await withCaddyAdminPort(async () => {
+  it("retires a verified-dead lifecycle's listener claim although a foreign process took its leased port", async ({ skip }) => await withCaddyAdminPort(async () => {
+    if (!await isPortAvailable(2019, "tcp", "127.0.0.1")) skip("127.0.0.1:2019 is in use, so listener absence cannot be proven on this host.");
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-dead-claim-foreign-"));
     const registry = new FilePortRegistry(path.join(dir, "registry.json"));
     const foreign = net.createServer();
     try {
-      if (!await isPortAvailable(2019, "tcp", "127.0.0.1")) return;
       const child = spawn(process.execPath, ["-e", "setTimeout(() => undefined, 200)"], { stdio: "ignore" });
       const birthSignature = await processBirthSignature(child.pid!);
       await new Promise((resolve) => child.once("exit", resolve));

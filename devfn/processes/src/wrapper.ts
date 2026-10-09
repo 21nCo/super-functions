@@ -13,6 +13,20 @@ const keys = requiredJson("DEVFN_REDACT_KEYS");
 if (!Array.isArray(command) || command.length === 0 || !command.every((item) => typeof item === "string")) throw new Error("Invalid wrapped command.");
 if (!Array.isArray(keys) || !keys.every((item) => typeof item === "string")) throw new Error("Invalid redaction keys.");
 
+// The supervisor opens this gate only after it recorded this process's
+// identity. If it dies first, the channel closes and the command never runs,
+// so a launch without a recorded identity proves nothing of it started.
+if (process.send) {
+  const opened = await new Promise<boolean>((resolve) => {
+    process.once("message", (message) => resolve(message === "start"));
+    process.once("disconnect", () => resolve(false));
+  });
+  process.removeAllListeners("message");
+  process.removeAllListeners("disconnect");
+  if (!opened) process.exit(1);
+  process.disconnect();
+}
+
 const environment = { ...process.env };
 delete environment.DEVFN_WRAPPED_COMMAND;
 delete environment.DEVFN_REDACT_KEYS;

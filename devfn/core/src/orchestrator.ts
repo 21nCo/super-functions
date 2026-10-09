@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 
 import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, selectedComposeEndpointReferences, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, isCredentialKey, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
-import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, withRoutingLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
+import { FilePortRegistry, inspectContainerRunning, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, withRoutingLock, type ListenerInfo, type ListenerScanResult, type PortAllocation, type RegistryInvocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
 import { CaddyProxyController, proxyListenerPorts, readRegisteredDomains, renderCaddyfile, verifyCertificate, verifyLocalDns, type ProxyRoute } from "@devfn/proxy";
 
@@ -384,6 +384,63 @@ export async function recoverOrphanedProxyRoutes(requestedStateDir: string): Pro
   return recovered;
 }
 
+/**
+ * Stop a recorded process only through its verified identity. An exited PID
+ * or a readable different birth signature proves it gone; a live PID whose
+ * identity cannot be read may still be it, so teardown cannot complete.
+ */
+async function stopVerifiedProcess(managed: ManagedProcess, supervisor: ProcessSupervisor, result: CleanupResult): Promise<void> {
+  const unverified = () => `Process ${managed.name} (PID ${managed.pid}) may still run but its identity cannot be verified; DevFn will not signal it. Stop it, then rerun devfn down.`;
+  const status = await supervisor.status(managed);
+  if (status === "unverified") { result.errors.push(unverified()); return; }
+  if (status !== "running") return;
+  try {
+    await supervisor.stop(managed);
+    const after = await supervisor.status(managed);
+    if (after === "running" || after === "unverified") { result.errors.push(`Process ${managed.name} (PID ${managed.pid}) did not exit when stopped.`); return; }
+    result.stoppedProcesses.push(managed.name);
+  } catch (error) {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "DEVFN_PROCESS_OWNERSHIP_MISMATCH") throw error;
+    if (await supervisor.status(managed) === "unverified") result.errors.push(unverified());
+  }
+}
+
+/**
+ * The registry journal outlives the receipt and can hold what the receipt
+ * never listed: an owner of a receipt rewritten outside DevFn, or a Compose
+ * launch interrupted before its identity was recorded. Each is stopped by
+ * verified identity or reported; none is assumed gone.
+ */
+async function stopJournaledOwners(receipt: LifecycleReceipt, registry: FilePortRegistry, supervisor: ProcessSupervisor, compose: ComposeController, result: CleanupResult): Promise<void> {
+  let invocation: RegistryInvocation | undefined;
+  try { invocation = (await registry.read()).invocations.find((item) => item.id === receipt.invocationId); }
+  catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); return; }
+  if (!invocation) return;
+  const listedProcesses = new Set(receipt.processes.map((managed) => `${managed.pid}:${managed.birthSignature ?? ""}`));
+  const listedContainers = new Set(receipt.services.flatMap((managed) => managed.containerIds));
+  for (const owner of invocation.owners ?? []) {
+    try {
+      if (owner.process && !listedProcesses.has(`${owner.process.pid}:${owner.process.birthSignature ?? ""}`)) {
+        await stopVerifiedProcess({ name: owner.node, pid: owner.process.pid, ...(owner.process.birthSignature ? { birthSignature: owner.process.birthSignature } : {}),
+          command: [], cwd: receipt.root, logPath: "", startedAt: receipt.startedAt }, supervisor, result);
+      } else if (owner.container && !listedContainers.has(owner.container.id) && await inspectContainerRunning(owner.container) !== false) {
+        result.errors.push(`Container ${owner.container.id} of ${owner.node} is journaled for invocation ${receipt.invocationId} but not in its receipt and may still run; stop it, then rerun devfn down.`);
+      }
+    } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
+  }
+  for (const node of invocation.launching ?? []) {
+    const launch = invocation.composeLaunches?.[node];
+    if (!launch) {
+      result.errors.push(`The launch of ${node} by invocation ${receipt.invocationId} was interrupted before its identity was recorded; DevFn cannot find what it started.`);
+      continue;
+    }
+    try {
+      await compose.stopLaunch({ name: node, ...launch });
+      if (!result.stoppedServices.includes(node)) result.stoppedServices.push(node);
+    } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
+  }
+}
+
 export class DevFnOrchestrator {
   public async up(options: UpOptions): Promise<LifecycleReceipt> {
     validateDevFnConfig(options.config);
@@ -631,7 +688,15 @@ export class DevFnOrchestrator {
 
   private async stopExisting(existing: LifecycleReceipt, stateDir: string, registry: FilePortRegistry, preserveRoutes = false): Promise<void> {
     const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready", preserveRoutes);
-    if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
+    if (recovered.errors.length) {
+      // Part of it may still run: it keeps its receipt, leases and routes
+      // for an explicit down, and is never reported stopped.
+      existing.cleanup = recovered;
+      existing.state = "degraded";
+      existing.updatedAt = new Date().toISOString();
+      await writeReceipt(existing).catch(() => undefined);
+      throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to stop prior invocation ${existing.invocationId}; it was not replaced: ${recovered.errors.join(" ")}`, { cleanup: recovered, priorStopped: false });
+    }
     existing.cleanup = recovered;
     existing.state = "stopped";
     existing.updatedAt = new Date().toISOString();
@@ -652,21 +717,24 @@ export class DevFnOrchestrator {
     const { options, identity, receipt, resolved, ports, allocations, supervisor, compose, registry } = context;
     // Routes may already target this lifecycle's ports. Its owner identities
     // are journaled in the registry, which outlives the worktree, so orphan
-    // recovery can tell a running interrupted start from a dead one.
-    await registry.beginLaunch(receipt.invocationId, node.name);
+    // recovery can tell a running interrupted start from a dead one. Each
+    // identity is in the receipt before the journal, so teardown of the
+    // receipt reaches every journaled owner; a Compose launch is journaled
+    // before it runs, and a process command runs only once both hold it.
     if (node.kind === "service") {
       const spec = options.config.services![node.name];
       await compose.start({
         name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir: receipt.runtimeDir, instanceId: identity.instanceId, ports,
         portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
         portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.nodes[node.name].environment, readinessEnvironment: resolved.nodes[node.name].readinessEnvironment,
+        onLaunch: async ({ name: _name, ...launch }) => await registry.beginLaunch(receipt.invocationId, node.name, launch),
         onStarted: async (managed) => {
-          await registry.recordOwners(receipt.invocationId, node.name, managed.containerIds.map((id) => ({ container: { id, name: managed.composeService,
-            ...(managed.dockerEnvironment !== undefined ? { dockerEnvironment: managed.dockerEnvironment } : {}) } })));
           receipt.services.push(managed);
           receipt.startedNodes?.push({ name: node.name, kind: node.kind });
           receipt.updatedAt = new Date().toISOString();
           await writeReceipt(receipt);
+          await registry.recordOwners(receipt.invocationId, node.name, managed.containerIds.map((id) => ({ container: { id, name: managed.composeService,
+            ...(managed.dockerEnvironment !== undefined ? { dockerEnvironment: managed.dockerEnvironment } : {}) } })));
         },
       });
       return;
@@ -675,11 +743,11 @@ export class DevFnOrchestrator {
     const managed = await supervisor.start({
       name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, command: resolved.nodes[node.name].command, script: resolved.nodes[node.name].script, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir: receipt.runtimeDir, ports, environment: resolved.generated,
       onStarted: async (started) => {
-        await registry.recordOwners(receipt.invocationId, node.name, [{ process: { pid: started.pid, ...(started.birthSignature ? { birthSignature: started.birthSignature } : {}) } }]);
         receipt.processes.push(started);
         receipt.startedNodes?.push({ name: node.name, kind: node.kind });
         receipt.updatedAt = new Date().toISOString();
         await writeReceipt(receipt);
+        await registry.recordOwners(receipt.invocationId, node.name, [{ process: { pid: started.pid, ...(started.birthSignature ? { birthSignature: started.birthSignature } : {}) } }]);
       },
     });
     if (spec.exposure !== "public") {
@@ -702,19 +770,16 @@ export class DevFnOrchestrator {
       : historical.sort((a, b) => Date.parse(b.value.startedAt) - Date.parse(a.value.startedAt));
     for (const item of started) {
       try {
-        if (item.kind === "process") {
-          if (await supervisor.status(item.value) !== "running") continue;
-          await supervisor.stop(item.value);
-          result.stoppedProcesses.push(item.value.name);
-        }
+        if (item.kind === "process") await stopVerifiedProcess(item.value, supervisor, result);
         else { await compose.stop(item.value); result.stoppedServices.push(item.value.name); }
       } catch (error) {
-        if (item.kind !== "process" || !error || typeof error !== "object" || !("code" in error) || error.code !== "DEVFN_PROCESS_OWNERSHIP_MISMATCH") {
-          result.errors.push(error instanceof Error ? error.message : String(error));
-        }
+        result.errors.push(error instanceof Error ? error.message : String(error));
       }
     }
-    if (!preserveRoutes) {
+    await stopJournaledOwners(receipt, registry, supervisor, compose, result);
+    // Routes of an owner that may still run keep pointing at it until a
+    // later teardown resolves it.
+    if (!preserveRoutes && result.errors.length === 0) {
       try { await proxy.removeInstance(receipt.instanceId); result.removedProxy = true; } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
     }
     if (result.errors.length === 0 && !preserveLeases) {

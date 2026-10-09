@@ -55,7 +55,20 @@ export interface ComposeStartInput {
   environment?: Record<string, string>;
   /** Host-side environment used only by command readiness probes. */
   readinessEnvironment?: Record<string, string>;
+  /** Called before Compose creates or starts anything, with what it may create or start. */
+  onLaunch?: (launch: ComposeLaunch) => Promise<void>;
   onStarted?: (service: ManagedComposeService) => Promise<void>;
+}
+
+/** What one Compose launch may create or start, known before it runs. */
+export interface ComposeLaunch {
+  name: string;
+  projectName: string;
+  composeService: string;
+  preExisting: boolean;
+  existingContainerIds: string[];
+  runningContainerIds: string[];
+  dockerEnvironment?: Record<string, string>;
 }
 
 export class ComposeError extends Error {
@@ -1498,6 +1511,8 @@ export class ComposeController {
     }
     let containerIds: string[] = [];
     const startedAt = new Date().toISOString();
+    await input.onLaunch?.({ name: input.name, projectName, composeService: input.spec.service, preExisting: preservePreExisting,
+      existingContainerIds: before, runningContainerIds: beforeRunning, dockerEnvironment });
     try {
       await this.run("docker", [...baseArgs, "up", "-d", ...(preservePreExisting ? ["--no-recreate"] : []), "--no-deps", input.spec.service], { cwd: input.root, env: environment, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
       containerIds = await this.containerIds(baseArgs, input.spec.service, input.root, environment, true);
@@ -1582,6 +1597,30 @@ export class ComposeController {
     } catch (error) {
       throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `Unable to stop Compose service ${service.name}.`, { cause: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  /**
+   * Stop what an interrupted launch may have created or started, found by its
+   * Compose project and service labels. Containers that ran before the launch
+   * are left running, as a recorded launch would leave them.
+   */
+  public async stopLaunch(launch: ComposeLaunch): Promise<void> {
+    let ids: string[];
+    try {
+      ids = (await this.run("docker", ["ps", "-a", "-q", "--no-trunc", "--filter", `label=com.docker.compose.project=${launch.projectName}`,
+        "--filter", `label=com.docker.compose.service=${launch.composeService}`], { env: directDockerEnvironment(launch.dockerEnvironment), timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.split(/\s+/).filter(Boolean);
+    } catch (error) {
+      throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `Unable to find what the interrupted launch of Compose service ${launch.name} started.`, { cause: error instanceof Error ? error.message : String(error) });
+    }
+    const existing = new Set(launch.existingContainerIds);
+    const running = new Set(launch.runningContainerIds);
+    await this.stop({
+      name: launch.name, composeService: launch.composeService, projectName: launch.projectName, files: [], containerIds: ids,
+      preExisting: launch.preExisting, wasRunning: false, startedAt: new Date(0).toISOString(),
+      startedContainerIds: launch.preExisting ? ids.filter((id) => existing.has(id) && !running.has(id)) : ids,
+      createdContainerIds: launch.preExisting ? ids.filter((id) => !existing.has(id)) : ids,
+      ...(launch.dockerEnvironment !== undefined ? { dockerEnvironment: launch.dockerEnvironment } : {}),
+    });
   }
 
   public async logs(service: ManagedComposeService, tail: number | null = 200, since?: string): Promise<string> {
