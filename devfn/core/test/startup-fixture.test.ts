@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 
 import { validateDevFnConfig } from "@devfn/config";
 import { allocateEphemeralPort } from "@devfn/ports";
+import { ProcessSupervisor } from "@devfn/processes";
 import { proxyListenerPorts, proxyOwnerStatus } from "@devfn/proxy";
 import { describe, expect, it } from "vitest";
 
@@ -73,13 +74,19 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
     config.processes!.native.command = [process.execPath, "fail.mjs"];
     config.ports!.native = { preferred: await allocateEphemeralPort(), exact: true };
     config.hostnames!.native.hostname = "failed.localhost";
-    await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
-    expect((await readReceipt(config, root, first.instanceId))?.invocationId).toBe(first.invocationId);
-    expect((await readReceipt(config, root, first.instanceId))?.state).toBe("ready");
-    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/health`).then((response) => response.text())).toBe("ok");
-    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes[0].hostname).toBe(first.routes[0].hostname);
+    // The failure happens after the prior lifecycle stopped; its routes and
+    // leases are released rather than claimed as restored.
+    await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED",
+      details: { priorInvocationId: first.invocationId, priorStopped: true } });
+    expect((await readReceipt(config, root, first.instanceId))?.state).toBe("failed");
+    await expect(fetch(`http://127.0.0.1:${first.allocations[0].port}/health`)).rejects.toThrow();
+    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes
+      .filter((route: { instanceId: string }) => route.instanceId === first.instanceId)).toEqual([]);
     config.processes!.native.command = originalCommand;
     config.ports!.native = originalPort;
+    config.hostnames!.native.hostname = "first.localhost";
+    const restarted = await orchestrator.up({ config, root, stateDir });
+    expect(restarted.routes[0].hostname).toBe(first.routes[0].hostname);
     config.hostnames!.native.hostname = "second.localhost";
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
     await mkdir(toolsDir);
@@ -89,11 +96,11 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
       await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
     } finally { process.env.PATH = originalPath; }
     expect((await readReceipt(config, root, first.instanceId))?.state).toBe("ready");
-    expect((await readReceipt(config, root, first.instanceId))?.invocationId).toBe(first.invocationId);
-    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/health`).then((response) => response.text())).toBe("ok");
+    expect((await readReceipt(config, root, first.instanceId))?.invocationId).toBe(restarted.invocationId);
+    expect(await fetch(`http://127.0.0.1:${restarted.allocations[0].port}/health`).then((response) => response.text())).toBe("ok");
     expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes[0].hostname).toBe(first.routes[0].hostname);
     const second = await orchestrator.up({ config, root, stateDir });
-    expect(second.invocationId).not.toBe(first.invocationId);
+    expect(second.invocationId).not.toBe(restarted.invocationId);
     expect(second.routes[0].hostname).toContain("second.");
     expect(second.routes[0].hostname).not.toBe(first.routes[0].hostname);
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
@@ -128,28 +135,31 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
 }, 60_000);
 
 describe("real local startup fixtures", () => {
-  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("restores a Compose service after replacement readiness fails", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-rollback-"));
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("reports a Compose replacement readiness failure after stopping the prior service", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-replacement-"));
     const stateDir = path.join(root, "state");
     const orchestrator = new DevFnOrchestrator();
-    const original = validateDevFnConfig({ version: 1, project: { id: "compose-rollback" },
+    const original = validateDevFnConfig({ version: 1, project: { id: "compose-replacement" },
       services: { api: { adapter: "compose", service: "api", health: { type: "command", command: ["sh", "-c", "exit 0"], timeoutMs: 3000 } } },
       profiles: { default: { services: ["api"] } } });
+    let project: string | undefined;
     try {
       await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n");
       const first = await orchestrator.up({ config: original, root, stateDir });
+      project = first.services[0].projectName;
+      // The build/source context changes before the failed replacement.
       await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sleep, '1800']\n");
       const replacement = validateDevFnConfig({ ...original,
         services: { api: { ...original.services!.api, health: { type: "command", command: ["sh", "-c", "exit 1"], timeoutMs: 1500 } } } });
-      await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
-      const restored = await readReceipt(original, root, first.instanceId);
-      expect(restored).toMatchObject({ invocationId: first.invocationId, state: "ready" });
-      expect(await orchestrator.status({ config: original, root })).toMatchObject({ ok: false, state: "degraded" });
-      expect(restored!.services[0].containerIds).not.toEqual(first.services[0].containerIds);
-      const restoredCommand = (await execFileAsync("docker", ["inspect", "--format", "{{json .Config.Cmd}}", restored!.services[0].containerIds[0]])).stdout.trim();
-      expect(JSON.parse(restoredCommand)).toEqual(["sleep", "3600"]);
+      await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED",
+        details: { priorInvocationId: first.invocationId, priorStopped: true } });
+      expect(await readReceipt(original, root, first.instanceId)).toMatchObject({ state: "failed" });
+      expect(await orchestrator.status({ config: original, root })).toMatchObject({ ok: false, state: "failed" });
+      const running = (await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", first.services[0].containerIds[0]]).then(({ stdout }) => stdout.trim(), () => "absent"));
+      expect(running).not.toBe("true");
     } finally {
       await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
+      if (project) await execFileAsync("docker", ["network", "rm", `${project}_default`]).catch(() => undefined);
       await rm(root, { recursive: true, force: true });
     }
   }, 90_000);
@@ -836,7 +846,12 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(JSON.stringify(receipt)).not.toContain(secret);
       expect(await readFile(receipt.processes[0].logPath, "utf8")).not.toContain(secret);
     } finally {
-      if (started) await orchestrator.down({ config, root, stateDir: path.join(root, "state") });
+      // A failed assertion can leave a mutated manifest. Never leak the
+      // detached fixture process when down cannot complete.
+      if (started) await orchestrator.down({ config, root, stateDir: path.join(root, "state") }).catch(async () => {
+        const leftover = await readReceipt(config, root, owner).catch(() => null);
+        for (const managed of leftover?.processes ?? []) await new ProcessSupervisor().stop(managed).catch(() => undefined);
+      });
       if (withProxy) await stopFixtureProxy(path.join(root, "state"));
     }
     } finally {

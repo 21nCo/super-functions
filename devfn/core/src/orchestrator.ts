@@ -1,11 +1,11 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, selectedComposeEndpointReferences, type ManagedComposeService } from "@devfn/compose";
-import { defaultStateDir, isCredentialKey, loadDevFnPolicy, resolveContainedPath, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
+import { defaultStateDir, isCredentialKey, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, withRoutingLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
 import { CaddyProxyController, proxyListenerPorts, readRegisteredDomains, renderCaddyfile, verifyCertificate, verifyLocalDns, type ProxyRoute } from "@devfn/proxy";
@@ -18,95 +18,6 @@ import { DevFnError, type CleanupResult, type InstanceIdentity, type RoutingIden
 
 const execFileAsync = promisify(execFile);
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-interface RecoverySnapshot {
-  version: 1;
-  invocationId: string;
-  config: DevFnConfig;
-  plan: LifecyclePlan;
-  resolved: ReturnType<typeof resolveEndpointTemplates>;
-  startupEnvironments?: Record<string, NodeJS.ProcessEnv>;
-}
-
-async function makeRecoverySnapshot(options: UpOptions, receipt: LifecycleReceipt, plan: LifecyclePlan,
-  resolved: ReturnType<typeof resolveEndpointTemplates>): Promise<RecoverySnapshot> {
-  const startupEnvironments: Record<string, NodeJS.ProcessEnv> = {};
-  const config = structuredClone(options.config);
-  for (const node of plan.nodes) {
-    if (node.kind === "process") {
-      const spec = options.config.processes![node.name];
-      startupEnvironments[node.name] = createProcessEnvironment({ ...spec, env: resolved.nodes[node.name].environment }, resolved.generated);
-    } else {
-      const spec = options.config.services![node.name];
-      startupEnvironments[node.name] = createComposeEnvironment({ ...spec, env: resolved.nodes[node.name].environment }, resolved.nodes[node.name].environment);
-      const source = await resolveContainedPath(options.root, spec.file ?? "compose.yaml", `services.${node.name}.file`);
-      const { stdout } = await execFileAsync("docker", ["compose", "-f", source, "config", "--format", "json"], {
-        cwd: options.root, env: startupEnvironments[node.name], timeout: 20_000, maxBuffer: 10 * 1024 * 1024,
-      });
-      const effective = JSON.parse(stdout) as unknown;
-      if (!effective || typeof effective !== "object" || Array.isArray(effective)) throw new DevFnError("DEVFN_RUNTIME_INVALID", "Compose did not return a restorable configuration.");
-      const relative = path.join(options.config.runtimeDir ?? ".devfn", "instances", receipt.instanceId,
-        "recovery-compose", receipt.invocationId, `${node.name}.json`);
-      const target = await resolveContainedPath(options.root, relative, `services.${node.name}.recovery`);
-      await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
-      await writeFile(target, `${JSON.stringify(effective)}\n`, { mode: 0o600 });
-      config.services![node.name].file = relative;
-    }
-  }
-  return { version: 1, invocationId: receipt.invocationId, config, plan, resolved, startupEnvironments };
-}
-
-interface ReplacementJournal { version: 1; previous: LifecycleReceipt; snapshot: RecoverySnapshot }
-
-async function replacementJournalPath(root: string, instanceId: string): Promise<string> {
-  return await resolveContainedPath(root, path.join(".devfn", "receipts", `${instanceId}.rollback.json`), "replacement journal");
-}
-
-async function readReplacementJournal(root: string, instanceId: string): Promise<ReplacementJournal | undefined> {
-  try {
-    const journal = JSON.parse(await readFile(await replacementJournalPath(root, instanceId), "utf8")) as ReplacementJournal;
-    if (journal.version !== 1 || journal.previous.instanceId !== instanceId || journal.snapshot.invocationId !== journal.previous.invocationId) {
-      throw new DevFnError("DEVFN_RUNTIME_INVALID", "Replacement recovery journal is invalid.");
-    }
-    return journal;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
-}
-
-async function writeReplacementJournal(previous: LifecycleReceipt, snapshot: RecoverySnapshot): Promise<void> {
-  const target = await replacementJournalPath(previous.root, previous.instanceId);
-  await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
-  const temp = `${target}.${randomUUID()}.tmp`;
-  await writeFile(temp, `${JSON.stringify({ version: 1, previous, snapshot })}\n`, { mode: 0o600, flag: "wx" });
-  await rename(temp, target);
-}
-
-async function removeReplacementJournal(root: string, instanceId: string): Promise<void> {
-  await rm(await replacementJournalPath(root, instanceId), { force: true });
-}
-
-async function readRecoverySnapshot(receipt: LifecycleReceipt): Promise<RecoverySnapshot | undefined> {
-  try {
-    const snapshot = JSON.parse(await readFile(path.join(receipt.runtimeDir, "recovery.json"), "utf8")) as RecoverySnapshot;
-    return snapshot.version === 1 && snapshot.invocationId === receipt.invocationId ? snapshot : undefined;
-  } catch { return undefined; }
-}
-
-async function writeRecoverySnapshot(receipt: LifecycleReceipt, snapshot: RecoverySnapshot): Promise<void> {
-  // This private runtime artifact holds effective startup inputs, including
-  // environment values. It must never be embedded in the public receipt.
-  const target = path.join(receipt.runtimeDir, "recovery.json");
-  const temp = `${target}.${randomUUID()}.tmp`;
-  await writeFile(temp, `${JSON.stringify(snapshot)}\n`, { mode: 0o600, flag: "wx" });
-  await rename(temp, target);
-}
-
-async function discardRecoverySnapshot(receipt: LifecycleReceipt, keepIndex = false): Promise<void> {
-  await rm(path.join(receipt.runtimeDir, "recovery-compose", receipt.invocationId), { recursive: true, force: true });
-  if (!keepIndex) await rm(path.join(receipt.runtimeDir, "recovery.json"), { force: true });
-}
 
 function isLoopbackHost(host: string): boolean {
   const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
@@ -458,35 +369,10 @@ export class DevFnOrchestrator {
       // this lifecycle while sibling route/lease transitions use the short
       // shared routing lock below.
       const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
-      await this.recoverReplacement(options, stateDir, identity, registry);
       const oldReady = await this.prepareExisting(options, stateDir, identity, loadedPolicy, registry, true);
       const start = await this.prepareUpLocked(options, stateDir, identity, loadedPolicy, oldReady);
       return await start();
     }, { timeoutMs: 30_000 });
-  }
-
-  private async recoverReplacement(options: UpOptions, stateDir: string, identity: RoutingIdentity, registry: FilePortRegistry): Promise<void> {
-    const journal = await readReplacementJournal(options.root, identity.instanceId);
-    if (!journal) return;
-    assertReceiptStateDir(journal.previous, stateDir);
-    const current = await readReceipt(options.config, options.root, identity.instanceId);
-    if (current?.invocationId !== journal.previous.invocationId && current?.state === "ready") {
-      await registry.release({ invocationId: journal.previous.invocationId });
-      await removeReplacementJournal(options.root, identity.instanceId);
-      await discardRecoverySnapshot(journal.previous, journal.previous.runtimeDir === current.runtimeDir).catch(() => undefined);
-      return;
-    }
-    const proxy = new CaddyProxyController(stateDir);
-    if (current && current.invocationId !== journal.previous.invocationId) {
-      const cleanup = await this.cleanup(current, registry, new ProcessSupervisor(), new ComposeController(), proxy, true, true);
-      if (cleanup.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", "Unable to clean an interrupted replacement before restoring the prior lifecycle.", { cleanup });
-    }
-    const pending = (await registry.read()).invocations.filter((item) => item.replacingInvocationId === journal.previous.invocationId &&
-      (item.state === "planning" || item.state === "starting"));
-    for (const item of pending) await registry.release({ invocationId: item.id, errorCode: "DEVFN_INTERRUPTED" });
-    await this.restoreExisting(journal.previous, journal.snapshot, registry, proxy);
-    await writeRecoverySnapshot(journal.previous, journal.snapshot);
-    await removeReplacementJournal(options.root, identity.instanceId);
   }
 
   private async prepareUpLocked(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>, oldReady?: LifecycleReceipt): Promise<() => Promise<LifecycleReceipt>> {
@@ -547,18 +433,6 @@ export class DevFnOrchestrator {
       throw error;
     }
     const proxy = new CaddyProxyController(stateDir);
-    const recovery = oldReady ? await readRecoverySnapshot(oldReady) : undefined;
-    if (oldReady && !recovery) {
-      await registry.release({ invocationId, errorCode: "DEVFN_REPLACEMENT_PREPARE_FAILED" });
-      throw new DevFnError("DEVFN_RUNTIME_INVALID", "Ready invocation lacks a recovery snapshot; stop it explicitly before replacing it.");
-    }
-    if (oldReady && recovery) {
-      try { await writeReplacementJournal(oldReady, recovery); }
-      catch (error) {
-        await registry.release({ invocationId, errorCode: "DEVFN_REPLACEMENT_PREPARE_FAILED" });
-        throw error;
-      }
-    }
     let activatedRoutes: Awaited<ReturnType<typeof proxy.upsert>> | undefined;
     if (oldReady && (routes.length || oldReady.routes.length)) {
       try {
@@ -568,16 +442,11 @@ export class DevFnOrchestrator {
         activatedRoutes = await proxy.upsert(finalRoutes, identity.instanceId);
       } catch (error) {
         await registry.release({ invocationId, errorCode: "DEVFN_PROXY_RELOAD_FAILED" });
-        if (error && typeof error === "object" && "code" in error && error.code === "DEVFN_PROXY_RELOAD_FAILED") {
-          // Caddy rejects the candidate before the committed route file is
-          // replaced; its controller also discards the pending journal.
-          await removeReplacementJournal(options.root, identity.instanceId);
-          throw error;
-        }
-        try {
-          await proxy.upsert(oldReady.routes, identity.instanceId);
-          await removeReplacementJournal(options.root, identity.instanceId);
-        } catch (rollbackError) {
+        // Caddy rejects the candidate before the committed route file is
+        // replaced; its controller also discards the pending journal.
+        if (error && typeof error === "object" && "code" in error && error.code === "DEVFN_PROXY_RELOAD_FAILED") throw error;
+        try { await proxy.upsert(oldReady.routes, identity.instanceId); }
+        catch (rollbackError) {
           throw new DevFnError("DEVFN_RUNTIME_INVALID", `Proxy activation failed and prior routes could not be restored: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
         }
         throw error;
@@ -594,8 +463,7 @@ export class DevFnOrchestrator {
       await registry.updateInvocation(invocationId, { state: "starting" });
     } catch (error) {
       await registry.release({ invocationId, errorCode: "DEVFN_RECEIPT_WRITE_FAILED" }).catch(() => undefined);
-      if (oldReady && recovery) await proxy.upsert(oldReady.routes, identity.instanceId);
-      await removeReplacementJournal(options.root, identity.instanceId);
+      if (activatedRoutes && oldReady) await proxy.upsert(oldReady.routes, identity.instanceId);
       throw error;
     }
     return async () => {
@@ -603,13 +471,31 @@ export class DevFnOrchestrator {
       heartbeat.unref();
       const supervisor = new ProcessSupervisor();
       const compose = new ComposeController();
-      try {
-        if (oldReady) {
-          // Keep its leases and route claim through the entire replacement.
-          // Siblings cannot acquire the old listener while rollback is possible.
-          const stopped = await this.cleanup(oldReady, registry, supervisor, compose, proxy, false, true, true);
-          if (stopped.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", "Unable to stop the prior lifecycle for replacement.", { cleanup: stopped });
+      if (oldReady) {
+        // Replacement is stop-then-start: everything that can be checked
+        // without running the new source was validated above. The old
+        // processes are not relaunched after a later failure because their
+        // source in the working tree may already have changed.
+        const stopped = await this.cleanup(oldReady, registry, supervisor, compose, proxy, false, true, true);
+        if (stopped.errors.length) {
+          clearInterval(heartbeat);
+          // Part of the prior lifecycle may still run, so it keeps its receipt,
+          // leases and routes for an explicit down.
+          await registry.release({ invocationId, errorCode: "DEVFN_REPLACEMENT_STOP_FAILED" }).catch(() => undefined);
+          if (activatedRoutes) await proxy.upsert(oldReady.routes, identity.instanceId).catch(() => undefined);
+          oldReady.cleanup = stopped;
+          oldReady.state = "degraded";
+          oldReady.updatedAt = new Date().toISOString();
+          await writeReceipt(oldReady).catch(() => undefined);
+          throw new DevFnError("DEVFN_RUNTIME_INVALID", "Unable to stop the prior lifecycle for replacement; run devfn down before retrying.",
+            { cleanup: stopped, priorInvocationId: oldReady.invocationId, priorStopped: false });
         }
+      }
+      try {
+        // The prior processes are gone. The replacement's planned leases
+        // already cover every port it reuses, so the prior leases end here,
+        // before its receipt is superseded.
+        if (oldReady) await registry.release({ invocationId: oldReady.invocationId });
         await writeReceipt(receipt);
         receipt.environmentOutputs = await writeEnvironmentOutputs(options.root, runtimeDir, options.config.environmentOutputs ?? [], environment);
         for (const node of plan.nodes) {
@@ -623,35 +509,23 @@ export class DevFnOrchestrator {
         } else if (activatedRoutes) receipt.routes = activatedRoutes;
         receipt.urls = resolveAllocationUrls(allocations, receipt.routes, selectedHttpPorts(options.config, plan), resolved.directUrls);
         if (oldReady?.routes.length && !receipt.routes.length) await proxy.removeInstance(identity.instanceId);
-        await writeRecoverySnapshot(receipt, await makeRecoverySnapshot(options, receipt, plan, resolved));
         clearInterval(heartbeat);
         await registry.markActive(invocationId, startupOwners(options.config, receipt));
         receipt.state = "ready";
         receipt.updatedAt = new Date().toISOString();
         await writeReceipt(receipt);
-        if (oldReady) await registry.release({ invocationId: oldReady.invocationId });
-        await removeReplacementJournal(options.root, identity.instanceId).catch(() => undefined);
-        if (oldReady) await discardRecoverySnapshot(oldReady, oldReady.runtimeDir === receipt.runtimeDir).catch(() => undefined);
         return receipt;
       } catch (error) {
-        const cleanup = await this.cleanup(receipt, registry, supervisor, compose, proxy, true, Boolean(oldReady));
+        const cleanup = await this.cleanup(receipt, registry, supervisor, compose, proxy, true);
         receipt.state = "failed";
         receipt.cleanup = cleanup;
         receipt.error = { code: error && typeof error === "object" && "code" in error ? String(error.code) : "DEVFN_START_FAILED", message: error instanceof Error ? error.message : String(error) };
         receipt.updatedAt = new Date().toISOString();
         await writeReceipt(receipt).catch(() => undefined);
-        if (oldReady && recovery) {
-          try {
-            await this.restoreExisting(oldReady, recovery, registry, proxy);
-            await writeRecoverySnapshot(oldReady, recovery);
-            await removeReplacementJournal(options.root, identity.instanceId);
-            await discardRecoverySnapshot(receipt, true).catch(() => undefined);
-          } catch (restoreError) {
-            throw new DevFnError("DEVFN_START_FAILED", `DevFn startup failed and the prior lifecycle could not be restored: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
-              { cleanup, causeCode: receipt.error.code, recoveryFailed: true });
-          }
+        if (oldReady) {
+          throw new DevFnError("DEVFN_START_FAILED", `DevFn replacement failed after prior invocation ${oldReady.invocationId} was stopped; it was not restarted: ${receipt.error.message}`,
+            { cleanup, causeCode: receipt.error.code, priorInvocationId: oldReady.invocationId, priorStopped: true });
         }
-        if (!oldReady) await discardRecoverySnapshot(receipt).catch(() => undefined);
         throw new DevFnError("DEVFN_START_FAILED", `DevFn startup failed: ${receipt.error.message}`, { cleanup, causeCode: receipt.error.code });
       } finally {
         clearInterval(heartbeat);
@@ -663,6 +537,14 @@ export class DevFnOrchestrator {
     const existing = await readReceipt(options.config, options.root, identity.instanceId);
     if (existing && existing.state !== "stopped") {
       assertReceiptStateDir(existing, stateDir);
+      // down holds this instance lock for its whole run, so a stopping
+      // invocation seen here was interrupted; finish that stop first. A ready
+      // receipt is replaceable only while its registry invocation is ready.
+      const registered = (await registry.read()).invocations.find((item) => item.id === existing.invocationId)?.state;
+      if (registered === "stopping") {
+        await this.stopExisting(existing, stateDir, registry);
+        return undefined;
+      }
       const processStates = await Promise.all(existing.processes.map((item) => new ProcessSupervisor().status(item)));
       const serviceStates = await Promise.all(existing.services.map((item) => new ComposeController().status(item)));
       const managedCount = processStates.length + serviceStates.length;
@@ -677,7 +559,7 @@ export class DevFnOrchestrator {
       const replacementPorts = Object.fromEntries(replacementPlan.portNames.map((name) => [name, existingPorts[name] ?? 1]));
       const replacement = await resolveWithComposeNetworks(options.config, replacementPlan, options.root, identity, replacementPorts, loadedPolicy?.policy.hostnameSuffix);
       await startupFingerprints(options.config, options.root, replacement);
-      if (existing.state === "ready" && allRunning && deferReadyCleanup) return existing;
+      if (existing.state === "ready" && allRunning && deferReadyCleanup && registered === "ready") return existing;
       await this.stopExisting(existing, stateDir, registry);
     }
   }
@@ -691,44 +573,6 @@ export class DevFnOrchestrator {
     await writeReceipt(existing);
   }
 
-  private async restoreExisting(existing: LifecycleReceipt, snapshot: RecoverySnapshot, registry: FilePortRegistry, proxy: CaddyProxyController): Promise<void> {
-    const supervisor = new ProcessSupervisor();
-    const compose = new ComposeController();
-    existing.processes = (await Promise.all(existing.processes.map(async (managed) =>
-      await supervisor.status(managed) === "running" ? managed : undefined))).filter((item): item is ManagedProcess => Boolean(item));
-    existing.services = (await Promise.all(existing.services.map(async (managed) =>
-      await compose.status(managed) === "running" ? managed : undefined))).filter((item): item is ManagedComposeService => Boolean(item));
-    existing.startedNodes = snapshot.plan.nodes.filter((node) =>
-      (node.kind === "process" ? existing.processes : existing.services).some((managed) => managed.name === node.name))
-      .map(({ name, kind }) => ({ name, kind }));
-    const ports = Object.fromEntries(existing.allocations.map((allocation) => [allocation.service, allocation.port]));
-    const restored: LifecycleReceipt = existing;
-    try {
-      await writeEnvironmentOutputs(existing.root, existing.runtimeDir, snapshot.config.environmentOutputs ?? [], snapshot.resolved.environment);
-      for (const node of snapshot.plan.nodes) {
-        if ((node.kind === "process" ? existing.processes : existing.services).some((managed) => managed.name === node.name)) continue;
-        await this.startSelectedNode(node, {
-          options: { config: snapshot.config, root: existing.root, stateDir: existing.stateDir },
-          identity: { instanceId: existing.instanceId } as InstanceIdentity,
-          receipt: restored, resolved: snapshot.resolved, ports, allocations: existing.allocations, supervisor, compose,
-          sourceEnvironments: snapshot.startupEnvironments,
-        });
-      }
-      existing.routes = await proxy.upsert(existing.routes, existing.instanceId);
-      // The old lease never became available to siblings; update its owner
-      // identity after the replacement process receives a new PID/container.
-      await registry.replaceOwners(existing.invocationId, startupOwners(snapshot.config, existing));
-      existing.state = "ready";
-      existing.updatedAt = new Date().toISOString();
-      await writeReceipt(existing);
-    } catch (error) {
-      existing.state = "degraded";
-      existing.updatedAt = new Date().toISOString();
-      await writeReceipt(existing).catch(() => undefined);
-      throw error;
-    }
-  }
-
   private async startSelectedNode(node: LifecyclePlan["nodes"][number], context: {
     options: UpOptions;
     identity: InstanceIdentity;
@@ -738,16 +582,14 @@ export class DevFnOrchestrator {
     allocations: readonly PortAllocation[];
     supervisor: ProcessSupervisor;
     compose: ComposeController;
-    sourceEnvironments?: Record<string, NodeJS.ProcessEnv>;
   }): Promise<void> {
-    const { options, identity, receipt, resolved, ports, allocations, supervisor, compose, sourceEnvironments } = context;
+    const { options, identity, receipt, resolved, ports, allocations, supervisor, compose } = context;
     if (node.kind === "service") {
       const spec = options.config.services![node.name];
       await compose.start({
         name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir: receipt.runtimeDir, instanceId: identity.instanceId, ports,
         portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
         portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.nodes[node.name].environment, readinessEnvironment: resolved.nodes[node.name].readinessEnvironment,
-        sourceEnvironment: sourceEnvironments?.[node.name],
         onStarted: async (managed) => {
           receipt.services.push(managed);
           receipt.startedNodes?.push({ name: node.name, kind: node.kind });
@@ -760,7 +602,6 @@ export class DevFnOrchestrator {
     const spec = options.config.processes![node.name];
     const managed = await supervisor.start({
       name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, command: resolved.nodes[node.name].command, script: resolved.nodes[node.name].script, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir: receipt.runtimeDir, ports, environment: resolved.generated,
-      sourceEnvironment: sourceEnvironments?.[node.name],
       onStarted: async (started) => {
         receipt.processes.push(started);
         receipt.startedNodes?.push({ name: node.name, kind: node.kind });
@@ -821,7 +662,6 @@ export class DevFnOrchestrator {
         const receipt = await readReceipt(options.config, options.root, identity.instanceId);
         if (!receipt || receipt.state === "stopped") throw new DevFnError("DEVFN_NOT_RUNNING", `DevFn instance ${identity.instanceId} is not running.`);
         assertReceiptStateDir(receipt, stateDir);
-        await readReplacementJournal(options.root, identity.instanceId);
         await new FilePortRegistry(path.join(stateDir, "registry.json")).updateInvocation(receipt.invocationId, { state: "stopping" });
       });
       return await this.downLocked(options, stateDir, identity);
@@ -832,30 +672,21 @@ export class DevFnOrchestrator {
     const receipt = await readReceipt(options.config, options.root, identity.instanceId);
     if (!receipt || receipt.state === "stopped") throw new DevFnError("DEVFN_NOT_RUNNING", `DevFn instance ${identity.instanceId} is not running.`);
     assertReceiptStateDir(receipt, stateDir);
-    const journal = await readReplacementJournal(options.root, identity.instanceId);
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
-    const proxy = new CaddyProxyController(stateDir);
-    const cleanup = await this.cleanup(receipt, registry, new ProcessSupervisor(), new ComposeController(), proxy, false);
-    if (journal && cleanup.errors.length === 0) {
-      if (journal.previous.invocationId !== receipt.invocationId) {
-        const priorCleanup = await this.cleanup(journal.previous, registry, new ProcessSupervisor(), new ComposeController(), proxy, false, true);
-        cleanup.errors.push(...priorCleanup.errors);
-        cleanup.stoppedProcesses.push(...priorCleanup.stoppedProcesses);
-        cleanup.stoppedServices.push(...priorCleanup.stoppedServices);
-      }
-      if (cleanup.errors.length === 0) {
-        const pending = (await registry.read()).invocations.filter((item) => item.replacingInvocationId === journal.previous.invocationId &&
-          (item.state === "planning" || item.state === "starting"));
-        for (const item of pending) await registry.release({ invocationId: item.id, errorCode: "DEVFN_INTERRUPTED" });
-        await discardRecoverySnapshot(journal.previous, journal.previous.runtimeDir === receipt.runtimeDir).catch(() => undefined);
-        await removeReplacementJournal(options.root, identity.instanceId);
-      }
-    }
+    // Siblings honour a stopping claim only while it is refreshed; an
+    // interrupted down expires and the next lifecycle command completes it.
+    const heartbeat = setInterval(() => { void registry.updateInvocation(receipt.invocationId, {}).catch(() => undefined); }, 60_000);
+    heartbeat.unref();
+    let cleanup: CleanupResult;
+    try { cleanup = await this.cleanup(receipt, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), false); }
+    finally { clearInterval(heartbeat); }
+    // The instance lock is held, so any other planning/starting invocation of
+    // this worktree belongs to an interrupted command.
+    if (cleanup.errors.length === 0) await registry.recoverInterrupted(identity.instanceId);
     receipt.cleanup = cleanup;
     receipt.state = cleanup.errors.length ? "degraded" : "stopped";
     receipt.updatedAt = new Date().toISOString();
     await writeReceipt(receipt);
-    if (receipt.state === "stopped") await discardRecoverySnapshot(receipt).catch(() => undefined);
     return receipt;
   }
 

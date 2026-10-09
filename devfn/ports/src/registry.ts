@@ -84,8 +84,8 @@ async function refreshAllocation(allocation: PortAllocation, now: string, availa
 async function expireAbandonedProxyClaims(state: RegistryState, stateDir: string, now: string,
   available: (port: number, protocol: "tcp" | "udp", host: string) => Promise<boolean>): Promise<void> {
   for (const invocation of state.invocations) {
-    if (!invocation.proxyListenerPorts?.length || !["planning", "starting", "ready"].includes(invocation.state) ||
-      !Number.isFinite(Date.parse(invocation.updatedAt)) || Date.now() - Date.parse(invocation.updatedAt) <= ABANDONED_CLAIM_MS) continue;
+    if (!invocation.proxyListenerPorts?.length || !["planning", "starting", "ready", "stopping"].includes(invocation.state) ||
+      !Number.isFinite(Date.parse(invocation.updatedAt)) || recentlyRefreshed(invocation)) continue;
     for (const allocation of state.allocations.filter((item) => item.invocationId === invocation.id && active(item) && !retainedForReplacement(state, item.invocationId))) {
       await refreshAllocation(allocation, now, available);
     }
@@ -120,9 +120,19 @@ function active(allocation: PortAllocation): boolean {
   return allocation.state === "planned" || allocation.state === "active" || allocation.state === "externally-occupied";
 }
 
+// Lifecycle commands refresh their invocation while they run. Protection
+// that depends on a running command expires when that refresh stops.
+function recentlyRefreshed(invocation: RegistryInvocation): boolean {
+  return Date.now() - Date.parse(invocation.updatedAt) <= ABANDONED_CLAIM_MS;
+}
+
 function retainedForReplacement(state: RegistryState, invocationId: string): boolean {
   return state.invocations.some((item) => item.replacingInvocationId === invocationId &&
-    (item.state === "planning" || item.state === "starting"));
+    (item.state === "planning" || item.state === "starting") && recentlyRefreshed(item));
+}
+
+function stoppingInProgress(state: RegistryState, invocationId: string): boolean {
+  return state.invocations.some((item) => item.id === invocationId && item.state === "stopping" && recentlyRefreshed(item));
 }
 
 function occupancyKey(port: number, protocol: "tcp" | "udp" = "tcp"): string {
@@ -443,19 +453,6 @@ export class FilePortRegistry {
     });
   }
 
-  /** Refresh a retained ready lease after a failed replacement restarts its owner. */
-  public async replaceOwners(invocationId: string, owners: Record<string, { process?: PortAllocation["process"]; container?: PortAllocation["container"] }>): Promise<void> {
-    await this.transaction((state) => {
-      const invocation = state.invocations.find((item) => item.id === invocationId && item.state === "ready");
-      if (!invocation) throw new PortRegistryError("DEVFN_REGISTRY_INVALID", "The prior ready invocation no longer owns its recovery leases.");
-      for (const allocation of state.allocations.filter((item) => item.invocationId === invocationId && item.state === "active")) {
-        allocation.process = owners[allocation.service]?.process;
-        allocation.container = owners[allocation.service]?.container;
-        allocation.updatedAt = new Date().toISOString();
-      }
-    });
-  }
-
   public async release(input: { invocationId?: string; instanceId?: string; errorCode?: string }): Promise<void> {
     await this.transaction((state) => {
       const now = new Date().toISOString();
@@ -475,7 +472,7 @@ export class FilePortRegistry {
     await this.transaction(async (state) => {
       const now = new Date().toISOString();
       for (const allocation of state.allocations.filter((item) => active(item) && !retainedForReplacement(state, item.invocationId) &&
-        !state.invocations.some((invocation) => invocation.id === item.invocationId && invocation.state === "stopping"))) {
+        !stoppingInProgress(state, item.invocationId))) {
         await refreshAllocation(allocation, now, this.availabilityCheck);
       }
       await expireAbandonedProxyClaims(state, path.dirname(this.filePath), now, this.availabilityCheck);

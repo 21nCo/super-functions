@@ -68,7 +68,7 @@ describe("FilePortRegistry", () => {
     }
   });
 
-  for (const invocationState of ["planning", "starting", "ready"] as const) {
+  for (const invocationState of ["planning", "starting", "ready", "stopping"] as const) {
     it(`reclaims an abandoned ${invocationState} claim with a reused owner PID`, async () => {
       const dir = await mkdtemp(path.join(tmpdir(), "devfn-reused-proxy-owner-"));
       const port = 18453;
@@ -98,6 +98,48 @@ describe("FilePortRegistry", () => {
       } finally { await rm(dir, { recursive: true, force: true }); }
     });
   }
+
+  it("bounds stopping and replacement protection to live, recently refreshed lifecycles", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-bounded-protection-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), undefined, async () => true);
+    const port = await allocateEphemeralPort();
+    const dead = { pid: 2_147_483_000 };
+    const age = async (ids: string[]) => {
+      const state = await registry.read();
+      for (const invocation of state.invocations) if (ids.includes(invocation.id)) invocation.updatedAt = "2020-01-01T00:00:00.000Z";
+      await writeFile(registry.filePath, JSON.stringify(state));
+    };
+    const leaseState = async (id: string) => (await registry.read()).allocations.find((item) => item.invocationId === id)?.state;
+    try {
+      // An interrupted down: a fresh stopping claim stays protected, an
+      // expired one with a verified-dead owner is reconciled.
+      await registry.reserve({ projectId: "app", instanceId: "down", invocationId: "down", profile: "default",
+        requests: [{ name: "api", spec: { preferred: port, exact: true } }] });
+      await registry.markActive("down", { api: { process: dead } });
+      await registry.updateInvocation("down", { state: "stopping" });
+      await registry.reconcile();
+      expect(await leaseState("down")).toBe("active");
+      await age(["down"]);
+      await registry.reconcile();
+      expect(await leaseState("down")).toBe("stale");
+      expect((await registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: "sibling", profile: "default",
+        requests: [{ name: "api", spec: { preferred: port, exact: true } }] }))[0].port).toBe(port);
+      await registry.release({ invocationId: "sibling" });
+      // An interrupted replacement protects its predecessor only while its
+      // heartbeat is current.
+      await registry.reserve({ projectId: "app", instanceId: "same", invocationId: "old", profile: "default",
+        requests: [{ name: "api", spec: { preferred: port, exact: true } }] });
+      await registry.markActive("old", { api: { process: dead } });
+      await registry.reserve({ projectId: "app", instanceId: "same", invocationId: "new", replacingInvocationId: "old", profile: "default",
+        requests: [{ name: "api", spec: { preferred: port, exact: true } }] });
+      await registry.updateInvocation("new", { state: "starting" });
+      await registry.reconcile();
+      expect(await leaseState("old")).toBe("active");
+      await age(["new"]);
+      await registry.reconcile();
+      expect(await leaseState("old")).toBe("stale");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
 
   it("releases a route-free claim with a verified live admin owner, but retains a bound listener", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-live-admin-claim-"));

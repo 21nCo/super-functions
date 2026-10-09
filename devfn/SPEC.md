@@ -12,7 +12,7 @@ Registry mutations use an exclusive lock plus atomic rename. Allocations disting
 
 ## Lifecycle
 
-`up` validates trust/configuration, resolves the profile graph, verifies any machine-registered route domains resolve only to loopback, reserves ports, writes runtime environment, starts dependencies, waits for health, updates explicit Caddy routes, activates leases, and returns a receipt. Every successful mutation is persisted. Failure walks the journal in reverse and cleans only resources started by that invocation.
+`up` validates trust/configuration, resolves the profile graph, verifies any machine-registered route domains resolve only to loopback, reserves ports, writes runtime environment, starts dependencies, waits for health, updates explicit Caddy routes, activates leases, and returns a receipt. Every successful mutation is persisted. Failure walks the journal in reverse and cleans only resources started by that invocation. Replacing a ready instance validates, reserves and activates routes before stopping it, then starts the replacement; a later failure leaves the instance stopped with its leases released and says so, rather than relaunching old processes from a changed working tree.
 
 `down` resolves the exact worktree instance, verifies process birth identity, stops its process groups and Compose services, removes its proxy routes, and releases its leases. Persistent volumes are never deleted.
 

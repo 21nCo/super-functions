@@ -63,7 +63,7 @@ export class ProcessSupervisor {
     if (!/^[A-Za-z0-9_.-]+$/.test(input.name) || input.name !== input.name.trim()) throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Invalid process name ${input.name}.`);
     const logPath = path.join(logsDir, `${input.name}.log`);
     mkdirSync(path.dirname(logPath), { recursive: true });
-    const environment = createProcessEnvironment(input.spec, input.environment, input.sourceEnvironment);
+    const environment = createProcessEnvironment(input.spec, input.environment);
     const { logFd, logOffset } = await prepareProcessLog(logPath, Boolean(input.spec.secretEnv?.length));
     const wrapperPath = fileURLToPath(new URL("./wrapper.js", import.meta.url));
     const child = spawn(process.execPath, [wrapperPath], {

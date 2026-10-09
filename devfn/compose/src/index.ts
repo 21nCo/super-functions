@@ -53,7 +53,6 @@ export interface ComposeStartInput {
   portHosts?: Record<string, string>;
   portProtocols?: Record<string, "tcp" | "udp">;
   environment?: Record<string, string>;
-  sourceEnvironment?: NodeJS.ProcessEnv;
   /** Host-side environment used only by command readiness probes. */
   readinessEnvironment?: Record<string, string>;
   onStarted?: (service: ManagedComposeService) => Promise<void>;
@@ -1389,7 +1388,7 @@ export class ComposeController {
 
   public async start(input: ComposeStartInput): Promise<ManagedComposeService> {
     if (!/^[A-Za-z0-9_.-]+$/.test(input.name) || input.name !== input.name.trim()) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose lifecycle name ${input.name} contains unsupported characters.`);
-    const environment = createComposeEnvironment(input.spec, input.environment, input.sourceEnvironment);
+    const environment = createComposeEnvironment(input.spec, input.environment);
     const dockerEnvironment = persistedDockerEnvironment(environment);
     if (!await this.available(input.root, environment)) throw new ComposeError("DEVFN_COMPOSE_UNAVAILABLE", "Docker Compose 2.24.4 or newer is required.");
     const projectName = composeProjectName(input.spec.projectName ?? "devfn", input.instanceId);
