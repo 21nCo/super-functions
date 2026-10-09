@@ -1,0 +1,24 @@
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 379-381,384-389,598-599
+devfn/core/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 7,236-335
+devfn/core/test/registered-domain-startup.test.ts
+  h_bdc5b81c173ee9 16-18
+devfn/ports/src/registry.ts
+  h_bdc5b81c173ee9 176-177,179,348,360-364,377-383
+devfn/ports/test/registry.test.ts
+  h_bdc5b81c173ee9 12-34
+devfn/proxy/src/index.ts
+  h_bdc5b81c173ee9 9,109-118,210-269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd5ae6fcdd8510153e8adc6454041158b6e12bf4",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
