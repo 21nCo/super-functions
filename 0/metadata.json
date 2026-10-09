@@ -1,0 +1,165 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "01M4G613EJWX6GM7WTJXYP6T51",
+  "session_id": "01a0f222-fb22-76a5-a77e-b7c92826db44",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-09T11:16:07.777531Z",
+  "checkpoints_count": 3,
+  "save_step_count": 13,
+  "files_touched": [
+    "filefn/server/eng.traineddata"
+  ],
+  "agent": "Pi",
+  "model": "gpt-6.1-sol",
+  "turn_id": "5df452983c0c",
+  "checkpoint_transcript_start": 9267,
+  "transcript_lines_at_start": 9267,
+  "compact_transcript_start": 3627,
+  "token_usage": {
+    "input_tokens": 753109,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 24784896,
+    "output_tokens": 95775,
+    "api_call_count": 139
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "pi-skill-use-skillplane-2026-09-30T11:47:31.905Z-0",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "use-skillplane"
+      },
+      "source": {
+        "agent": "pi",
+        "signal": "input_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "82601ad0e239",
+      "timestamp": "2026-09-30T11:47:31.905Z",
+      "native": {
+        "command": "/skill:use-skillplane"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/skill:use-skillplane",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 86
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-09T11:16:05.168564Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 38572,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 38572,
+    "total_lines_changed": 45278,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 13,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 14,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
