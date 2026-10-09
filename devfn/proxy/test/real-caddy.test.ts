@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 
-import { proxyListenerPorts, renderCaddyfile, type ProxyRoute } from "../src/index.js";
+import { renderCaddyfile, type ProxyRoute } from "../src/index.js";
 
 async function freePort(): Promise<number> {
   const server = net.createServer();
@@ -48,9 +48,9 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("observes isolated Caddy exact, 
   execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
     "-days", "1", "-subj", "/CN=explicit.dev.example.test", "-addext", "subjectAltName=DNS:explicit.dev.example.test"], { stdio: "ignore" });
   const [exact, prefix, secure] = await Promise.all([upstream(), upstream(), upstream()]);
-  const [httpPort, httpsPort, adminPort] = process.platform === "darwin"
-    ? [proxyListenerPorts().httpPort, proxyListenerPorts().httpsPort, await freePort()]
-    : await Promise.all([freePort(), freePort(), freePort()]);
+  const listenerPorts = new Set<number>();
+  while (listenerPorts.size < 3) listenerPorts.add(await freePort());
+  const [httpPort, httpsPort, adminPort] = [...listenerPorts];
   const route = (id: string, hostname: string, targetPort: number, tls: "off" | "internal", routePath = "/", match: "exact" | "prefix" = "prefix", stripPrefix = false): ProxyRoute =>
     ({ id, instanceId: "fixture", hostname, targetHost: "127.0.0.1", targetPort, tls, updatedAt: "now", path: routePath, match, stripPrefix });
   const routes = [route("prefix", "app.localhost", prefix.port, "off", "/api", "prefix", true),

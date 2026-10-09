@@ -69,6 +69,8 @@ export interface ReservationInput {
   protectedPorts?: Set<number>;
   excludedPorts?: Set<number>;
   proxyListenerPorts?: readonly number[];
+  /** The same instance's ready invocation whose leases will be replaced after validation. */
+  replacingInvocationId?: string;
 }
 
 export interface ListenerInfo {

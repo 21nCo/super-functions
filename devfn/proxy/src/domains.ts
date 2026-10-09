@@ -5,7 +5,7 @@ import net from "node:net";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { parsePersistedProxyRoutes, withFileLock } from "@devfn/ports";
+import { parsePersistedProxyRoutes, withFileLock, withRoutingLock } from "@devfn/ports";
 
 const PROXY_LOCK_TIMEOUT_MS = 30_000;
 
@@ -140,7 +140,7 @@ export async function registerDomain(stateDir: string, entry: RegisteredDomain, 
   if (entry.tls === "internal" && (entry.certificateFile || entry.keyFile)) throw new DomainError("DEVFN_DOMAIN_INVALID", "Internal TLS cannot include certificate files.");
   await verifyLocalDns(domain, resolve);
   const canonical = { ...entry, domain, repositoryIdentity: await realpath(entry.repositoryIdentity) };
-  return await withFileLock(path.join(stateDir, "proxy.lock"), async () => {
+  return await withRoutingLock(stateDir, async () => await withFileLock(path.join(stateDir, "proxy.lock"), async () => {
     const domains = await readRegisteredDomains(stateDir);
     const existing = domains.find((item) => item.domain === domain);
     if (existing) {
@@ -152,14 +152,14 @@ export async function registerDomain(stateDir: string, entry: RegisteredDomain, 
     }
     await writeDomains(stateDir, [...domains, canonical]);
     return canonical;
-  }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
+  }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS }));
 }
 
 export async function unregisterDomain(stateDir: string, domain: string, projectId: string, repositoryIdentity: string): Promise<void> {
   normalizeDomain(domain);
   const canonicalRepositoryIdentity = await realpath(repositoryIdentity);
   await mkdir(stateDir, { recursive: true, mode: 0o700 });
-  await withFileLock(path.join(stateDir, "proxy.lock"), async () => {
+  await withRoutingLock(stateDir, async () => await withFileLock(path.join(stateDir, "proxy.lock"), async () => {
     const domains = await readRegisteredDomains(stateDir);
     const entry = domains.find((item) => item.domain === domain);
     if (!entry || entry.projectId !== projectId || entry.repositoryIdentity !== canonicalRepositoryIdentity) throw new DomainError("DEVFN_DOMAIN_UNREGISTERED", `Domain ${domain} is not registered to this repository.`);
@@ -179,5 +179,5 @@ export async function unregisterDomain(stateDir: string, domain: string, project
       }
     }
     await writeDomains(stateDir, domains.filter((item) => item.domain !== domain));
-  }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
+  }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS }));
 }

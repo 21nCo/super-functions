@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 
 import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, selectedComposeEndpointReferences, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, isCredentialKey, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
-import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
+import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, withRoutingLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
 import { CaddyProxyController, proxyListenerPorts, readRegisteredDomains, renderCaddyfile, verifyCertificate, verifyLocalDns, type ProxyRoute } from "@devfn/proxy";
 
@@ -364,7 +364,8 @@ export class DevFnOrchestrator {
     }
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
     const stateDir = await realpath(requestedStateDir);
-    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.upLocked(options, stateDir, identity, loadedPolicy), { timeoutMs: 30_000 });
+    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () =>
+      await withRoutingLock(stateDir, async () => await this.upLocked(options, stateDir, identity, loadedPolicy)), { timeoutMs: 30_000 });
   }
 
   private async upLocked(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>): Promise<LifecycleReceipt> {
@@ -378,7 +379,7 @@ export class DevFnOrchestrator {
     await registry.assertReplacementAvailable(listenerPorts, identity.instanceId,
       plan.portNames.map((name) => ({ name, spec: options.config.ports?.[name] ?? {} })),
       async () => { if (routes.length) await new CaddyProxyController(stateDir).assertRouteOwnershipAvailable(routes, identity.instanceId); });
-    await this.prepareExisting(options, stateDir, identity, loadedPolicy, registry);
+    const oldReady = await this.prepareExisting(options, stateDir, identity, loadedPolicy, registry, true);
     await registry.recoverInterrupted(identity.instanceId);
     const publicNodes = plan.nodes.filter((node) => node.kind === "process" && options.config.processes?.[node.name]?.exposure === "public").map((node) => node.name);
     const publicPorts = plan.portNames.filter((name) => options.config.ports?.[name]?.exposure === "public");
@@ -401,6 +402,7 @@ export class DevFnOrchestrator {
       // The registry excludes active claims from sibling reservations while
       // keeping no-proxy v0.1 allocations unchanged until Caddy is requested.
       ...(listenerPorts.length ? { proxyListenerPorts: listenerPorts } : {}),
+      ...(oldReady ? { replacingInvocationId: oldReady.invocationId } : {}),
     });
     const ports = Object.fromEntries(allocations.map((item) => [item.service, item.port]));
     let resolved: ReturnType<typeof resolveEndpointTemplates>;
@@ -415,6 +417,13 @@ export class DevFnOrchestrator {
     catch (error) {
       await registry.release({ invocationId, errorCode: "DEVFN_STARTUP_FINGERPRINT_FAILED" });
       throw error;
+    }
+    if (oldReady) {
+      try { await this.stopExisting(oldReady, stateDir, registry); }
+      catch (error) {
+        await registry.release({ invocationId, errorCode: "DEVFN_REPLACEMENT_PREPARE_FAILED" });
+        throw error;
+      }
     }
     const receipt: LifecycleReceipt = {
       version: 1, projectId: options.config.project.id, instanceId: identity.instanceId, invocationId, profile: plan.profile,
@@ -466,7 +475,7 @@ export class DevFnOrchestrator {
     }
   }
 
-  private async prepareExisting(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>, registry: FilePortRegistry): Promise<void> {
+  private async prepareExisting(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>, registry: FilePortRegistry, deferReadyCleanup = false): Promise<LifecycleReceipt | undefined> {
     const existing = await readReceipt(options.config, options.root, identity.instanceId);
     if (existing && existing.state !== "stopped") {
       assertReceiptStateDir(existing, stateDir);
@@ -476,7 +485,7 @@ export class DevFnOrchestrator {
       const allRunning = managedCount > 0 && processStates.every((state) => state === "running") && serviceStates.every((state) => state === "running");
       const allReady = allRunning && existing.profile === (options.profile ?? options.config.defaultProfile ?? "default") &&
         await receiptIsReady(options.config, options.root, existing, processStates, serviceStates);
-      if (existing.state === "ready" && allReady) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
+      if (existing.state === "ready" && allReady && !options.replace) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
       // Validate the replacement while the old lifecycle still owns its ports
       // and containers. A malformed source must never turn a ready service off.
       const replacementPlan = createPlan(options.config, options.profile);
@@ -484,13 +493,18 @@ export class DevFnOrchestrator {
       const replacementPorts = Object.fromEntries(replacementPlan.portNames.map((name) => [name, existingPorts[name] ?? 1]));
       const replacement = await resolveWithComposeNetworks(options.config, replacementPlan, options.root, identity, replacementPorts, loadedPolicy?.policy.hostnameSuffix);
       await startupFingerprints(options.config, options.root, replacement);
-      const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
-      if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
-      existing.cleanup = recovered;
-      existing.state = "stopped";
-      existing.updatedAt = new Date().toISOString();
-      await writeReceipt(existing);
+      if (existing.state === "ready" && allRunning && deferReadyCleanup) return existing;
+      await this.stopExisting(existing, stateDir, registry);
     }
+  }
+
+  private async stopExisting(existing: LifecycleReceipt, stateDir: string, registry: FilePortRegistry): Promise<void> {
+    const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
+    if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
+    existing.cleanup = recovered;
+    existing.state = "stopped";
+    existing.updatedAt = new Date().toISOString();
+    await writeReceipt(existing);
   }
 
   private async startSelectedNode(node: LifecyclePlan["nodes"][number], context: {

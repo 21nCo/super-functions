@@ -2,13 +2,14 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promise
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import net from "node:net";
 import { promisify } from "node:util";
 import { expect, it } from "vitest";
 
 import { processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController, proxyListenerPorts, registerDomain } from "@devfn/proxy";
 import { validateDevFnConfig } from "@devfn/config";
-import { allocateEphemeralPort, FilePortRegistry } from "@devfn/ports";
+import { allocateEphemeralPort, FilePortRegistry, withRoutingLock } from "@devfn/ports";
 import { DevFnOrchestrator, domainAliases, readReceipt, resolveAllocationUrls, resolveInstanceIdentity, resolveLocalHostname } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
@@ -16,12 +17,13 @@ const execFileAsync = promisify(execFile);
 it("protects Caddy listener ports for selected proxy routes while preserving no-proxy v0.1 ports", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-listener-reservation-"));
   const { httpPort, httpsPort } = proxyListenerPorts();
+  const freePreferred = await allocateEphemeralPort();
   try {
     for (const [name, preferred, exact, protocol, proxy] of ([
       ["exact", httpsPort, true, "tcp", true],
       ["preferred", httpPort, false, "tcp", true],
       ["no-proxy-exact", httpsPort, true, "udp", false],
-      ["no-proxy-preferred", httpPort, false, "tcp", false],
+      ["no-proxy-preferred", freePreferred, false, "tcp", false],
     ] as const).filter((item) => item[4] || process.platform === "darwin")) {
       const stateDir = path.join(root, name);
       const started = path.join(root, `${name}.started`);
@@ -52,6 +54,97 @@ it("protects Caddy listener ports for selected proxy routes while preserving no-
       }
     }
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it("retires a proven abandoned proxy claim before first-start exact-port preflight", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-preflight-abandoned-"));
+  const stateDir = path.join(root, "state");
+  const port = await allocateEphemeralPort();
+  const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+  const started = path.join(root, "started");
+  try {
+    await registry.reserve({ projectId: "old", instanceId: "abandoned", invocationId: "old", profile: "default", requests: [], proxyListenerPorts: [port] });
+    const state = await registry.read();
+    state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
+    await writeFile(registry.filePath, JSON.stringify(state));
+    const birthSignature = await processBirthSignature(process.pid);
+    expect(birthSignature).toBeTruthy();
+    await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+    const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: { preferred: port, exact: true } },
+      processes: { app: { adapter: "command", command: [process.execPath, "-e", "require('node:fs').writeFileSync(process.argv[1], 'started'); process.exit(7)", started], ports: ["app"] } },
+      profiles: { default: { processes: ["app"], proxy: false } } });
+    await expect(new DevFnOrchestrator().up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
+    await expect(access(started)).resolves.toBeUndefined();
+    expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it("keeps a ready process and its lease when a changed exact port is externally bound", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-preflight-bound-"));
+  const stateDir = path.join(root, "state");
+  const orchestrator = new DevFnOrchestrator();
+  const original = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "http", port: "app", timeoutMs: 5000 } } },
+    profiles: { default: { processes: ["app"], proxy: false } } });
+  const external = net.createServer();
+  try {
+    await writeFile(path.join(root, "server.mjs"), "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    const first = await orchestrator.up({ config: original, root, stateDir });
+    await new Promise<void>((resolve, reject) => external.once("error", reject).listen(0, "127.0.0.1", resolve));
+    const port = (external.address() as net.AddressInfo).port;
+    const replacement = validateDevFnConfig({ ...original, ports: { app: { preferred: port, exact: true } } });
+    const registryBefore = (await new FilePortRegistry(path.join(stateDir, "registry.json")).read()).allocations;
+    await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+    expect((await readReceipt(original, root, first.instanceId))?.state).toBe("ready");
+    expect((await new FilePortRegistry(path.join(stateDir, "registry.json")).read()).allocations).toEqual(registryBefore);
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("ready");
+    await new Promise<void>((resolve) => external.close(() => resolve()));
+    const assertAvailable = FilePortRegistry.prototype.assertReplacementAvailable;
+    FilePortRegistry.prototype.assertReplacementAvailable = async function (ports, exceptInstanceId, requests, checkRoutes) {
+      await assertAvailable.call(this, ports, exceptInstanceId, requests, checkRoutes);
+      await new Promise<void>((resolve, reject) => external.once("error", reject).listen(port, "127.0.0.1", resolve));
+    };
+    try {
+      // An unrelated process wins the port after the read-only preflight.
+      // Reservation still happens before the old ready process is stopped.
+      await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+      expect((await readReceipt(original, root, first.instanceId))?.state).toBe("ready");
+      expect((await new FilePortRegistry(path.join(stateDir, "registry.json")).read()).allocations).toEqual(registryBefore);
+      expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("ready");
+    } finally { FilePortRegistry.prototype.assertReplacementAvailable = assertAvailable; }
+  } finally {
+    if (external.listening) await new Promise<void>((resolve) => external.close(() => resolve()));
+    await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("serializes sibling lease and route ownership checks with a replacement decision", async () => {
+  const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-routing-coordination-"));
+  const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+  const proxy = new CaddyProxyController(stateDir);
+  const port = await allocateEphemeralPort();
+  let release!: () => void;
+  let entered!: () => void;
+  const enteredLock = new Promise<void>((resolve) => { entered = resolve; });
+  const releaseLock = new Promise<void>((resolve) => { release = resolve; });
+  const held = withRoutingLock(stateDir, async () => { entered(); await releaseLock; });
+  try {
+    await enteredLock;
+    let reserved = false;
+    let published = false;
+    const lease = registry.reserve({ projectId: "sibling", instanceId: "sibling", invocationId: "sibling", profile: "default",
+      requests: [{ name: "api", spec: { preferred: port, exact: true } }] }).then(() => { reserved = true; });
+    const route = proxy.assertRouteOwnershipAvailable([{ id: "sibling", instanceId: "sibling", hostname: "sibling.localhost",
+      targetHost: "127.0.0.1", targetPort: port, tls: "off" }], "sibling").then(() => { published = true; });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(reserved).toBe(false);
+    expect(published).toBe(false);
+    release();
+    await Promise.all([held, lease, route]);
+    expect(reserved).toBe(true);
+    expect(published).toBe(true);
+  } finally { release(); await held; await rm(stateDir, { recursive: true, force: true }); }
 });
 
 it("keeps a ready v0.1 process and sibling routes when proxy replacement selects its exact listener port", async () => {

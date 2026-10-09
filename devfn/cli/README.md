@@ -15,6 +15,7 @@ npx @devfn/cli domains list
 ```
 
 Profiles that declare public processes or ports require `--allow-public` on every start.
+`devfn restart` validates the selected profile and registered domains, then reserves replacement ports before stopping a ready instance. A rejected domain, route, or port selection leaves that instance running.
 
 The first load of any manifest requires `--trust` because JSON and executable manifests can both declare lifecycle commands. Trust is bound to the manifest digest, so edits require review and trust again. Lifecycle mutations return receipts in JSON mode; read-only commands return command-specific structured data, and failures use stable error codes. Runtime files are written with restrictive permissions under `.devfn/` by default.
 

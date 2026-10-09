@@ -1,11 +1,24 @@
 import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { processBirthSignature, processExists } from "@devfn/processes";
 
 import { PortRegistryError } from "./types.js";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const heldRoutingLocks = new AsyncLocalStorage<ReadonlySet<string>>();
+
+/** Serialize lease and route mutations, including a replacement's teardown. */
+export async function withRoutingLock<T>(stateDir: string, action: () => Promise<T>): Promise<T> {
+  const lockPath = path.resolve(stateDir, "routing.lock");
+  if (heldRoutingLocks.getStore()?.has(lockPath)) return await action();
+  await mkdir(stateDir, { recursive: true, mode: 0o700 });
+  return await withFileLock(lockPath, async () =>
+    await heldRoutingLocks.run(new Set([...(heldRoutingLocks.getStore() ?? []), lockPath]), action),
+  { timeoutMs: 180_000 });
+}
 
 export async function withFileLock<T>(lockPath: string, action: () => Promise<T>, options: { timeoutMs?: number; staleMs?: number } = {}): Promise<T> {
   const timeoutMs = options.timeoutMs ?? 10_000;

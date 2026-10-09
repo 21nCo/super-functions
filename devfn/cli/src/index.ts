@@ -193,10 +193,7 @@ async function executeCommand(args: ParsedArgs, cwd: string, stateDir: string, l
   const handlers: Record<string, () => Promise<unknown>> = {
     up: async () => await orchestrator.up({ ...lifecycle, profile: args.profile, allowPublic: args.allowPublic }),
     down: async () => await orchestrator.down(lifecycle),
-    restart: async () => {
-      await orchestrator.down(lifecycle).catch((error) => { if (!(error instanceof DevFnError) || error.code !== "DEVFN_NOT_RUNNING") throw error; });
-      return await orchestrator.up({ ...lifecycle, profile: args.profile, allowPublic: args.allowPublic });
-    },
+    restart: async () => await orchestrator.up({ ...lifecycle, profile: args.profile, allowPublic: args.allowPublic, replace: true }),
     status: async () => await orchestrator.status(lifecycle),
     doctor: async () => await orchestrator.doctor({ ...lifecycle, profile: args.profile }),
     logs: async () => await orchestrator.logs({ config: loaded.config, root: loaded.root, name: args.positionals[0], tail: args.tail }),

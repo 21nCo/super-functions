@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { matchesProcessIdentity, processExists } from "@devfn/processes";
 
 import { allocateEphemeralPort, isPortAvailable, scanListenerState } from "./listeners.js";
-import { withFileLock } from "./lock.js";
+import { withFileLock, withRoutingLock } from "./lock.js";
 import { PortRegistryError, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput, type ReservationRequest } from "./types.js";
 import { parsePersistedProxyRoutes } from "./proxy-state.js";
 import { parseProxyOwner, proxyOwnerStatus } from "./proxy-owner.js";
@@ -157,30 +157,37 @@ export class FilePortRegistry {
 
   public async transaction<T>(action: (state: RegistryState) => Promise<T> | T): Promise<T> {
     await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
-    return await withFileLock(this.lockPath, async () => {
+    return await withRoutingLock(path.dirname(this.filePath), async () => await withFileLock(this.lockPath, async () => {
       const state = await this.read();
       const result = await action(state);
       state.revision += 1;
       await this.write(state);
       return result;
-    });
+    }));
   }
 
   public async reserve(input: ReservationInput): Promise<PortAllocation[]> {
     return await this.transaction(async (state) => {
       const now = new Date().toISOString();
       await expireAbandonedProxyClaims(state, path.dirname(this.filePath), now, this.availabilityCheck);
+      if (input.replacingInvocationId && !state.invocations.some((item) => item.id === input.replacingInvocationId && item.projectId === input.projectId && item.instanceId === input.instanceId && item.state === "ready")) {
+        throw new PortRegistryError("DEVFN_REGISTRY_INVALID", "A replacement may only reuse its own ready invocation's leases.");
+      }
+      const priorLease = (port: number, protocol: "tcp" | "udp") => state.allocations.some((item) =>
+        item.invocationId === input.replacingInvocationId && item.state === "active" && item.port === port && item.protocol === protocol);
+      const availableForReplacement = async (port: number, protocol: "tcp" | "udp", host: string) =>
+        priorLease(port, protocol) || await this.availabilityCheck(port, protocol, host);
       const proxyPorts = new Set(input.proxyListenerPorts ?? []);
       for (const port of proxyPorts) {
-        const conflict = state.allocations.find((item) => active(item) && item.port === port);
+        const conflict = state.allocations.find((item) => active(item) && item.invocationId !== input.replacingInvocationId && item.port === port);
         if (conflict) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${port} is leased by ${conflict.instanceId}/${conflict.service}. ${proxyListenerMigration(port)}`,
           { port, instanceId: conflict.instanceId, service: conflict.service, action: proxyListenerMigration(port) });
       }
-      const occupied = new Set(state.allocations.filter(active).map((item) => occupancyKey(item.port, item.protocol)));
+      const occupied = new Set(state.allocations.filter((item) => active(item) && item.invocationId !== input.replacingInvocationId).map((item) => occupancyKey(item.port, item.protocol)));
       const claimingInstance = new Map<number, string>();
       for (const port of input.proxyListenerPorts ?? []) claimingInstance.set(port, input.instanceId);
       for (const invocation of state.invocations) {
-        if (["planning", "starting", "ready"].includes(invocation.state)) {
+        if (invocation.id !== input.replacingInvocationId && ["planning", "starting", "ready"].includes(invocation.state)) {
           for (const port of invocation.proxyListenerPorts ?? []) {
             proxyPorts.add(port);
             claimingInstance.set(port, invocation.instanceId);
@@ -209,7 +216,7 @@ export class FilePortRegistry {
           throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Unable to allocate an unleased ephemeral port for ${name}.`, { service: name });
         }
         if (spec.exact && spec.preferred !== undefined) {
-          if (occupied.has(occupancyKey(spec.preferred, protocol)) || !await this.availabilityCheck(spec.preferred, protocol, host)) {
+          if (occupied.has(occupancyKey(spec.preferred, protocol)) || !await availableForReplacement(spec.preferred, protocol, host)) {
             const claimant = claimingInstance.get(spec.preferred);
             if (claimant) {
               const action = claimant === input.instanceId
@@ -223,7 +230,7 @@ export class FilePortRegistry {
           return { port: spec.preferred, source: "exact" };
         }
         const prior = stable.get(name);
-        if (prior?.protocol === protocol && !occupied.has(occupancyKey(prior.port, protocol)) && await this.availabilityCheck(prior.port, protocol, host)) return { port: prior.port, source: "stable" };
+        if (prior?.protocol === protocol && !occupied.has(occupancyKey(prior.port, protocol)) && await availableForReplacement(prior.port, protocol, host)) return { port: prior.port, source: "stable" };
         const pools: Array<{ values: number[]; source: PortAllocation["source"] }> = [];
         if (spec.preferred !== undefined) pools.push({ values: [spec.preferred], source: "preferred" });
         if (spec.range) pools.push({ values: candidates(spec.range[0], spec.range[1], `${input.instanceId}:${name}`), source: "range" });
@@ -233,7 +240,7 @@ export class FilePortRegistry {
         for (const pool of pools) {
           for (const port of pool.values) {
             if (occupied.has(occupancyKey(port, protocol))) continue;
-            if (await this.availabilityCheck(port, protocol, host)) return { port, source: pool.source };
+            if (await availableForReplacement(port, protocol, host)) return { port, source: pool.source };
           }
         }
         throw new PortRegistryError("DEVFN_PORT_CONFLICT", `No available port for ${name}.`, { service: name });
@@ -262,14 +269,14 @@ export class FilePortRegistry {
           const exactPorts = group.map((request) => request.spec.preferred!);
           const sorted = [...new Set(exactPorts)].sort((a, b) => a - b);
           if (sorted.length !== group.length || sorted.at(-1)! - sorted[0] + 1 !== group.length) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port block ${block} is not contiguous.`);
-          if (!exactPorts.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp"))) && (await Promise.all(exactPorts.map((port, index) => this.availabilityCheck(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) chosen = exactPorts;
+          if (!exactPorts.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp"))) && (await Promise.all(exactPorts.map((port, index) => availableForReplacement(port, group[index].spec.protocol ?? "tcp", group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) chosen = exactPorts;
           blockSource = "exact";
         } else {
           const preferredPorts = group.map((request) => request.spec.preferred);
           if (preferredPorts.every((port): port is number => port !== undefined)) {
             const unique = [...new Set(preferredPorts)].sort((a, b) => a - b);
             const contiguous = unique.length === group.length && unique.at(-1)! - unique[0] + 1 === group.length;
-            if (contiguous && !preferredPorts.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp"))) && (await Promise.all(preferredPorts.map((port, index) => this.availabilityCheck(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
+            if (contiguous && !preferredPorts.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp"))) && (await Promise.all(preferredPorts.map((port, index) => availableForReplacement(port, group[index].spec.protocol ?? "tcp", group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
               chosen = preferredPorts;
               blockSource = "preferred";
             }
@@ -280,7 +287,7 @@ export class FilePortRegistry {
               const ports = group.map((_, index) => start + index);
               if (ports.some((port, index) => group[index].spec.range && (port < group[index].spec.range![0] || port > group[index].spec.range![1]))) continue;
               if (ports.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp")))) continue;
-              if ((await Promise.all(ports.map((port, index) => this.availabilityCheck(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
+              if ((await Promise.all(ports.map((port, index) => availableForReplacement(port, group[index].spec.protocol ?? "tcp", group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
                 chosen = ports;
                 blockSource = source;
                 break;
@@ -322,7 +329,7 @@ export class FilePortRegistry {
 
   public async assertProxyListenerAvailable(ports: readonly number[], exceptInstanceId: string, requests: readonly ReservationRequest[] = []): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
-    await withFileLock(this.lockPath, async () => {
+    await withRoutingLock(path.dirname(this.filePath), async () => await withFileLock(this.lockPath, async () => {
       const state = await this.read();
       const selfConflict = requests.find((request) => request.spec.exact && request.spec.preferred !== undefined && ports.includes(request.spec.preferred));
       if (selfConflict) {
@@ -333,29 +340,41 @@ export class FilePortRegistry {
       const conflict = state.allocations.find((item) => active(item) && item.instanceId !== exceptInstanceId && ports.includes(item.port));
       if (conflict) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${conflict.port} is leased by ${conflict.instanceId}/${conflict.service}. ${proxyListenerMigration(conflict.port)}`,
         { port: conflict.port, instanceId: conflict.instanceId, service: conflict.service, action: proxyListenerMigration(conflict.port) });
-    });
+    }));
   }
 
   /** Validate a replacement before its old service and leases are removed. */
   public async assertReplacementAvailable(ports: readonly number[], exceptInstanceId: string,
     requests: readonly ReservationRequest[], checkRoutes: () => Promise<void>): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
-    await withFileLock(this.lockPath, async () => {
+    await withRoutingLock(path.dirname(this.filePath), async () => await withFileLock(this.lockPath, async () => {
       const state = await this.read();
+      // Reserve performs this recovery too. Preflight must observe the same
+      // persisted claim state before it can deny a replacement or first start.
+      const before = JSON.stringify(state);
+      await expireAbandonedProxyClaims(state, path.dirname(this.filePath), new Date().toISOString(), this.availabilityCheck);
+      if (JSON.stringify(state) !== before) {
+        state.revision += 1;
+        await this.write(state);
+      }
       for (const request of requests) {
         const port = request.spec.exact ? request.spec.preferred : undefined;
         if (port === undefined) continue;
+        if (ports.includes(port)) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is claimed by this profile's proxy; change the service's exact port before activating proxy routes.`,
+          { port, service: request.name, instanceId: exceptInstanceId });
         const lease = state.allocations.find((item) => active(item) && item.instanceId !== exceptInstanceId && item.port === port && item.protocol === (request.spec.protocol ?? "tcp"));
         if (lease) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is leased by ${lease.instanceId}/${lease.service}.`,
           { port, service: request.name, instanceId: lease.instanceId });
         const claimant = state.invocations.find((item) => item.instanceId !== exceptInstanceId && ["planning", "starting", "ready"].includes(item.state) && item.proxyListenerPorts?.includes(port));
         if (claimant) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is claimed by proxy instance ${claimant.instanceId}.`,
           { port, service: request.name, instanceId: claimant.instanceId });
+        const protocol = request.spec.protocol ?? "tcp";
+        const owned = state.allocations.some((item) => active(item) && item.instanceId === exceptInstanceId && item.service === request.name && item.port === port && item.protocol === protocol);
+        if (!owned && !await this.availabilityCheck(port, protocol, request.spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")) {
+          throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is occupied.`, { port, service: request.name });
+        }
       }
       for (const port of ports) {
-        const self = requests.find((request) => request.spec.exact && request.spec.preferred === port);
-        if (self) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${self.name} is claimed by this profile's proxy; change the service's exact port before activating proxy routes.`,
-          { port, service: self.name, instanceId: exceptInstanceId });
         const lease = state.allocations.find((item) => active(item) && item.instanceId !== exceptInstanceId && item.port === port);
         if (lease) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Proxy listener port ${port} is leased by ${lease.instanceId}/${lease.service}. ${proxyListenerMigration(port)}`,
           { port, instanceId: lease.instanceId, service: lease.service, action: proxyListenerMigration(port) });
@@ -363,7 +382,7 @@ export class FilePortRegistry {
       // Lock order is registry, then proxy, matching claim expiry. No sibling
       // can change either persisted surface during this ownership check.
       await checkRoutes();
-    });
+    }));
   }
 
   public async updateInvocation(id: string, update: Partial<Pick<RegistryInvocation, "state" | "errorCode">>): Promise<void> {

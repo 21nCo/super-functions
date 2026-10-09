@@ -54,7 +54,7 @@ export interface LifecycleReceipt {
   error?: { code: string; message: string };
 }
 
-export interface UpOptions { config: DevFnConfig; root: string; profile?: string; stateDir?: string; allowPublic?: boolean }
+export interface UpOptions { config: DevFnConfig; root: string; profile?: string; stateDir?: string; allowPublic?: boolean; replace?: boolean }
 
 export class DevFnError extends Error {
   public constructor(

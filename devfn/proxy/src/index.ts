@@ -6,7 +6,7 @@ import net from "node:net";
 import { lookup } from "node:dns/promises";
 import { promisify } from "node:util";
 
-import { isPortAvailable, parsePersistedProxyRoutes, parseProxyOwner, proxyOwnerStatus, withFileLock, type ProxyOwner } from "@devfn/ports";
+import { isPortAvailable, parsePersistedProxyRoutes, parseProxyOwner, proxyOwnerStatus, withFileLock, withRoutingLock, type ProxyOwner } from "@devfn/ports";
 import { matchesProcessIdentity, processBirthSignature } from "@devfn/processes";
 import { domainContains, DomainError, readRegisteredDomains, verifyCertificate, verifyLocalDns } from "./domains.js";
 export { DomainError, domainContains, normalizeDomain, readRegisteredDomains, registerDomain, unregisterDomain, verifyCertificate, verifyLocalDns, type RegisteredDomain } from "./domains.js";
@@ -184,7 +184,7 @@ export class CaddyProxyController {
   /** Read-only ownership check for an orchestrator replacement preflight. */
   public async assertRouteOwnershipAvailable(routes: readonly Omit<ProxyRoute, "updatedAt">[], instanceId: string): Promise<void> {
     if (routes.some((route) => route.instanceId !== instanceId)) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "One preflight must name routes for one instance.");
-    await withFileLock(this.lockPath, async () => {
+    await withRoutingLock(this.stateDir, async () => await withFileLock(this.lockPath, async () => {
       for (const file of [this.statePath, this.pendingPath]) {
         const state = await this.readState(file);
         if (!state) continue;
@@ -194,7 +194,7 @@ export class CaddyProxyController {
         }
         renderCaddyfile([...siblings, ...routes.map((route) => ({ ...route, updatedAt: "preflight" }))]);
       }
-    });
+    }));
   }
 
   private async read(): Promise<ProxyState> {
@@ -350,7 +350,7 @@ export class CaddyProxyController {
       throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "One update must name routes for one instance.");
     }
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
-    return await withFileLock(this.lockPath, async () => {
+    return await withRoutingLock(this.stateDir, async () => await withFileLock(this.lockPath, async () => {
       const state = await this.read();
       const ids = new Set(routes.map((route) => route.id));
       if (ids.size !== routes.length) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Duplicate route IDs in one update.");
@@ -365,20 +365,20 @@ export class CaddyProxyController {
       // other instances are exempt from fresh DNS and certificate checks.
       await this.apply({ version: 1, routes: nextRoutes }, false, state.routes.filter((route) => route.instanceId !== selectedOwner));
       return nextRoutes.filter((route) => ids.has(route.id));
-    }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
+    }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS }));
   }
 
   public async removeInstance(instanceId: string): Promise<void> {
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
-    await withFileLock(this.lockPath, async () => {
+    await withRoutingLock(this.stateDir, async () => await withFileLock(this.lockPath, async () => {
       const state = await this.read();
       const routes = state.routes.filter((route) => route.instanceId !== instanceId);
       if (routes.length !== state.routes.length) await this.apply({ version: 1, routes }, false, state.routes);
-    }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
+    }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS }));
   }
 
   public async routes(): Promise<ProxyRoute[]> {
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
-    return await withFileLock(this.lockPath, async () => (await this.read()).routes, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
+    return await withRoutingLock(this.stateDir, async () => await withFileLock(this.lockPath, async () => (await this.read()).routes, { timeoutMs: PROXY_LOCK_TIMEOUT_MS }));
   }
 }
