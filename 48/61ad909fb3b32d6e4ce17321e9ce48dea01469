@@ -1,0 +1,49 @@
+devfn/cli/src/index.ts
+  s_e2bb6d27cfc767::t_44980387bd8dbd 16,51,153-159
+devfn/core/src/index.ts
+  s_e2bb6d27cfc767::t_6c2af4914d02a6 3
+devfn/ports/src/index.ts
+  s_e2bb6d27cfc767::t_bb9e1c5db2085c 1
+devfn/ports/src/listeners.ts
+  s_e2bb6d27cfc767::t_4a1c9eba082838 9-13,16-19,22,25-26,30-33
+devfn/ports/src/types.ts
+  s_e2bb6d27cfc767::t_feee4ccecc90a6 46-47
+devfn/ports/test/claim-evidence.test.ts
+  s_e2bb6d27cfc767::t_f25eb29fba4860 1,9,14-17,27,42-49,55,76-134
+devfn/cli/README.md
+  s_e2bb6d27cfc767::t_9e9e437c92ff33 18
+devfn/cli/SECURITY.md
+  s_e2bb6d27cfc767::t_32a623eb59e47c 12
+devfn/core/README.md
+  s_e2bb6d27cfc767::t_7bb3cac36754e7 5
+devfn/core/src/orchestrator.ts
+  s_e2bb6d27cfc767::t_dd1e6480ed9748 318-322,350-385,484-488,492-501,509,511-512,515,529,548
+devfn/core/test/proxy-readiness.test.ts
+  s_e2bb6d27cfc767::t_653652916cf5ae 23,26,120-197
+devfn/ports/README.md
+  s_e2bb6d27cfc767::t_52f5063cf258f1 5-7
+devfn/ports/src/registry.ts
+  s_e2bb6d27cfc767::t_b63ad8833badae 10,59,110-113,115,118-124,140,145-164,178-183,185-194,199-200,300,302,305,309,339-346,502,543,552-557,578,585-590,592-597,599-617,619,640
+devfn/ports/test/registry.test.ts
+  s_e2bb6d27cfc767::t_47dff0343a395e 308,332-365
+devfn/proxy/src/index.ts
+  s_e2bb6d27cfc767::t_5124836c62ab72 327-333,336-340,378-393
+devfn/proxy/test/activation.test.ts
+  s_e2bb6d27cfc767::t_4574a364dee0db 133-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4861ad909fb3b32d6e4ce17321e9ce48dea01469",
+  "prompts": {},
+  "sessions": {
+    "s_e2bb6d27cfc767": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f601879-d802-4996-8897-c3ba67d043af",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
