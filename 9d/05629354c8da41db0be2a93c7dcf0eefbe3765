@@ -1,0 +1,30 @@
+devfn/compose/src/index.ts
+  h_bdc5b81c173ee9 56,1392
+devfn/core/README.md
+  h_bdc5b81c173ee9 5
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 3,8,22-110,457-463,468-492,510-533,550-561,571-582,597-598,607-613,625-626,632-634,637,642-654,694-731,741,743,750,763,777,806,817-828,835-853,858
+devfn/core/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 9,318-483,540-572,614-644
+devfn/core/test/startup-fixture.test.ts
+  h_bdc5b81c173ee9 8,70-82,131-156
+devfn/ports/src/registry.ts
+  h_bdc5b81c173ee9 89,123-127,195,330,379,446-458,477-478
+devfn/ports/src/types.ts
+  h_bdc5b81c173ee9 41,46
+devfn/processes/src/supervisor.ts
+  h_bdc5b81c173ee9 66
+devfn/processes/src/types.ts
+  h_bdc5b81c173ee9 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d05629354c8da41db0be2a93c7dcf0eefbe3765",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
