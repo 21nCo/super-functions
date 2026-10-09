@@ -13,6 +13,9 @@ vi.mock("@devfn/proxy", async (importOriginal) => {
       constructor(stateDir: string) {
         super(stateDir, (async () => [{ address: "127.0.0.1", family: 4 }]) as never);
       }
+      // This fixture replaces Caddy with a command stub; physical owner and
+      // listener preflight is covered by the isolated real-Caddy suite.
+      override async assertActivationReady(): Promise<void> {}
     },
   };
 });

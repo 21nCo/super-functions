@@ -376,9 +376,17 @@ export class DevFnOrchestrator {
     const preflightPorts = Object.fromEntries(plan.portNames.map((name) => [name, 1]));
     const routes = await selectedProxyRoutes(options.config, plan, identity, preflightPorts,
       loadedPolicy?.policy.hostnameSuffix ?? ".localhost", stateDir);
+    const prior = await readReceipt(options.config, options.root, identity.instanceId);
+    if (prior && prior.state !== "stopped") assertReceiptStateDir(prior, stateDir);
+    const replacingInvocationId = prior?.state === "ready" ? prior.invocationId : undefined;
     await registry.assertReplacementAvailable(listenerPorts, identity.instanceId,
       plan.portNames.map((name) => ({ name, spec: options.config.ports?.[name] ?? {} })),
-      async () => { if (routes.length) await new CaddyProxyController(stateDir).assertRouteOwnershipAvailable(routes, identity.instanceId); });
+      async () => {
+        if (!routes.length) return;
+        const proxy = new CaddyProxyController(stateDir);
+        await proxy.assertRouteOwnershipAvailable(routes, identity.instanceId);
+        await proxy.assertActivationReady(routes, identity.instanceId);
+      }, replacingInvocationId);
     const oldReady = await this.prepareExisting(options, stateDir, identity, loadedPolicy, registry, true);
     await registry.recoverInterrupted(identity.instanceId);
     const publicNodes = plan.nodes.filter((node) => node.kind === "process" && options.config.processes?.[node.name]?.exposure === "public").map((node) => node.name);
@@ -587,7 +595,8 @@ export class DevFnOrchestrator {
     const identity = await resolveInstanceIdentity(options.config.project.id, options.root);
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
     const stateDir = await realpath(requestedStateDir);
-    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.downLocked(options, stateDir, identity), { timeoutMs: 30_000 });
+    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () =>
+      await withRoutingLock(stateDir, async () => await this.downLocked(options, stateDir, identity)), { timeoutMs: 30_000 });
   }
 
   private async downLocked(options: { config: DevFnConfig; root: string; stateDir?: string }, stateDir: string, identity: InstanceIdentity): Promise<LifecycleReceipt> {

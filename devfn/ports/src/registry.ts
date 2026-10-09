@@ -173,10 +173,10 @@ export class FilePortRegistry {
       if (input.replacingInvocationId && !state.invocations.some((item) => item.id === input.replacingInvocationId && item.projectId === input.projectId && item.instanceId === input.instanceId && item.state === "ready")) {
         throw new PortRegistryError("DEVFN_REGISTRY_INVALID", "A replacement may only reuse its own ready invocation's leases.");
       }
-      const priorLease = (port: number, protocol: "tcp" | "udp") => state.allocations.some((item) =>
-        item.invocationId === input.replacingInvocationId && item.state === "active" && item.port === port && item.protocol === protocol);
+      const priorLease = (port: number, protocol: "tcp" | "udp", host: string) => state.allocations.some((item) =>
+        item.invocationId === input.replacingInvocationId && item.state === "active" && item.port === port && item.protocol === protocol && item.host === host);
       const availableForReplacement = async (port: number, protocol: "tcp" | "udp", host: string) =>
-        priorLease(port, protocol) || await this.availabilityCheck(port, protocol, host);
+        priorLease(port, protocol, host) || await this.availabilityCheck(port, protocol, host);
       const proxyPorts = new Set(input.proxyListenerPorts ?? []);
       for (const port of proxyPorts) {
         const conflict = state.allocations.find((item) => active(item) && item.invocationId !== input.replacingInvocationId && item.port === port);
@@ -345,7 +345,7 @@ export class FilePortRegistry {
 
   /** Validate a replacement before its old service and leases are removed. */
   public async assertReplacementAvailable(ports: readonly number[], exceptInstanceId: string,
-    requests: readonly ReservationRequest[], checkRoutes: () => Promise<void>): Promise<void> {
+    requests: readonly ReservationRequest[], checkRoutes: () => Promise<void>, replacingInvocationId?: string): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
     await withRoutingLock(path.dirname(this.filePath), async () => await withFileLock(this.lockPath, async () => {
       const state = await this.read();
@@ -357,6 +357,11 @@ export class FilePortRegistry {
         state.revision += 1;
         await this.write(state);
       }
+      // A stale receipt may name an invocation already removed from the
+      // registry. Only a matching ready registry invocation can own a port
+      // for this preflight; prepareExisting will recover the stale receipt.
+      const readyReplacement = replacingInvocationId && state.invocations.some((item) => item.id === replacingInvocationId &&
+        item.instanceId === exceptInstanceId && item.state === "ready");
       for (const request of requests) {
         const port = request.spec.exact ? request.spec.preferred : undefined;
         if (port === undefined) continue;
@@ -369,8 +374,13 @@ export class FilePortRegistry {
         if (claimant) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is claimed by proxy instance ${claimant.instanceId}.`,
           { port, service: request.name, instanceId: claimant.instanceId });
         const protocol = request.spec.protocol ?? "tcp";
-        const owned = state.allocations.some((item) => active(item) && item.instanceId === exceptInstanceId && item.service === request.name && item.port === port && item.protocol === protocol);
-        if (!owned && !await this.availabilityCheck(port, protocol, request.spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")) {
+        // reserve reuses an exact port by ready invocation, even when a
+        // replacement renames the service. Keep preflight's ownership rule
+        // identical so it cannot reject a safe rename before teardown.
+        const host = request.spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1";
+        const owned = Boolean(readyReplacement) && state.allocations.some((item) => active(item) && item.invocationId === replacingInvocationId &&
+          item.instanceId === exceptInstanceId && item.port === port && item.protocol === protocol && item.host === host);
+        if (!owned && !await this.availabilityCheck(port, protocol, host)) {
           throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is occupied.`, { port, service: request.name });
         }
       }

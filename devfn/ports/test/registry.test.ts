@@ -9,6 +9,29 @@ import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, renderPolicyI
 import { inspectContainerRunning } from "../src/registry.js";
 
 describe("FilePortRegistry", () => {
+  for (const protocol of ["tcp", "udp"] as const) {
+    it(`preflights renamed and swapped exact ${protocol} leases by ready invocation and host`, async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "devfn-replacement-owner-"));
+      let occupied = false;
+      const registry = new FilePortRegistry(path.join(dir, "registry.json"), undefined, async () => !occupied);
+      const first = await allocateEphemeralPort();
+      let second = await allocateEphemeralPort();
+      while (second === first) second = await allocateEphemeralPort();
+      try {
+        await registry.reserve({ projectId: "app", instanceId: "same", invocationId: "old", profile: "default",
+          requests: [{ name: "a", spec: { preferred: first, exact: true, protocol } }, { name: "b", spec: { preferred: second, exact: true, protocol } }] });
+        await registry.markActive("old");
+        occupied = true;
+        const requests = [{ name: "renamed-a", spec: { preferred: second, exact: true, protocol } },
+          { name: "renamed-b", spec: { preferred: first, exact: true, protocol } }];
+        await registry.assertReplacementAvailable([], "same", requests, async () => undefined, "old");
+        const swapped = await registry.reserve({ projectId: "app", instanceId: "same", invocationId: "new", replacingInvocationId: "old", profile: "default", requests });
+        expect(swapped.map((item) => item.port)).toEqual([second, first]);
+        await expect(registry.assertReplacementAvailable([], "same", [{ name: "public", spec: { preferred: first, exact: true, protocol, exposure: "public" } }],
+          async () => undefined, "old")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+      } finally { await rm(dir, { recursive: true, force: true }); }
+    });
+  }
   it("retains an expired cross-protocol proxy claim when an IPv6 listener is hidden from OS inspection", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-ipv6-claim-"));
     const port = await allocateEphemeralPort();

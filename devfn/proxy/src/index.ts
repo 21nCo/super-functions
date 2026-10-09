@@ -6,7 +6,7 @@ import net from "node:net";
 import { lookup } from "node:dns/promises";
 import { promisify } from "node:util";
 
-import { isPortAvailable, parsePersistedProxyRoutes, parseProxyOwner, proxyOwnerStatus, withFileLock, withRoutingLock, type ProxyOwner } from "@devfn/ports";
+import { isPortAvailable, parsePersistedProxyRoutes, parseProxyOwner, proxyOwnerStatus, scanListenerState, withFileLock, withRoutingLock, type ProxyOwner } from "@devfn/ports";
 import { matchesProcessIdentity, processBirthSignature } from "@devfn/processes";
 import { domainContains, DomainError, readRegisteredDomains, verifyCertificate, verifyLocalDns } from "./domains.js";
 export { DomainError, domainContains, normalizeDomain, readRegisteredDomains, registerDomain, unregisterDomain, verifyCertificate, verifyLocalDns, type RegisteredDomain } from "./domains.js";
@@ -106,6 +106,16 @@ async function ipv6LoopbackAvailable(): Promise<boolean> {
   finally { if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve())); }
 }
 
+async function privilegedListenerAbsent(port: number, host: string): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    const socket = net.connect({ port, host });
+    socket.setTimeout(500);
+    socket.once("connect", () => { socket.destroy(); resolve(false); });
+    socket.once("error", (error: NodeJS.ErrnoException) => { socket.destroy(); resolve(error.code === "ECONNREFUSED"); });
+    socket.once("timeout", () => { socket.destroy(); resolve(false); });
+  });
+}
+
 export class CaddyProxyController {
   private readonly statePath: string;
   private readonly pendingPath: string;
@@ -194,6 +204,66 @@ export class CaddyProxyController {
         }
         renderCaddyfile([...siblings, ...routes.map((route) => ({ ...route, updatedAt: "preflight" }))]);
       }
+    }));
+  }
+
+  /** Check Caddy's executable, configuration and physical listeners before a replacement is stopped. */
+  public async assertActivationReady(routes: readonly Omit<ProxyRoute, "updatedAt">[], instanceId: string): Promise<void> {
+    if (!routes.length) return;
+    await withRoutingLock(this.stateDir, async () => await withFileLock(this.lockPath, async () => {
+      if (!await this.available()) throw new ProxyError("DEVFN_PROXY_UNAVAILABLE", "Caddy is required for this profile but is unavailable.");
+      const committed = await this.readState(this.statePath);
+      const pending = await this.readState(this.pendingPath);
+      const siblings = (pending ?? committed)?.routes.filter((route) => route.instanceId !== instanceId) ?? [];
+      const candidateRoutes = [...siblings, ...routes.map((route) => ({ ...route, updatedAt: "preflight" }))];
+      const config = renderCaddyfile(candidateRoutes, await ipv6LoopbackAvailable());
+      let owner: ProxyOwner | null = null;
+      try { owner = parseProxyOwner(await readFile(this.ownerPath, "utf8")); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "Unable to verify the DevFn Caddy owner record.");
+        }
+      }
+      const ownerStatus = owner ? await proxyOwnerStatus(owner) : "dead";
+      if (ownerStatus === "unverified") {
+        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "The recorded DevFn Caddy identity cannot be verified for activation.");
+      }
+      const adminResponds = await fetch("http://127.0.0.1:2019/config/", { signal: AbortSignal.timeout(1000) }).then(() => true).catch(() => false);
+      if (ownerStatus === "active" ? !adminResponds : adminResponds || !await isPortAvailable(2019, "tcp", "127.0.0.1")) {
+        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "The Caddy admin listener is missing or owned by another process.");
+      }
+      const scan = await scanListenerState(false);
+      if (ownerStatus === "active" && (!scan.inspection.tcp || !scan.listeners.some((listener) =>
+        listener.protocol === "tcp" && listener.port === 2019 && listener.pid === owner?.pid) || scan.listeners.some((listener) =>
+        listener.protocol === "tcp" && listener.port === 2019 && listener.pid !== owner?.pid))) {
+        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "The Caddy admin listener is not owned by the recorded process.");
+      }
+      const ipv6 = await ipv6LoopbackAvailable();
+      for (const port of Object.values(proxyListenerPorts())) {
+        const listeners = scan.listeners.filter((listener) => listener.protocol === "tcp" && listener.port === port);
+        if (listeners.some((listener) => ownerStatus !== "active" || listener.pid !== owner?.pid)) {
+          throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", `Caddy listener port ${port} is occupied by another process.`);
+        }
+        // A successful bind proves absence for ordinary ports even when OS
+        // inspection is unavailable. Privileged ports need inspected OS state.
+        for (const host of ipv6 ? ["127.0.0.1", "::1"] : ["127.0.0.1"]) {
+          const recordedHost = host === "::1" ? "[::1]" : host;
+          if (listeners.some((listener) => listener.pid === owner?.pid &&
+            [recordedHost, host, "*", "[::]", "::"].includes(listener.host))) continue;
+          if (!await isPortAvailable(port, "tcp", host) &&
+            (port >= 1024 || !scan.inspection.tcp || !await privilegedListenerAbsent(port, host))) {
+            throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", `Caddy listener port ${port} is unavailable on ${host}.`);
+          }
+        }
+      }
+      const candidate = `${this.configPath}.preflight.${process.pid}.${randomUUID()}`;
+      try {
+        await writeFile(candidate, config, { mode: 0o600, flag: "wx" });
+        await execFileAsync("caddy", ["validate", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 });
+      } catch (error) {
+        throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Caddy rejected the proposed route configuration before replacement.",
+          { cause: error instanceof Error ? error.message : String(error) });
+      } finally { await rm(candidate, { force: true }); }
     }));
   }
 
