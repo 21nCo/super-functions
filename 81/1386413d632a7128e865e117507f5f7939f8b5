@@ -1,0 +1,41 @@
+devfn/SPEC.md
+  s_fd2012bf034554::t_57d735071ac4ea 15
+devfn/cli/README.md
+  s_fd2012bf034554::t_d89178367dc470 18
+devfn/compose/src/index.ts
+  s_fd2012bf034554::t_863539f3d9c8f4 1391
+devfn/core/README.md
+  s_fd2012bf034554::t_67a2cacafe6227 5
+devfn/core/src/orchestrator.ts
+  s_fd2012bf034554::t_75e056b05fbdf2 3,8,445-449,466,474-491,493-498,519,525-527,540-547,562,586,676-685
+devfn/core/test/domain-routing.test.ts
+  s_fd2012bf034554::t_c09e9e48d2929b 57,318-319,332-338,345-346,359,361-364,366-369,377,390,392-393,395-397,404,423-425,427,705-706
+devfn/core/test/replacement-contract.test.ts
+  s_fd2012bf034554::t_8aaa553afe4245 1-185
+devfn/core/test/startup-fixture.test.ts
+  s_fd2012bf034554::t_418ce4a1fce517 9,77-84,87-89,99-100,103,138-139,142,145,149-150,154-159,162,849-854
+devfn/ports/README.md
+  s_fd2012bf034554::t_8f3325fe84a7fa 7
+devfn/ports/src/registry.ts
+  s_fd2012bf034554::t_e03df0784051c5 87-88,123-128,131-135,475
+devfn/ports/test/registry.test.ts
+  s_fd2012bf034554::t_e56826a92a912c 71,102-143
+devfn/processes/src/supervisor.ts
+  s_fd2012bf034554::t_c9b4f9963859c5 66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "811386413d632a7128e865e117507f5f7939f8b5",
+  "prompts": {},
+  "sessions": {
+    "s_fd2012bf034554": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bba569bd-afce-4b37-bbb1-2a85837124dd",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
