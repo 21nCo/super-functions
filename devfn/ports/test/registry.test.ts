@@ -7,6 +7,37 @@ import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, renderPolicyI
 import { inspectContainerRunning } from "../src/registry.js";
 
 describe("FilePortRegistry", () => {
+  for (const invocationState of ["starting", "ready"] as const) {
+    it(`reclaims an abandoned ${invocationState} claim with a reused owner PID`, async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "devfn-reused-proxy-owner-"));
+      const port = 18453;
+      const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => port + 1, async () => true);
+      const reserve = (invocationId: string, protocol: "tcp" | "udp", exact: boolean) => registry.reserve({
+        projectId: "app", instanceId: "legacy", invocationId, profile: "default",
+        requests: [{ name: "api", spec: { preferred: port, exact, protocol, range: [port, port + 1] } }],
+      });
+      try {
+        await registry.reserve({ projectId: "app", instanceId: "abandoned", invocationId: "old", profile: "default",
+          requests: [], proxyListenerPorts: [port] });
+        await registry.updateInvocation("old", { state: invocationState });
+        await writeFile(path.join(dir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature: "reused-pid" }));
+        const state = await registry.read();
+        state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
+        await writeFile(registry.filePath, JSON.stringify(state));
+        await registry.reconcile();
+        expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
+        await registry.gc();
+        expect((await reserve("tcp-exact", "tcp", true))[0]).toMatchObject({ port, source: "exact" });
+        await registry.release({ invocationId: "tcp-exact" });
+        expect((await reserve("udp-exact", "udp", true))[0]).toMatchObject({ port, source: "exact" });
+        await registry.release({ invocationId: "udp-exact" });
+        expect((await reserve("tcp-preferred", "tcp", false))[0]).toMatchObject({ port, source: "preferred" });
+        await registry.release({ invocationId: "tcp-preferred" });
+        expect((await reserve("tcp-stable", "tcp", false))[0]).toMatchObject({ port, source: "stable" });
+      } finally { await rm(dir, { recursive: true, force: true }); }
+    });
+  }
+
   it("reclaims an abandoned starting proxy claim after its lease becomes stale", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-abandoned-proxy-"));
     const file = path.join(dir, "registry.json");

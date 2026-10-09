@@ -273,5 +273,26 @@ describe("Caddy route rendering", () => {
   it("distinguishes dead proxy owners from live PID reuse", async () => {
     await expect(proxyOwnerStatus({ pid: 2_147_483_647, birthSignature: "missing" })).resolves.toBe("dead");
     await expect(proxyOwnerStatus({ pid: process.pid, birthSignature: "different-process" })).resolves.toBe("identity-mismatch");
+    await expect(proxyOwnerStatus({ pid: process.pid })).resolves.toBe("unverified");
+  });
+
+  it("clears a reused-PID owner on retry without signaling the unrelated process", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-reused-owner-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+    const originalPath = process.env.PATH;
+    const ownerPath = path.join(stateDir, "proxy-owner.json");
+    try {
+      await writeFile(ownerPath, JSON.stringify({ pid: process.pid, birthSignature: "reused-pid" }));
+      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      await expect(new CaddyProxyController(stateDir).upsert([{
+        id: "retry", instanceId: "retry", hostname: "retry.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off",
+      }])).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
+      await expect(access(ownerPath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await processBirthSignature(process.pid)).toBeTruthy();
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
+    }
   });
 });

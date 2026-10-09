@@ -6,8 +6,8 @@ import net from "node:net";
 import { lookup } from "node:dns/promises";
 import { promisify } from "node:util";
 
-import { parsePersistedProxyRoutes, withFileLock } from "@devfn/ports";
-import { matchesProcessIdentity, processBirthSignature, processExists } from "@devfn/processes";
+import { isPortAvailable, parsePersistedProxyRoutes, parseProxyOwner, proxyOwnerStatus, withFileLock, type ProxyOwner } from "@devfn/ports";
+import { matchesProcessIdentity, processBirthSignature } from "@devfn/processes";
 import { domainContains, DomainError, readRegisteredDomains, verifyCertificate, verifyLocalDns } from "./domains.js";
 export { DomainError, domainContains, normalizeDomain, readRegisteredDomains, registerDomain, unregisterDomain, verifyCertificate, verifyLocalDns, type RegisteredDomain } from "./domains.js";
 
@@ -27,13 +27,7 @@ export interface ProxyRoute {
   certificateDigest?: string;
 }
 interface ProxyState { version: 1; routes: ProxyRoute[] }
-interface ProxyOwner { pid: number; birthSignature?: string }
-
-function parseProxyOwner(value: string): ProxyOwner {
-  const owner = JSON.parse(value) as Partial<ProxyOwner> | null;
-  if (!owner || !Number.isInteger(owner.pid) || owner.pid! <= 0 || (owner.birthSignature !== undefined && (typeof owner.birthSignature !== "string" || owner.birthSignature.length === 0))) throw new Error("Invalid proxy owner record.");
-  return owner as ProxyOwner;
-}
+export { proxyOwnerStatus } from "@devfn/ports";
 
 export class ProxyError extends Error {
   public constructor(public readonly code: "DEVFN_PROXY_UNAVAILABLE" | "DEVFN_PROXY_CONFIG_INVALID" | "DEVFN_PROXY_RELOAD_FAILED" | "DEVFN_PROXY_OWNERSHIP_CONFLICT", message: string, public readonly details?: Record<string, unknown>) {
@@ -110,11 +104,6 @@ async function ipv6LoopbackAvailable(): Promise<boolean> {
     return true;
   } catch { return false; }
   finally { if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve())); }
-}
-
-export async function proxyOwnerStatus(owner: ProxyOwner): Promise<"active" | "dead" | "identity-mismatch"> {
-  if (!processExists(owner.pid)) return "dead";
-  return await matchesProcessIdentity(owner.pid, owner.birthSignature) ? "active" : "identity-mismatch";
 }
 
 export class CaddyProxyController {
@@ -255,8 +244,17 @@ export class CaddyProxyController {
       const status = await proxyOwnerStatus(owner);
       if (status === "dead") { await rm(this.ownerPath, { force: true }); owner = null; }
       else if (status === "identity-mismatch") {
+        // A reused PID cannot own this Caddy. The admin listener is the
+        // independent proof that its old Caddy has also stopped.
+        if (!await isPortAvailable(2019, "tcp", "127.0.0.1")) {
+          await rm(candidate, { force: true });
+          throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "The recorded DevFn Caddy PID belongs to a different live process and the Caddy admin listener is occupied.");
+        }
+        await rm(this.ownerPath, { force: true });
+        owner = null;
+      } else if (status === "unverified") {
         await rm(candidate, { force: true });
-        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "The recorded DevFn Caddy PID belongs to a different live process; refusing to replace it.");
+        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "The recorded DevFn Caddy process identity cannot be verified.");
       }
     }
     if (!owner) {

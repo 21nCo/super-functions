@@ -10,6 +10,7 @@ import { allocateEphemeralPort, isPortAvailable } from "./listeners.js";
 import { withFileLock } from "./lock.js";
 import { PortRegistryError, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput } from "./types.js";
 import { parsePersistedProxyRoutes } from "./proxy-state.js";
+import { parseProxyOwner, proxyOwnerStatus } from "./proxy-owner.js";
 
 const EMPTY: RegistryState = { version: 1, revision: 0, allocations: [], invocations: [] };
 const execFileAsync = promisify(execFile);
@@ -40,17 +41,12 @@ async function noOwnedProxyRoutes(stateDir: string, instanceId: string): Promise
 }
 
 async function noLiveProxyOwner(stateDir: string): Promise<boolean> {
-  let owner: unknown;
-  try { owner = JSON.parse(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")); }
+  let owner;
+  try { owner = parseProxyOwner(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
   }
-  if (owner !== undefined) {
-    if (!owner || typeof owner !== "object" || !Number.isInteger((owner as { pid?: unknown }).pid) ||
-      ("birthSignature" in owner && (typeof owner.birthSignature !== "string" || owner.birthSignature.length === 0))) return false;
-    const pid = (owner as { pid: number }).pid;
-    if (pid <= 0 || processExists(pid)) return false;
-  }
+  if (owner && !["dead", "identity-mismatch"].includes(await proxyOwnerStatus(owner))) return false;
   // DevFn always enables Caddy's loopback admin listener. A live but
   // unrecorded Caddy must continue to protect its HTTP and HTTPS listeners.
   return await isPortAvailable(2019, "tcp", "127.0.0.1");

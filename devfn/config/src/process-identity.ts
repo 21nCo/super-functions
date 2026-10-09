@@ -13,11 +13,13 @@ export async function processBirthSignature(pid: number): Promise<string | undef
     }
     if (process.platform === "darwin") {
       const { stdout } = await execFileAsync("ps", ["-o", "lstart=", "-p", String(pid)]);
-      return `darwin:${stdout.trim()}`;
+      const startTime = stdout.trim();
+      return startTime ? `darwin:${startTime}` : undefined;
     }
     if (process.platform === "win32") {
       const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-Command", `(Get-Process -Id ${pid}).StartTime.ToUniversalTime().ToString('O')`]);
-      return `win32:${stdout.trim()}`;
+      const startTime = stdout.trim();
+      return startTime ? `win32:${startTime}` : undefined;
     }
   } catch { return undefined; }
   return undefined;
