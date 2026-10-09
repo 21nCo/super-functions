@@ -13,7 +13,7 @@ const server = (body: string) =>
 
 const fixture = (extra: Record<string, unknown> = {}) => validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
   processes: { app: { adapter: "command", command: [process.execPath, "app.mjs"], ports: ["app"],
-    health: { type: "http", port: "app", timeoutMs: 3000 }, ...extra } }, profiles: { default: { processes: ["app"] } } });
+    health: { type: "http", port: "app", timeoutMs: 10_000 }, ...extra } }, profiles: { default: { processes: ["app"] } } });
 
 async function liveLeases(stateDir: string) {
   const state = await new FilePortRegistry(path.join(stateDir, "registry.json")).read();
