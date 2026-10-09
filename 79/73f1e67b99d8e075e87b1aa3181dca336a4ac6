@@ -1,0 +1,42 @@
+devfn/cli/README.md
+  h_bdc5b81c173ee9 18
+devfn/cli/src/index.ts
+  h_bdc5b81c173ee9 196
+devfn/cli/test/cli.test.ts
+  h_bdc5b81c173ee9 7-8,149-190
+devfn/core/README.md
+  h_bdc5b81c173ee9 5-6
+devfn/core/src/orchestrator.ts
+  h_bdc5b81c173ee9 9,367-368,382,405,421-427,478,488,496-497,501-509
+devfn/core/src/types.ts
+  h_bdc5b81c173ee9 57
+devfn/core/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 5,12,20,26,59-149
+devfn/ports/README.md
+  h_bdc5b81c173ee9 6
+devfn/ports/src/index.ts
+  h_bdc5b81c173ee9 2
+devfn/ports/src/lock.ts
+  h_bdc5b81c173ee9 2,4,11-21
+devfn/ports/src/registry.ts
+  h_bdc5b81c173ee9 10,160,166,173-179,182,186,190,219,233,243,272,279,290,332,343,350,352-359,363-364,371-375,385
+devfn/ports/src/types.ts
+  h_bdc5b81c173ee9 72-73
+devfn/proxy/src/domains.ts
+  h_bdc5b81c173ee9 8,143,155,162,182
+devfn/proxy/src/index.ts
+  h_bdc5b81c173ee9 9,187,197,353,368,373,377,382
+devfn/proxy/test/real-caddy.test.ts
+  h_bdc5b81c173ee9 10,51-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7973f1e67b99d8e075e87b1aa3181dca336a4ac6",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
