@@ -133,13 +133,13 @@ it("keeps a privileged claim whose UDP bind is denied unless a verified owner's 
   }
 }), 150_000);
 
-it("retains a privileged-port claim while a hidden listener still accepts", async () => {
+it("retains a privileged-port claim while a hidden listener still accepts", async ({ skip }) => {
   // macOS lets unprivileged processes bind privileged ports on the wildcard
   // address only; unprivileged Linux cannot, so there the fixture cannot
   // create the hidden listener it needs.
   let port: number | undefined;
   for (const candidate of [1023, 1022, 1021]) if (await isPortAvailable(candidate, "tcp", "0.0.0.0")) { port = candidate; break; }
-  if (port === undefined) return;
+  if (port === undefined) skip("No privileged wildcard port is bindable by this user (unprivileged Linux); the hidden privileged listener cannot be created.");
   const dir = await mkdtemp(path.join(tmpdir(), "devfn-hidden-privileged-claim-"));
   const listener = net.createServer((socket) => socket.destroy());
   scan.hidden = true;

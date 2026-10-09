@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -21,9 +22,10 @@ vi.mock("@devfn/proxy", async (importOriginal) => {
 
 import { validateDevFnConfig } from "@devfn/config";
 import { allocateEphemeralPort, FilePortRegistry, withFileLock } from "@devfn/ports";
-import { processBirthSignature } from "@devfn/processes";
+import { ComposeController } from "@devfn/compose";
+import { ProcessSupervisor, processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController } from "@devfn/proxy";
-import { DevFnOrchestrator, recoverOrphanedProxyRoutes } from "../src/index.js";
+import { DevFnOrchestrator, readReceipt, recoverOrphanedProxyRoutes, resolveInstanceIdentity } from "../src/index.js";
 
 it("reports degraded for a dead Caddy owner, a lost listener or an interrupted route switch, and up repairs the switch", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-readiness-"));
@@ -193,5 +195,129 @@ it("removes routes only for instances with conclusive no-lifecycle evidence", as
   } finally {
     if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
     await rm(root, { recursive: true, force: true });
+  }
+}, 60_000);
+
+const AGED = "2020-01-01T00:00:00.000Z";
+
+async function routedInstances(stateDir: string): Promise<string[]> {
+  const committed = JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")) as { routes: Array<{ instanceId: string }> };
+  return [...new Set(committed.routes.map((route) => route.instanceId))];
+}
+
+// Persisted state as a killed CLI leaves it once its heartbeat lapsed: the
+// lifecycle lock is stale (recovered by the next lock taker) and every
+// lease and invocation refresh is older than the abandonment interval.
+async function abandon(stateDir: string, instanceId: string): Promise<void> {
+  await rm(path.join(stateDir, `lifecycle-${instanceId}.lock`), { recursive: true, force: true });
+  const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+  const state = await registry.read();
+  for (const item of [...state.invocations, ...state.allocations]) item.updatedAt = AGED;
+  await writeFile(registry.filePath, JSON.stringify(state));
+}
+
+const interruptions = [
+  { kind: "process", gated: false },
+  { kind: "Compose", gated: process.env.DEVFN_REAL_COMPOSE !== "1" },
+] as const;
+
+for (const { kind, gated } of interruptions) {
+  it.skipIf(gated)(`keeps an interrupted ${kind} start's routes while its detached owner runs, through reconcile and gc, then recovers them`, async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-interrupted-owner-"));
+    const stateDir = path.join(root, "state");
+    const toolsDir = path.join(root, "tools");
+    const originalPath = process.env.PATH;
+    const markActive = FilePortRegistry.prototype.markActive;
+    const config = validateDevFnConfig(kind === "process"
+      ? { version: 1, project: { id: "fixture" }, ports: { app: {} },
+        processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "http", port: "app", timeoutMs: 20_000 } } },
+        profiles: { default: { processes: ["app"], proxy: true } }, hostnames: { app: { target: "app" } } }
+      : { version: 1, project: { id: "fixture" }, ports: { app: {} },
+        services: { api: { adapter: "compose", service: "api", ports: { app: 80 } } },
+        profiles: { default: { services: ["api"], proxy: true } }, hostnames: { app: { target: "app" } } });
+    let receipt: Awaited<ReturnType<typeof readReceipt>>;
+    try {
+      await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
+      await writeFile(path.join(root, "server.mjs"),
+        "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [httpd, -f, -p, '80']\n");
+      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      const birthSignature = await processBirthSignature(process.pid);
+      if (!birthSignature) throw new Error("Fixture process has no birth signature.");
+      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+      const { instanceId } = await resolveInstanceIdentity(config.project.id, root);
+      // The CLI stops after it published its routes and before its leases
+      // became active; the started node keeps running detached.
+      let published!: () => void;
+      const interrupted = new Promise<void>((resolve) => { published = resolve; });
+      FilePortRegistry.prototype.markActive = async function () { published(); await new Promise(() => undefined); };
+      void new DevFnOrchestrator().up({ config, root, stateDir }).catch(() => undefined);
+      await interrupted;
+      FilePortRegistry.prototype.markActive = markActive;
+      receipt = await readReceipt(config, root, instanceId);
+      expect(receipt?.state).toBe("starting");
+      expect(await routedInstances(stateDir)).toEqual([instanceId]);
+      await abandon(stateDir, instanceId);
+
+      const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+      // An earlier `devfn ports` reconciles the expired lease on its occupied port.
+      await registry.reconcile();
+      expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual([]);
+      await registry.gc();
+      expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual([]);
+      expect(await routedInstances(stateDir)).toEqual([instanceId]);
+
+      if (kind === "process") await new ProcessSupervisor().stop(receipt!.processes[0]);
+      else await new ComposeController().stop(receipt!.services[0]);
+      expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual([instanceId]);
+      expect(await routedInstances(stateDir)).toEqual([]);
+    } finally {
+      FilePortRegistry.prototype.markActive = markActive;
+      for (const managed of receipt?.processes ?? []) await new ProcessSupervisor().stop(managed).catch(() => undefined);
+      for (const managed of receipt?.services ?? []) await new ComposeController().stop(managed).catch(() => undefined);
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      if (kind === "Compose" && receipt?.services[0]) {
+        await promisify(execFile)("docker", ["network", "rm", `${receipt.services[0].projectName}_default`]).catch(() => undefined);
+      }
+      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  }, 120_000);
+}
+
+it("recovers the routes of a ready lifecycle whose owner died after an earlier reconcile collected its leases", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-dead-ready-"));
+  const stateDir = path.join(root, "state");
+  const toolsDir = path.join(root, "tools");
+  const originalPath = process.env.PATH;
+  const orchestrator = new DevFnOrchestrator();
+  const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 20_000 } } },
+    profiles: { default: { processes: ["app"], proxy: true } }, hostnames: { app: { target: "app" } } });
+  try {
+    await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
+    await writeFile(path.join(root, "server.mjs"),
+      "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
+    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Fixture process has no birth signature.");
+    await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+    const ready = await orchestrator.up({ config, root, stateDir });
+    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    await registry.reconcile();
+    expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual([]);
+    // The worktree's process dies with it; `devfn ports` and gc then collect its lease.
+    await new ProcessSupervisor().stop(ready.processes[0]);
+    await registry.reconcile();
+    await registry.gc();
+    expect((await registry.read()).allocations.filter((item) => item.invocationId === ready.invocationId)).toEqual([]);
+    expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual([ready.instanceId]);
+    expect(await routedInstances(stateDir)).toEqual([]);
+  } finally {
+    await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }, 60_000);

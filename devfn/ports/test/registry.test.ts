@@ -534,6 +534,61 @@ describe("FilePortRegistry", () => {
     expect(after.allocations[0].updatedAt).toBe(before);
   });
 
+  it("counts only verified-dead recorded owners as lifecycle death evidence", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-owner-evidence-"));
+    const originalPath = process.env.PATH;
+    const dockerState = path.join(dir, "docker-state");
+    const age = async () => {
+      const state = await registry.read();
+      for (const item of [...state.invocations, ...state.allocations]) item.updatedAt = "2020-01-01T00:00:00.000Z";
+      await writeFile(registry.filePath, JSON.stringify(state));
+    };
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    const server = net.createServer();
+    try {
+      await writeFile(path.join(dir, "docker"), `#!/bin/sh
+case "$(cat "${dockerState}")" in
+  running) echo true;;
+  gone) echo "Error: No such object: $4" >&2; exit 1;;
+  *) echo "Cannot connect to the Docker daemon" >&2; exit 1;;
+esac
+`, { mode: 0o700 });
+      process.env.PATH = `${dir}${path.delimiter}${originalPath ?? ""}`;
+      const port = await allocateEphemeralPort();
+      await registry.reserve({ projectId: "app", instanceId: "one", invocationId: "start", profile: "default", requests: [{ name: "api", spec: { preferred: port, exact: true } }] });
+      await registry.updateInvocation("start", { state: "starting" });
+      await age();
+      // Journaled and launched nothing yet: nothing of it can run.
+      expect(await registry.instanceMayRun("one")).toBe(false);
+      await registry.beginLaunch("start", "api");
+      await age();
+      // A launch whose identity is not recorded yet is ambiguous.
+      expect(await registry.instanceMayRun("one")).toBe(true);
+      await registry.recordOwners("start", "api", [{ container: { id: "fixture-container" } }]);
+      await age();
+      await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+      // An expired planned lease on an occupied port is not stale.
+      expect((await registry.reconcile()).allocations[0].state).toBe("externally-occupied");
+      for (const [docker, mayRun] of [["running", true], ["unreachable", true], ["gone", false]] as const) {
+        await writeFile(dockerState, docker);
+        expect(await registry.instanceMayRun("one")).toBe(mayRun);
+      }
+      await writeFile(dockerState, "running");
+      await registry.gc();
+      expect(await registry.instanceMayRun("one")).toBe(true);
+
+      // A legacy invocation with no owner journal and no recorded owner proves nothing.
+      const state = await registry.read();
+      state.invocations.push({ id: "legacy", projectId: "app", instanceId: "legacy", profile: "default", state: "ready", createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z" });
+      await writeFile(registry.filePath, JSON.stringify(state));
+      expect(await registry.instanceMayRun("legacy")).toBe(true);
+    } finally {
+      if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("inspects container owners through their persisted Docker selector", async () => {
     let observedHost: string | undefined;
     let observedArgs: string[] = [];

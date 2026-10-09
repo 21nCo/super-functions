@@ -13,6 +13,13 @@ export interface ContainerOwner {
   dockerEnvironment?: Record<string, string>;
 }
 
+/** A process or container a lifecycle started, recorded when it started. */
+export interface LifecycleOwner {
+  node: string;
+  process?: ProcessOwner;
+  container?: ContainerOwner;
+}
+
 export interface PortAllocation {
   id: string;
   projectId: string;
@@ -46,6 +53,11 @@ export interface RegistryInvocation {
   /** An ended invocation keeps its listener claim until conclusive evidence retires it. */
   proxyClaimRetained?: true;
   replacingInvocationId?: string;
+  /** Set by reserve: every started node's owner identity is recorded here, so an empty list proves none started. */
+  ownerJournal?: true;
+  owners?: LifecycleOwner[];
+  /** Nodes whose launch began but whose owner identity is not recorded yet. */
+  launching?: string[];
 }
 
 export interface RegistryState {

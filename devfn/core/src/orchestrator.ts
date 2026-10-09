@@ -350,8 +350,9 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
 /**
  * Remove proxy routes no lifecycle can still own, for example after a
  * worktree was deleted while running. Holding an instance's lifecycle lock
- * proves no command of it runs; registry evidence must then show no live or
- * unprovable lease owner. Live or ambiguous instances keep their routes.
+ * proves no command of it runs; every process and container identity its
+ * lifecycles recorded must then be verified dead. Live or ambiguous
+ * instances keep their routes.
  */
 export async function recoverOrphanedProxyRoutes(requestedStateDir: string): Promise<string[]> {
   let stateDir: string;
@@ -369,7 +370,7 @@ export async function recoverOrphanedProxyRoutes(requestedStateDir: string): Pro
       await withFileLock(path.join(stateDir, `lifecycle-${instanceId}.lock`), async () => {
         entered = true;
         await withRoutingLock(stateDir, async () => {
-          if (await registry.hasLiveLifecycle(instanceId)) return;
+          if (await registry.instanceMayRun(instanceId)) return;
           await proxy.removeInstance(instanceId);
           recovered.push(instanceId);
         });
@@ -563,7 +564,7 @@ export class DevFnOrchestrator {
         await writeReceipt(receipt);
         receipt.environmentOutputs = await writeEnvironmentOutputs(options.root, runtimeDir, options.config.environmentOutputs ?? [], environment);
         for (const node of plan.nodes) {
-          await this.startSelectedNode(node, { options, identity, receipt, resolved, ports, allocations, supervisor, compose });
+          await this.startSelectedNode(node, { options, identity, receipt, resolved, ports, allocations, supervisor, compose, registry });
           receipt.updatedAt = new Date().toISOString();
           await writeReceipt(receipt);
         }
@@ -646,8 +647,13 @@ export class DevFnOrchestrator {
     allocations: readonly PortAllocation[];
     supervisor: ProcessSupervisor;
     compose: ComposeController;
+    registry: FilePortRegistry;
   }): Promise<void> {
-    const { options, identity, receipt, resolved, ports, allocations, supervisor, compose } = context;
+    const { options, identity, receipt, resolved, ports, allocations, supervisor, compose, registry } = context;
+    // Routes may already target this lifecycle's ports. Its owner identities
+    // are journaled in the registry, which outlives the worktree, so orphan
+    // recovery can tell a running interrupted start from a dead one.
+    await registry.beginLaunch(receipt.invocationId, node.name);
     if (node.kind === "service") {
       const spec = options.config.services![node.name];
       await compose.start({
@@ -655,6 +661,8 @@ export class DevFnOrchestrator {
         portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
         portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.nodes[node.name].environment, readinessEnvironment: resolved.nodes[node.name].readinessEnvironment,
         onStarted: async (managed) => {
+          await registry.recordOwners(receipt.invocationId, node.name, managed.containerIds.map((id) => ({ container: { id, name: managed.composeService,
+            ...(managed.dockerEnvironment !== undefined ? { dockerEnvironment: managed.dockerEnvironment } : {}) } })));
           receipt.services.push(managed);
           receipt.startedNodes?.push({ name: node.name, kind: node.kind });
           receipt.updatedAt = new Date().toISOString();
@@ -667,6 +675,7 @@ export class DevFnOrchestrator {
     const managed = await supervisor.start({
       name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, command: resolved.nodes[node.name].command, script: resolved.nodes[node.name].script, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir: receipt.runtimeDir, ports, environment: resolved.generated,
       onStarted: async (started) => {
+        await registry.recordOwners(receipt.invocationId, node.name, [{ process: { pid: started.pid, ...(started.birthSignature ? { birthSignature: started.birthSignature } : {}) } }]);
         receipt.processes.push(started);
         receipt.startedNodes?.push({ name: node.name, kind: node.kind });
         receipt.updatedAt = new Date().toISOString();

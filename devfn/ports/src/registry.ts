@@ -9,7 +9,7 @@ import { matchesProcessIdentity, processExists } from "@devfn/processes";
 
 import { allocateEphemeralPort, bindProbe, connectionRefused, isPortAvailable, scanListenerState } from "./listeners.js";
 import { withFileLock, withRoutingLock } from "./lock.js";
-import { PortRegistryError, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput, type ReservationRequest } from "./types.js";
+import { PortRegistryError, type LifecycleOwner, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput, type ReservationRequest } from "./types.js";
 import { parsePersistedProxyRoutes, type PersistedProxyRoute } from "./proxy-state.js";
 import { parseProxyOwner, proxyOwnerStatus } from "./proxy-owner.js";
 
@@ -165,7 +165,9 @@ function holdsProxyClaim(invocation: RegistryInvocation): boolean {
 async function refreshAllocation(allocation: PortAllocation, now: string, available: (port: number, protocol: "tcp" | "udp", host: string) => Promise<boolean>): Promise<void> {
   const previousState = allocation.state;
   const portAvailable = await available(allocation.port, allocation.protocol, allocation.host);
-  if (allocation.state === "planned" && Date.now() - Date.parse(allocation.updatedAt) > ABANDONED_CLAIM_MS) allocation.state = "stale";
+  // Age ends a planned lease only on a free port: an occupied one may be held
+  // by a node an interrupted start launched before its lease became active.
+  if (allocation.state === "planned" && Date.now() - Date.parse(allocation.updatedAt) > ABANDONED_CLAIM_MS) allocation.state = portAvailable ? "stale" : "externally-occupied";
   else if (allocation.state === "active" && allocation.process && !await matchesProcessOwner(allocation.process)) allocation.state = portAvailable ? "stale" : "externally-occupied";
   else if (allocation.state === "active" && allocation.container && await inspectContainerRunning(allocation.container) === false) allocation.state = portAvailable ? "stale" : "externally-occupied";
   else if (allocation.state === "active" && !allocation.process && !allocation.container) allocation.state = portAvailable ? "stale" : "externally-occupied";
@@ -200,6 +202,33 @@ async function expireAbandonedProxyClaims(state: RegistryState, stateDir: string
     if (!await retirable(invocation)) continue;
     Object.assign(invocation, { state: "failed", errorCode: "DEVFN_INTERRUPTED", updatedAt: now });
   }
+}
+
+function ownerKey(owner: LifecycleOwner): string {
+  return JSON.stringify([owner.node, owner.process?.pid, owner.process?.birthSignature, owner.container?.id]);
+}
+
+function addOwners(invocation: RegistryInvocation, owners: readonly LifecycleOwner[]): void {
+  const known = new Set((invocation.owners ?? []).map(ownerKey));
+  for (const owner of owners) {
+    if (known.has(ownerKey(owner))) continue;
+    known.add(ownerKey(owner));
+    (invocation.owners ??= []).push(owner);
+  }
+}
+
+function allocationOwners(allocation: PortAllocation): LifecycleOwner[] {
+  return [
+    ...(allocation.process ? [{ node: allocation.service, process: allocation.process }] : []),
+    ...(allocation.container ? [{ node: allocation.service, container: allocation.container }] : []),
+  ];
+}
+
+/** Only a verified-dead identity is death evidence; a live or unverifiable one may still run. */
+async function ownerMayRun(owner: LifecycleOwner): Promise<boolean> {
+  if (owner.process) return owner.process.birthSignature ? await matchesProcessOwner(owner.process) : processExists(owner.process.pid);
+  if (owner.container) return await inspectContainerRunning(owner.container) !== false;
+  return true;
 }
 
 function stableOffset(value: string, size: number): number {
@@ -449,6 +478,7 @@ export class FilePortRegistry {
       }
       state.allocations.push(...planned);
       state.invocations.push({ id: input.invocationId, projectId: input.projectId, instanceId: input.instanceId, profile: input.profile, state: "planning", createdAt: now, updatedAt: now,
+        ownerJournal: true,
         ...(input.replacingInvocationId ? { replacingInvocationId: input.replacingInvocationId } : {}),
         ...(input.proxyListenerPorts?.length ? { proxyListenerPorts: [...input.proxyListenerPorts] } : {}) });
       return planned;
@@ -539,6 +569,30 @@ export class FilePortRegistry {
     });
   }
 
+  /** Journal a node launch before it starts, so an interruption before its identity is recorded stays ambiguous. */
+  public async beginLaunch(invocationId: string, node: string): Promise<void> {
+    await this.transaction((state) => {
+      const invocation = state.invocations.find((item) => item.id === invocationId);
+      if (!invocation) throw new PortRegistryError("DEVFN_REGISTRY_INVALID", `Invocation ${invocationId} is not registered.`);
+      if (!invocation.launching?.includes(node)) (invocation.launching ??= []).push(node);
+      invocation.updatedAt = new Date().toISOString();
+    });
+  }
+
+  /** Record the identities a launched node runs as; the launch stays ambiguous until at least one is known. */
+  public async recordOwners(invocationId: string, node: string, owners: ReadonlyArray<Omit<LifecycleOwner, "node">>): Promise<void> {
+    await this.transaction((state) => {
+      const invocation = state.invocations.find((item) => item.id === invocationId);
+      if (!invocation) throw new PortRegistryError("DEVFN_REGISTRY_INVALID", `Invocation ${invocationId} is not registered.`);
+      addOwners(invocation, owners.map((owner) => ({ ...owner, node })));
+      if (owners.length && invocation.launching) {
+        invocation.launching = invocation.launching.filter((item) => item !== node);
+        if (!invocation.launching.length) delete invocation.launching;
+      }
+      invocation.updatedAt = new Date().toISOString();
+    });
+  }
+
   public async recoverInterrupted(instanceId: string): Promise<number> {
     return await this.transaction(async (state) => {
       const now = new Date().toISOString();
@@ -570,7 +624,12 @@ export class FilePortRegistry {
         if (owners[allocation.service]?.container) allocation.container = owners[allocation.service].container;
       }
       const invocation = state.invocations.find((item) => item.id === invocationId);
-      if (invocation) Object.assign(invocation, { state: "ready", updatedAt: now });
+      if (invocation) {
+        // Lease owners are also kept on the invocation, where reconcile and gc
+        // of the leases cannot erase them.
+        addOwners(invocation, state.allocations.filter((item) => item.invocationId === invocationId).flatMap(allocationOwners));
+        Object.assign(invocation, { state: "ready", updatedAt: now });
+      }
     });
   }
 
@@ -602,22 +661,25 @@ export class FilePortRegistry {
   }
 
   /**
-   * Whether registry evidence shows a lifecycle of this instance that may
-   * still run: a recently refreshed command, a ready invocation without
-   * leases, or a lease whose owner is alive or cannot be proven dead.
+   * Whether a lifecycle of this instance may still run. Death evidence is
+   * only a recorded process or container identity verified dead; lease age,
+   * stale leases and occupied ports prove nothing. A recently refreshed
+   * command, a launch whose identity was never recorded, a live or
+   * unverifiable owner, and a lifecycle with no owner journal and no recorded
+   * owner all count as possibly running. Ended invocations stopped their
+   * owners before they ended. Callers hold the routing lock across this check
+   * and the action it permits.
    */
-  public async hasLiveLifecycle(instanceId: string): Promise<boolean> {
-    return await this.transaction(async (state) => {
-      const now = new Date().toISOString();
-      for (const invocation of state.invocations.filter((item) => item.instanceId === instanceId && CLAIM_STATES.includes(item.state))) {
-        if (invocation.state !== "ready" && recentlyRefreshed(invocation)) return true;
-        const leases = state.allocations.filter((item) => item.invocationId === invocation.id && active(item));
-        if (invocation.state === "ready" && !leases.length) return true;
-        for (const allocation of leases) await refreshAllocation(allocation, now, this.availabilityCheck);
-        if (leases.some(active)) return true;
-      }
-      return false;
-    });
+  public async instanceMayRun(instanceId: string): Promise<boolean> {
+    const state = await withRoutingLock(path.dirname(this.filePath), async () => await this.read());
+    for (const invocation of state.invocations.filter((item) => item.instanceId === instanceId && CLAIM_STATES.includes(item.state))) {
+      if (invocation.state !== "ready" && recentlyRefreshed(invocation)) return true;
+      if (invocation.launching?.length) return true;
+      const owners = [...(invocation.owners ?? []), ...state.allocations.filter((item) => item.invocationId === invocation.id).flatMap(allocationOwners)];
+      if (!owners.length && !invocation.ownerJournal) return true;
+      for (const owner of owners) if (await ownerMayRun(owner)) return true;
+    }
+    return false;
   }
 
   public async reconcile(): Promise<RegistryState> {
@@ -636,6 +698,12 @@ export class FilePortRegistry {
     return await this.transaction(async (state) => {
       await expireAbandonedProxyClaims(state, path.dirname(this.filePath), new Date().toISOString(), this.availabilityCheck);
       const before = state.allocations.length;
+      // A collected lease's owner stays death evidence for its lifecycle.
+      for (const allocation of state.allocations) {
+        if (allocation.state !== "stale" && allocation.state !== "released") continue;
+        const invocation = state.invocations.find((item) => item.id === allocation.invocationId && CLAIM_STATES.includes(item.state));
+        if (invocation) addOwners(invocation, allocationOwners(allocation));
+      }
       state.allocations = state.allocations.filter((allocation) => allocation.state !== "stale" && allocation.state !== "released");
       state.invocations = state.invocations.filter((invocation) => !["failed", "stopped"].includes(invocation.state) || invocation.proxyClaimRetained);
       return before - state.allocations.length;

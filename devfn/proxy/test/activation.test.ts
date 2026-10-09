@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import dgram from "node:dgram";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -27,14 +29,20 @@ vi.mock("@devfn/ports", async (importOriginal) => {
 });
 
 import { isPortAvailable, withFileLock } from "@devfn/ports";
-import { CaddyProxyController, proxyListenerPorts, type ProxyRoute } from "../src/index.js";
+import { CaddyProxyController, proxyListenerPorts, registerDomain, type ProxyRoute } from "../src/index.js";
 
 // Stands in for `caddy run`: its admin endpoint answers immediately, like
 // Caddy's, and it confirms startup through --pingback only when told to.
 const fakeRun = `import { connect } from "node:net";
+import dgram from "node:dgram";
 import http from "node:http";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 const pingback = process.argv[process.argv.indexOf("--pingback") + 1];
+if (process.env.DEVFN_TEST_RUN_MODE === "slow-exit") {
+  // Holds an HTTP/3-style UDP listener and takes a while to exit on SIGTERM.
+  dgram.createSocket("udp4").bind(Number(process.env.DEVFN_TEST_UDP_PORT), "127.0.0.1", () => writeFileSync(process.env.DEVFN_TEST_PID_FILE, String(process.pid)));
+  process.on("SIGTERM", () => setTimeout(() => process.exit(0), 800));
+}
 http.createServer((_request, response) => response.end(readFileSync(process.env.DEVFN_TEST_ADMIN_CONFIG, "utf8"))).listen(2019, "127.0.0.1");
 if (process.env.DEVFN_TEST_RUN_MODE === "exit-before-pingback") setTimeout(() => process.exit(1), 600);
 else {
@@ -63,12 +71,19 @@ async function setUp(): Promise<void> {
   stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-activation-"));
   toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-activation-tools-"));
   await writeFile(path.join(toolsDir, "fake-run.mjs"), fakeRun);
+  // Like Caddy's validate, fail when a configured certificate file is missing.
+  await writeFile(path.join(toolsDir, "check-certs.mjs"), `import { existsSync, readFileSync } from "node:fs";
+for (const match of readFileSync(process.argv[2], "utf8").matchAll(/tls ("[^"]*") ("[^"]*")/g)) {
+  if (![match[1], match[2]].every((file) => existsSync(JSON.parse(file)))) process.exit(1);
+}
+`);
   // `caddy adapt` of the committed Caddyfile and the live admin config.
   await writeFile(path.join(toolsDir, "adapted.json"), JSON.stringify({ admin: { listen: "127.0.0.1:2019" } }));
   await writeFile(path.join(toolsDir, "admin.json"), JSON.stringify({ admin: { listen: "127.0.0.1:2019" } }));
   await writeFile(path.join(toolsDir, "caddy"), `#!/bin/sh
 case "$1" in
-  version|validate|reload) exit 0;;
+  version|reload) exit 0;;
+  validate) [ -z "$DEVFN_TEST_VALIDATE_CERTS" ] || exec "${process.execPath}" "${path.join(toolsDir, "check-certs.mjs")}" "$3"; exit 0;;
   adapt) cat "$DEVFN_TEST_ADAPTED"; exit 0;;
   run) exec "${process.execPath}" "${path.join(toolsDir, "fake-run.mjs")}" "$@";;
 esac
@@ -184,4 +199,44 @@ adminTest("closes its startup confirmation listener when the owner record cannot
   expect(servers.filter((server) => server.listening)).toEqual([]);
   await expect(access(path.join(stateDir, "proxy-routes.json"))).rejects.toMatchObject({ code: "ENOENT" });
   for (let attempt = 0; attempt < 50 && await isPortAvailable(2019) === false; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+});
+
+adminTest("returns a failed Caddy start only after the spawned Caddy and its listeners are gone", async () => {
+  process.env.DEVFN_TEST_RUN_MODE = "slow-exit";
+  const pidFile = path.join(toolsDir, "caddy.pid");
+  const udp = dgram.createSocket("udp4");
+  const udpPort = await new Promise<number>((resolve) => udp.bind(0, "127.0.0.1", () => resolve(udp.address().port)));
+  await new Promise<void>((resolve) => udp.close(() => resolve()));
+  Object.assign(process.env, { DEVFN_TEST_PID_FILE: pidFile, DEVFN_TEST_UDP_PORT: String(udpPort) });
+  // The confirmed Caddy never accepts on its listener, so the start fails.
+  await expect(new CaddyProxyController(stateDir, undefined, undefined, async () => false).upsert([route("fixture")]))
+    .rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
+  const pid = Number(await readFile(pidFile, "utf8"));
+  expect(() => process.kill(pid, 0)).toThrow();
+  expect(await isPortAvailable(udpPort, "udp", "127.0.0.1")).toBe(true);
+  await expect(access(path.join(stateDir, "proxy-owner.json"))).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+adminTest("preflights a sibling against activated certificate snapshots after their source files are gone", async () => {
+  process.env.DEVFN_TEST_RUN_MODE = "pingback";
+  process.env.DEVFN_TEST_VALIDATE_CERTS = "1";
+  const sourceDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-activation-cert-"));
+  try {
+    const certificateFile = path.join(sourceDir, "source.crt.pem");
+    const keyFile = path.join(sourceDir, "source.key.pem");
+    execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
+      "-days", "1", "-subj", "/CN=a.dev.example.test", "-addext", "subjectAltName=DNS:a.dev.example.test"], { stdio: "ignore" });
+    const resolve = (async () => [{ address: "127.0.0.1", family: 4 }]) as never;
+    const registration = await registerDomain(stateDir, { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: sourceDir,
+      tls: "certificate", certificateFile, keyFile }, resolve);
+    const proxy = new CaddyProxyController(stateDir, resolve, undefined, async () => true);
+    await proxy.upsert([{ id: "a", instanceId: "a", hostname: "a.dev.example.test", targetHost: "127.0.0.1", targetPort: 4101, tls: "certificate",
+      registeredDomain: registration.domain, projectId: "fixture", repositoryIdentity: registration.repositoryIdentity, certificateFile, keyFile }]);
+    await rm(certificateFile);
+    await rm(keyFile);
+    // Socket inspection would also see unrelated host listeners; the owner is
+    // verified through its live configuration instead.
+    scan.unattributable = true;
+    await expect(proxy.assertActivationReady([route("sibling")], "sibling")).resolves.toBeUndefined();
+  } finally { await rm(sourceDir, { recursive: true, force: true }); }
 });

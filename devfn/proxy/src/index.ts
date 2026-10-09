@@ -252,7 +252,9 @@ export class CaddyProxyController {
       const pending = await this.readState(this.pendingPath);
       const siblings = (pending ?? committed)?.routes.filter((route) => route.instanceId !== instanceId) ?? [];
       const candidateRoutes = [...siblings, ...routes.map((route) => ({ ...route, updatedAt: "preflight" }))];
-      const config = renderCaddyfile(candidateRoutes, await ipv6LoopbackAvailable());
+      // Render exactly as activation does: activated siblings use their
+      // private certificate snapshots, not sources that may since be gone.
+      const config = this.renderState({ version: 1, routes: candidateRoutes }, await ipv6LoopbackAvailable());
       let owner: ProxyOwner | null = null;
       try { owner = parseProxyOwner(await readFile(this.ownerPath, "utf8")); }
       catch (error) {
@@ -518,6 +520,11 @@ export class CaddyProxyController {
           { detached: process.platform !== "win32", stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
         child.stdin?.once("error", () => undefined);
         child.stdin?.end(nonce);
+        const childExited = new Promise<true>((resolve) => {
+          if (child.exitCode !== null || child.signalCode !== null) resolve(true);
+          child.once("exit", () => resolve(true));
+          child.once("error", () => { if (!child.pid) resolve(true); });
+        });
         const spawnFailure = new Promise<Error | null>((resolve) => {
           child.once("error", resolve);
           child.once("exit", (code) => resolve(new Error(`Caddy exited with ${code ?? "unknown"}.`)));
@@ -529,19 +536,35 @@ export class CaddyProxyController {
           birthSignature = await processBirthSignature(child.pid);
           if (!birthSignature) await new Promise((resolve) => setTimeout(resolve, 20));
         }
-        const stopSpawnedChild = async (): Promise<void> => {
-          try {
-            if (!child.pid) return;
-            if (birthSignature && await matchesProcessIdentity(child.pid, birthSignature)) process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM");
-            else child.kill("SIGTERM");
-          } catch { /* already exited */ }
+        // A failed start returns only after this Caddy exited, so no listener
+        // it may still hold (including HTTP/3 UDP) outlives the claim that the
+        // caller releases next. Exit is observed on the child itself.
+        const stopSpawnedChild = async (): Promise<boolean> => {
+          if (!child.pid) return true;
+          for (const [signal, waitMs] of [["SIGTERM", 5_000], ["SIGKILL", 2_000]] as const) {
+            try {
+              if (child.exitCode !== null || child.signalCode !== null) return true;
+              if (birthSignature && await matchesProcessIdentity(child.pid, birthSignature)) process.kill(process.platform === "win32" ? child.pid : -child.pid, signal);
+              else child.kill(signal);
+            } catch { /* already exited */ }
+            let timer: NodeJS.Timeout | undefined;
+            const exited = await Promise.race([childExited, new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), waitMs); })]);
+            clearTimeout(timer);
+            if (exited) return true;
+          }
+          return false;
         };
+        // An unconfirmed exit keeps the owner record, so claim evidence keeps
+        // treating that Caddy as a possible listener owner.
+        const unstoppable = (): ProxyError => new ProxyError("DEVFN_PROXY_RELOAD_FAILED",
+          `A Caddy process DevFn started (PID ${child.pid}) did not exit after a failed start; stop it before retrying.`, { pid: child.pid });
         if (child.pid && birthSignature) {
           try { await writeFile(this.ownerPath, `${JSON.stringify({ pid: child.pid, birthSignature, startedAt: new Date().toISOString() })}\n`, { mode: 0o600 }); }
           catch (error) {
-            await stopSpawnedChild();
+            const stopped = await stopSpawnedChild();
             await rm(candidate, { force: true });
             if (!recovering) await rm(this.pendingPath, { force: true });
+            if (!stopped) throw unstoppable();
             throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to persist the DevFn Caddy owner record.", { cause: error instanceof Error ? error.message : String(error) });
           }
         }
@@ -560,10 +583,11 @@ export class CaddyProxyController {
           break;
         }
         if (!ready || !child.pid || !birthSignature) {
-          await stopSpawnedChild();
-          await rm(this.ownerPath, { force: true });
+          const stopped = await stopSpawnedChild();
+          if (stopped) await rm(this.ownerPath, { force: true });
           await rm(candidate, { force: true });
           if (!recovering) await rm(this.pendingPath, { force: true });
+          if (!stopped) throw unstoppable();
           const privileged = proxyListenerPortsFor(next.routes).filter((port) => port < 1024);
           throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", `Unable to start the DevFn-owned Caddy proxy and confirm its listeners.${process.platform === "linux" && privileged.length
             ? ` Binding ports ${privileged.join(" and ")} needs net.ipv4.ip_unprivileged_port_start at or below ${Math.min(...privileged)} or cap_net_bind_service on the Caddy binary; DevFn changes neither.` : ""}`);
