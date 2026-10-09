@@ -6,7 +6,7 @@ import net from "node:net";
 import { promisify } from "node:util";
 import { expect, it, vi } from "vitest";
 
-import { processBirthSignature } from "@devfn/processes";
+import { ProcessSupervisor, processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController, proxyListenerPorts, registerDomain } from "@devfn/proxy";
 import { validateDevFnConfig } from "@devfn/config";
 import { allocateEphemeralPort, FilePortRegistry, withRoutingLock } from "@devfn/ports";
@@ -315,6 +315,172 @@ it("preserves a ready replacement target when Caddy starts failing after validat
   }
 }, 30_000);
 
+it("restores the prior ready process when a replacement fails after teardown", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-replacement-rollback-"));
+  const stateDir = path.join(root, "state");
+  const orchestrator = new DevFnOrchestrator();
+  const original = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "ready.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 3000 } } }, profiles: { default: { processes: ["app"] } } });
+  try {
+    await writeFile(path.join(root, "ready.mjs"), "import { createServer } from 'node:http'; createServer((_request, response) => response.end('old')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    await writeFile(path.join(root, "failed.mjs"), "process.exit(1);\n");
+    const first = await orchestrator.up({ config: original, root, stateDir });
+    const replacement = validateDevFnConfig({ ...original,
+      processes: { app: { ...original.processes!.app, command: [process.execPath, "failed.mjs"] } } });
+      await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
+      const restored = await readReceipt(original, root, first.instanceId);
+      expect(restored).toMatchObject({ invocationId: first.invocationId, state: "ready" });
+      expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("old");
+      const registry = await new FilePortRegistry(path.join(stateDir, "registry.json")).read();
+      expect(registry.allocations.some((lease) => lease.invocationId === first.invocationId && lease.state === "active")).toBe(true);
+      expect(registry.allocations.some((lease) => lease.invocationId !== first.invocationId && lease.state === "active")).toBe(false);
+      await expect(orchestrator.up({ config: original, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+  } finally {
+    await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("restores an old listener when the failed replacement selected a different exact port", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-port-rollback-"));
+  const stateDir = path.join(root, "state");
+  const orchestrator = new DevFnOrchestrator();
+  const original = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "ready.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 3000 } } }, profiles: { default: { processes: ["app"] } } });
+  try {
+    await writeFile(path.join(root, "ready.mjs"), "import { createServer } from 'node:http'; createServer((_request, response) => response.end('old')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    await writeFile(path.join(root, "failed.mjs"), "process.exit(1);\n");
+    const first = await orchestrator.up({ config: original, root, stateDir });
+    const nextPort = await allocateEphemeralPort();
+    const replacement = validateDevFnConfig({ ...original, ports: { app: { preferred: nextPort, exact: true } },
+      processes: { app: { ...original.processes!.app, command: [process.execPath, "failed.mjs"] } } });
+    await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("old");
+    const restored = await readReceipt(original, root, first.instanceId);
+    expect(restored).toMatchObject({ invocationId: first.invocationId, state: "ready" });
+    expect(restored?.allocations[0].port).toBe(first.allocations[0].port);
+    expect((await new FilePortRegistry(path.join(stateDir, "registry.json")).read()).allocations.filter((lease) => lease.state === "active")
+      .map((lease) => lease.port)).toEqual([first.allocations[0].port]);
+  } finally {
+    await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("restores a ready lifecycle when its teardown reports failure after stopping", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-stop-rollback-"));
+  const stateDir = path.join(root, "state");
+  const orchestrator = new DevFnOrchestrator();
+  const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "ready.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 3000 } } }, profiles: { default: { processes: ["app"] } } });
+  const stop = ProcessSupervisor.prototype.stop;
+  try {
+    await writeFile(path.join(root, "ready.mjs"), "import { createServer } from 'node:http'; createServer((_request, response) => response.end('old')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    const first = await orchestrator.up({ config, root, stateDir });
+    let injected = false;
+    ProcessSupervisor.prototype.stop = async function (managed, timeoutMs) {
+      await stop.call(this, managed, timeoutMs);
+      if (!injected && managed.pid === first.processes[0].pid) { injected = true; throw new Error("injected stop failure"); }
+    };
+    await expect(orchestrator.up({ config, root, stateDir, replace: true })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
+    expect((await readReceipt(config, root, first.instanceId))?.state).toBe("ready");
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("old");
+    expect((await new FilePortRegistry(path.join(stateDir, "registry.json")).read()).allocations.filter((lease) => lease.state === "active"))
+      .toHaveLength(1);
+  } finally {
+    ProcessSupervisor.prototype.stop = stop;
+    await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("recovers an interrupted replacement before evaluating a new up", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-interrupted-replacement-"));
+  const stateDir = path.join(root, "state");
+  const orchestrator = new DevFnOrchestrator();
+  const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "ready.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 3000 } } }, profiles: { default: { processes: ["app"] } } });
+  try {
+    await writeFile(path.join(root, "ready.mjs"), "import { createServer } from 'node:http'; createServer((_request, response) => response.end('old')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    const first = await orchestrator.up({ config, root, stateDir });
+    const snapshot = JSON.parse(await readFile(path.join(first.runtimeDir, "recovery.json"), "utf8"));
+    const journalPath = path.join(root, ".devfn", "receipts", `${first.instanceId}.rollback.json`);
+    await writeFile(journalPath, JSON.stringify({ version: 1, previous: first, snapshot }), { mode: 0o600 });
+    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    await registry.reserve({ projectId: "fixture", instanceId: first.instanceId, invocationId: "pending-replacement", profile: "default",
+      replacingInvocationId: first.invocationId, requests: [{ name: "app", spec: { preferred: first.allocations[0].port, exact: true } }] });
+    await new ProcessSupervisor().stop(first.processes[0]);
+    await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+    const restored = await readReceipt(config, root, first.instanceId);
+    expect(restored).toMatchObject({ invocationId: first.invocationId, state: "ready" });
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("old");
+    expect((await registry.read()).allocations.find((lease) => lease.invocationId === "pending-replacement")?.state).toBe("released");
+    await expect(access(journalPath)).rejects.toMatchObject({ code: "ENOENT" });
+  } finally {
+    await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("retains the old lease through sibling reconciliation while replacement waits", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-reconcile-replacement-"));
+  const stateDir = path.join(root, "state");
+  const marker = path.join(root, "replacement-started");
+  const orchestrator = new DevFnOrchestrator();
+  const original = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "ready.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 5000 } } }, profiles: { default: { processes: ["app"] } } });
+  try {
+    await writeFile(path.join(root, "ready.mjs"), "import { createServer } from 'node:http'; createServer((_request, response) => response.end('old')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    await writeFile(path.join(root, "failed.mjs"), `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'started'); setTimeout(() => process.exit(1), 1800);\n`);
+    const first = await orchestrator.up({ config: original, root, stateDir });
+    const replacement = validateDevFnConfig({ ...original,
+      processes: { app: { ...original.processes!.app, command: [process.execPath, "failed.mjs"] } } });
+    const pending = orchestrator.up({ config: replacement, root, stateDir });
+    const expectedFailure = expect(pending).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
+    for (let attempt = 0; attempt < 100 && !await access(marker).then(() => true).catch(() => false); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await access(marker).then(() => true).catch(() => false)).toBe(true);
+    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    const during = await registry.reconcile();
+    expect(during.allocations.find((lease) => lease.invocationId === first.invocationId)?.state).toBe("active");
+    await expectedFailure;
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("old");
+  } finally {
+    await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("restores the prior inherited environment after a failed replacement", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-env-rollback-"));
+  const stateDir = path.join(root, "state");
+  const before = process.env.FIXTURE_MODE;
+  const orchestrator = new DevFnOrchestrator();
+  const original = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "ready.mjs"], ports: ["app"],
+      envAllowlist: ["FIXTURE_MODE"], health: { type: "http", port: "app", timeoutMs: 3000 } } },
+    profiles: { default: { processes: ["app"] } } });
+  try {
+    await writeFile(path.join(root, "ready.mjs"), "import { createServer } from 'node:http'; createServer((_request, response) => response.end(process.env.FIXTURE_MODE)).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    await writeFile(path.join(root, "failed.mjs"), "process.exit(1);\n");
+    process.env.FIXTURE_MODE = "one";
+    const first = await orchestrator.up({ config: original, root, stateDir });
+    process.env.FIXTURE_MODE = "two";
+    const replacement = validateDevFnConfig({ ...original,
+      processes: { app: { ...original.processes!.app, command: [process.execPath, "failed.mjs"] } } });
+    await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("one");
+  } finally {
+    if (before === undefined) delete process.env.FIXTURE_MODE; else process.env.FIXTURE_MODE = before;
+    await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
 it("allows a renamed service to reuse its own ready exact TCP lease", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-renamed-exact-"));
   const stateDir = path.join(root, "state");
@@ -371,6 +537,39 @@ it("waits for sibling routing coordination before down stops a ready process", a
   }
 }, 30_000);
 
+it("allows sibling reservations during a slow ready process stop", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-slow-stop-lock-"));
+  const stateDir = path.join(root, "state");
+  const orchestrator = new DevFnOrchestrator();
+  const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 5000 } } }, profiles: { default: { processes: ["app"] } } });
+  const stop = ProcessSupervisor.prototype.stop;
+  try {
+    await writeFile(path.join(root, "server.mjs"), "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ok')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+    const first = await orchestrator.up({ config, root, stateDir });
+    let entered!: () => void;
+    const startedStop = new Promise<void>((resolve) => { entered = resolve; });
+    ProcessSupervisor.prototype.stop = async function (managed, timeoutMs) {
+      await stop.call(this, managed, timeoutMs);
+      if (managed.pid === first.processes[0].pid) { entered(); await new Promise((resolve) => setTimeout(resolve, 1500)); }
+    };
+    const pending = orchestrator.down({ config, root, stateDir });
+    await startedStop;
+    const siblingPort = await allocateEphemeralPort();
+    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    expect((await registry.reconcile()).allocations.find((lease) => lease.invocationId === first.invocationId)?.state).toBe("active");
+    const sibling = registry.reserve({ projectId: "sibling", instanceId: "sibling", invocationId: "sibling", profile: "default",
+      requests: [{ name: "api", spec: { preferred: siblingPort, exact: true } }] });
+    expect(await Promise.race([sibling.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 500))])).toBe(true);
+    await pending;
+  } finally {
+    ProcessSupervisor.prototype.stop = stop;
+    await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
 it("lets a sibling reserve a port while another worktree waits for readiness", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-slow-readiness-"));
   const stateDir = path.join(root, "state");
@@ -411,6 +610,37 @@ it("lets a sibling reserve a port while another worktree waits for readiness", a
   } finally {
     if (started) await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
     await orchestrator.down({ config: siblingConfig, root: siblingRoot, stateDir }).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("does not hold the shared routing lock during a prior health probe", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-prior-health-lock-"));
+  const stateDir = path.join(root, "state");
+  const marker = path.join(root, "probe-started");
+  const slow = path.join(root, "slow-health");
+  const orchestrator = new DevFnOrchestrator();
+  const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
+      health: { type: "http", port: "app", timeoutMs: 5000 } } }, profiles: { default: { processes: ["app"] } } });
+  try {
+    await writeFile(path.join(root, "server.mjs"),
+      `import { existsSync, writeFileSync } from 'node:fs'; import { createServer } from 'node:http'; createServer((_request, response) => { if (existsSync(${JSON.stringify(slow)})) { writeFileSync(${JSON.stringify(marker)}, 'started'); setTimeout(() => response.end('ok'), 2500); } else response.end('ok'); }).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n`);
+    const first = await orchestrator.up({ config, root, stateDir });
+    await writeFile(slow, "1");
+    const pending = orchestrator.up({ config, root, stateDir });
+    for (let attempt = 0; attempt < 100 && !await access(marker).then(() => true).catch(() => false); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await access(marker).then(() => true).catch(() => false)).toBe(true);
+    const siblingPort = await allocateEphemeralPort();
+    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    const sibling = registry.reserve({ projectId: "sibling", instanceId: "sibling", invocationId: "sibling", profile: "default",
+      requests: [{ name: "api", spec: { preferred: siblingPort, exact: true } }] });
+    const early = await Promise.race([sibling.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 500))]);
+    expect(early).toBe(true);
+    await expect(pending).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
+    expect((await readReceipt(config, root, first.instanceId))?.state).toBe("ready");
+  } finally {
+    await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
 }, 30_000);

@@ -86,7 +86,7 @@ async function expireAbandonedProxyClaims(state: RegistryState, stateDir: string
   for (const invocation of state.invocations) {
     if (!invocation.proxyListenerPorts?.length || !["planning", "starting", "ready"].includes(invocation.state) ||
       !Number.isFinite(Date.parse(invocation.updatedAt)) || Date.now() - Date.parse(invocation.updatedAt) <= ABANDONED_CLAIM_MS) continue;
-    for (const allocation of state.allocations.filter((item) => item.invocationId === invocation.id && active(item))) {
+    for (const allocation of state.allocations.filter((item) => item.invocationId === invocation.id && active(item) && !retainedForReplacement(state, item.invocationId))) {
       await refreshAllocation(allocation, now, available);
     }
     if (state.allocations.some((item) => item.invocationId === invocation.id && active(item))) continue;
@@ -118,6 +118,11 @@ function candidates(start: number, end: number, seed: string): number[] {
 
 function active(allocation: PortAllocation): boolean {
   return allocation.state === "planned" || allocation.state === "active" || allocation.state === "externally-occupied";
+}
+
+function retainedForReplacement(state: RegistryState, invocationId: string): boolean {
+  return state.invocations.some((item) => item.replacingInvocationId === invocationId &&
+    (item.state === "planning" || item.state === "starting"));
 }
 
 function occupancyKey(port: number, protocol: "tcp" | "udp" = "tcp"): string {
@@ -187,7 +192,7 @@ export class FilePortRegistry {
       const claimingInstance = new Map<number, string>();
       for (const port of input.proxyListenerPorts ?? []) claimingInstance.set(port, input.instanceId);
       for (const invocation of state.invocations) {
-        if (invocation.id !== input.replacingInvocationId && ["planning", "starting", "ready"].includes(invocation.state)) {
+        if (invocation.id !== input.replacingInvocationId && ["planning", "starting", "ready", "stopping"].includes(invocation.state)) {
           for (const port of invocation.proxyListenerPorts ?? []) {
             proxyPorts.add(port);
             claimingInstance.set(port, invocation.instanceId);
@@ -322,6 +327,7 @@ export class FilePortRegistry {
       }
       state.allocations.push(...planned);
       state.invocations.push({ id: input.invocationId, projectId: input.projectId, instanceId: input.instanceId, profile: input.profile, state: "planning", createdAt: now, updatedAt: now,
+        ...(input.replacingInvocationId ? { replacingInvocationId: input.replacingInvocationId } : {}),
         ...(input.proxyListenerPorts?.length ? { proxyListenerPorts: [...input.proxyListenerPorts] } : {}) });
       return planned;
     });
@@ -370,7 +376,7 @@ export class FilePortRegistry {
         const lease = state.allocations.find((item) => active(item) && item.instanceId !== exceptInstanceId && item.port === port && item.protocol === (request.spec.protocol ?? "tcp"));
         if (lease) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is leased by ${lease.instanceId}/${lease.service}.`,
           { port, service: request.name, instanceId: lease.instanceId });
-        const claimant = state.invocations.find((item) => item.instanceId !== exceptInstanceId && ["planning", "starting", "ready"].includes(item.state) && item.proxyListenerPorts?.includes(port));
+        const claimant = state.invocations.find((item) => item.instanceId !== exceptInstanceId && ["planning", "starting", "ready", "stopping"].includes(item.state) && item.proxyListenerPorts?.includes(port));
         if (claimant) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is claimed by proxy instance ${claimant.instanceId}.`,
           { port, service: request.name, instanceId: claimant.instanceId });
         const protocol = request.spec.protocol ?? "tcp";
@@ -437,6 +443,19 @@ export class FilePortRegistry {
     });
   }
 
+  /** Refresh a retained ready lease after a failed replacement restarts its owner. */
+  public async replaceOwners(invocationId: string, owners: Record<string, { process?: PortAllocation["process"]; container?: PortAllocation["container"] }>): Promise<void> {
+    await this.transaction((state) => {
+      const invocation = state.invocations.find((item) => item.id === invocationId && item.state === "ready");
+      if (!invocation) throw new PortRegistryError("DEVFN_REGISTRY_INVALID", "The prior ready invocation no longer owns its recovery leases.");
+      for (const allocation of state.allocations.filter((item) => item.invocationId === invocationId && item.state === "active")) {
+        allocation.process = owners[allocation.service]?.process;
+        allocation.container = owners[allocation.service]?.container;
+        allocation.updatedAt = new Date().toISOString();
+      }
+    });
+  }
+
   public async release(input: { invocationId?: string; instanceId?: string; errorCode?: string }): Promise<void> {
     await this.transaction((state) => {
       const now = new Date().toISOString();
@@ -455,7 +474,8 @@ export class FilePortRegistry {
   public async reconcile(): Promise<RegistryState> {
     await this.transaction(async (state) => {
       const now = new Date().toISOString();
-      for (const allocation of state.allocations.filter(active)) {
+      for (const allocation of state.allocations.filter((item) => active(item) && !retainedForReplacement(state, item.invocationId) &&
+        !state.invocations.some((invocation) => invocation.id === item.invocationId && invocation.state === "stopping"))) {
         await refreshAllocation(allocation, now, this.availabilityCheck);
       }
       await expireAbandonedProxyClaims(state, path.dirname(this.filePath), now, this.availabilityCheck);

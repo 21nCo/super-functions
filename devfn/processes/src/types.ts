@@ -18,6 +18,7 @@ export interface StartProcessInput {
   root: string;
   runtimeDir: string;
   environment?: Record<string, string>;
+  sourceEnvironment?: NodeJS.ProcessEnv;
   ports?: Record<string, number>;
   onStarted?: (process: ManagedProcess) => Promise<void>;
 }

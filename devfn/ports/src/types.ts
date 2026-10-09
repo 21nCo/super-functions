@@ -38,11 +38,12 @@ export interface RegistryInvocation {
   projectId: string;
   instanceId: string;
   profile: string;
-  state: "planning" | "starting" | "ready" | "failed" | "stopped";
+  state: "planning" | "starting" | "ready" | "stopping" | "failed" | "stopped";
   createdAt: string;
   updatedAt: string;
   errorCode?: string;
   proxyListenerPorts?: number[];
+  replacingInvocationId?: string;
 }
 
 export interface RegistryState {

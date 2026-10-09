@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { validateDevFnConfig } from "@devfn/config";
+import { allocateEphemeralPort } from "@devfn/ports";
 import { proxyListenerPorts, proxyOwnerStatus } from "@devfn/proxy";
 import { describe, expect, it } from "vitest";
 
@@ -66,6 +67,19 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
     await writeFile(path.join(root, "server.mjs"), serverScript);
     const first = await orchestrator.up({ config, root, stateDir });
     expect(first.routes).toHaveLength(1);
+    await writeFile(path.join(root, "fail.mjs"), "process.exit(1);\n");
+    const originalCommand = config.processes!.native.command;
+    const originalPort = config.ports!.native;
+    config.processes!.native.command = [process.execPath, "fail.mjs"];
+    config.ports!.native = { preferred: await allocateEphemeralPort(), exact: true };
+    config.hostnames!.native.hostname = "failed.localhost";
+    await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
+    expect((await readReceipt(config, root, first.instanceId))?.invocationId).toBe(first.invocationId);
+    expect((await readReceipt(config, root, first.instanceId))?.state).toBe("ready");
+    expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/health`).then((response) => response.text())).toBe("ok");
+    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes[0].hostname).toBe(first.routes[0].hostname);
+    config.processes!.native.command = originalCommand;
+    config.ports!.native = originalPort;
     config.hostnames!.native.hostname = "second.localhost";
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
     await mkdir(toolsDir);
@@ -114,6 +128,32 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
 }, 60_000);
 
 describe("real local startup fixtures", () => {
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("restores a Compose service after replacement readiness fails", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-rollback-"));
+    const stateDir = path.join(root, "state");
+    const orchestrator = new DevFnOrchestrator();
+    const original = validateDevFnConfig({ version: 1, project: { id: "compose-rollback" },
+      services: { api: { adapter: "compose", service: "api", health: { type: "command", command: ["sh", "-c", "exit 0"], timeoutMs: 3000 } } },
+      profiles: { default: { services: ["api"] } } });
+    try {
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n");
+      const first = await orchestrator.up({ config: original, root, stateDir });
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sleep, '1800']\n");
+      const replacement = validateDevFnConfig({ ...original,
+        services: { api: { ...original.services!.api, health: { type: "command", command: ["sh", "-c", "exit 1"], timeoutMs: 1500 } } } });
+      await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED" });
+      const restored = await readReceipt(original, root, first.instanceId);
+      expect(restored).toMatchObject({ invocationId: first.invocationId, state: "ready" });
+      expect(await orchestrator.status({ config: original, root })).toMatchObject({ ok: false, state: "degraded" });
+      expect(restored!.services[0].containerIds).not.toEqual(first.services[0].containerIds);
+      const restoredCommand = (await execFileAsync("docker", ["inspect", "--format", "{{json .Config.Cmd}}", restored!.services[0].containerIds[0]])).stdout.trim();
+      expect(JSON.parse(restoredCommand)).toEqual(["sleep", "3600"]);
+    } finally {
+      await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 90_000);
+
   it("replaces a native process when an inherited ordinary allowlist value changes", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-native-env-drift-"));
     const stateDir = path.join(root, "state");
