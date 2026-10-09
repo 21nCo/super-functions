@@ -1,0 +1,47 @@
+devfn/cli/SECURITY.md
+  s_61173e0f6a4dd6::t_efa4c2ed4f9c91 12
+devfn/core/README.md
+  s_61173e0f6a4dd6::t_eecddb3ca23299 5
+devfn/ports/README.md
+  s_61173e0f6a4dd6::t_e68a08bf51f1c4 5-6
+devfn/proxy/README.md
+  s_61173e0f6a4dd6::t_26ba2828a390d9 3
+devfn/core/src/orchestrator.ts
+  s_61173e0f6a4dd6::t_4d3ef83c958697 441-449,523
+devfn/core/test/domain-routing.test.ts
+  s_61173e0f6a4dd6::t_d8028fc0d8cf54 3,13,23-42,82,84,90-92,94,108-112,268-270,319-321,642-644,683,695
+devfn/core/test/proxy-readiness.test.ts
+  s_61173e0f6a4dd6::t_3e47450ea8f7c0 13-15,81-119
+devfn/core/test/registered-domain-startup.test.ts
+  s_61173e0f6a4dd6::t_d0d139a69f1f52 14-16
+devfn/ports/src/index.ts
+  s_61173e0f6a4dd6::t_e65cf6a99eb71b 1
+devfn/ports/src/listeners.ts
+  s_61173e0f6a4dd6::t_32f2bc47c977e6 26-40
+devfn/ports/src/registry.ts
+  s_61173e0f6a4dd6::t_084d166541fb62 4,10,13,25-27,33,35-98,101,107-117,126-132,280-285,313-317,456,475-477
+devfn/ports/test/claim-evidence.test.ts
+  s_61173e0f6a4dd6::t_b3be0c86baa3b5 1-117
+devfn/ports/test/registry.test.ts
+  s_61173e0f6a4dd6::t_f4ec5e0a250dfd 40,67-70,78,246-272,292-293,295
+devfn/proxy/src/index.ts
+  s_61173e0f6a4dd6::t_b68a5c35f4e974 10,157-158,171-175,301,329-330,346-354,362-369,418,485-487,489-538,540,543-545,547-548
+devfn/proxy/test/activation.test.ts
+  s_61173e0f6a4dd6::t_f3a34c1f9c1e83 2,8-16,84,121-128,150-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e88e443e795609e81673f46c170fc31a6dbccd90",
+  "prompts": {},
+  "sessions": {
+    "s_61173e0f6a4dd6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "be2cebf7-d1e7-44fc-930c-8f2ee02a847c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
