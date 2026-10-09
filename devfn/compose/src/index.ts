@@ -1620,7 +1620,7 @@ export class ComposeController {
     if (launch.launcher) {
       try { await stopGatedLauncher(launch.launcher); }
       catch (error) {
-        throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `The interrupted launch of Compose service ${launch.name} (launcher PID ${launch.launcher.pid}) may still create or start containers; stop it, then rerun devfn down.`,
+        throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `The interrupted launch of Compose service ${launch.name} (launcher process group ${launch.launcher.pid}) may still create or start containers; stop what remains of it, then rerun devfn down.`,
           { cause: error instanceof Error ? error.message : String(error) });
       }
     }

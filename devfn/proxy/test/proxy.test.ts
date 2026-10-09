@@ -278,7 +278,7 @@ describe("Caddy route rendering", () => {
 
   it("distinguishes dead proxy owners from live PID reuse", async () => {
     await expect(proxyOwnerStatus({ pid: 2_147_483_647, birthSignature: "missing" })).resolves.toBe("dead");
-    await expect(proxyOwnerStatus({ pid: process.pid, birthSignature: "different-process" })).resolves.toBe("identity-mismatch");
+    await expect(proxyOwnerStatus({ pid: process.pid, birthSignature: `${(await processBirthSignature(process.pid))!.split(":")[0]}:different-process` })).resolves.toBe("identity-mismatch");
     await expect(proxyOwnerStatus({ pid: process.pid })).resolves.toBe("unverified");
   });
 
@@ -288,7 +288,7 @@ describe("Caddy route rendering", () => {
     const originalPath = process.env.PATH;
     const ownerPath = path.join(stateDir, "proxy-owner.json");
     try {
-      await writeFile(ownerPath, JSON.stringify({ pid: process.pid, birthSignature: "reused-pid" }));
+      await writeFile(ownerPath, JSON.stringify({ pid: process.pid, birthSignature: `${(await processBirthSignature(process.pid))!.split(":")[0]}:reused-pid` }));
       await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
       process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
       await expect(new CaddyProxyController(stateDir).upsert([{

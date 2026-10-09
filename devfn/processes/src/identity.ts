@@ -1,1 +1,1 @@
-export { classifyProcessIdentity, matchesProcessIdentity, processBirthSignature, processExists, processIdentityStatus, type ProcessIdentityStatus } from "@devfn/config";
+export { classifyProcessIdentity, matchesProcessIdentity, processBirthSignature, processExists, processGroupStatus, processIdentityStatus, type ProcessGroupStatus, type ProcessIdentityStatus } from "@devfn/config";

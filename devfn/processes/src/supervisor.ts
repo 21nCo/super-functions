@@ -7,29 +7,12 @@ import { fileURLToPath } from "node:url";
 import { resolveContainedPath } from "@devfn/config";
 
 import { createProcessEnvironment, resolveAdapterCommand } from "./adapters.js";
-import { processBirthSignature, processExists, processIdentityStatus } from "./identity.js";
+import { stopProcessGroup } from "./group.js";
+import { processBirthSignature, processExists, processGroupStatus } from "./identity.js";
 import { waitForReadiness } from "./readiness.js";
 import { ProcessError, type ManagedProcess, type StartProcessInput } from "./types.js";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function terminateProcess(pid: number, force = false): Promise<void> {
-  if (process.platform !== "win32") {
-    process.kill(-pid, force ? "SIGKILL" : "SIGTERM");
-    return;
-  }
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn("taskkill", ["/pid", String(pid), "/T", ...(force ? ["/F"] : [])], { stdio: "ignore", windowsHide: true });
-    child.once("error", reject);
-    child.once("exit", (code) => code === 0 || !processExists(pid) ? resolve() : reject(new Error(`taskkill exited with ${code}`)));
-  });
-}
-
-async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline && processExists(pid)) await delay(50);
-  return !processExists(pid);
-}
 
 /** Let the wrapper run its command and wait until it detached from the channel. */
 async function openLaunchGate(child: ChildProcess): Promise<void> {
@@ -129,40 +112,32 @@ export class ProcessSupervisor {
       managed.readyAt = new Date().toISOString();
       return managed;
     } catch (error) {
-      await this.stop(managed, input.spec.shutdownTimeoutMs).catch(() => undefined);
+      await stopProcessGroup(managed, managed.name, input.spec.shutdownTimeoutMs ?? 10_000, { ownGroup: { leaderUnreaped: () => !exited } }).catch(() => undefined);
       throw error;
     }
   }
 
+  /**
+   * Stop a process and everything its wrapper's group still runs. A reused
+   * PID is reported as a mismatch; an unreadable identity, or a wrapper that
+   * exited while its group lives on, is never signalled and never reported
+   * gone.
+   */
   public async stop(managed: ManagedProcess, timeoutMs = managed.shutdownTimeoutMs ?? 10_000): Promise<void> {
-    const identity = await processIdentityStatus(managed.pid, managed.birthSignature);
-    if (identity === "exited") return;
-    if (identity === "identity-mismatch") {
+    if (await processGroupStatus(managed.pid, managed.birthSignature) === "identity-mismatch") {
       throw new ProcessError("DEVFN_PROCESS_OWNERSHIP_MISMATCH", `PID ${managed.pid} no longer matches the DevFn process identity.`, { name: managed.name, pid: managed.pid });
     }
-    // An unreadable identity may still be this process; it is never signalled
-    // and never reported gone.
-    if (identity === "unverified") {
-      throw new ProcessError("DEVFN_PROCESS_IDENTITY_UNVERIFIED", `PID ${managed.pid} may still be ${managed.name}, but its identity cannot be verified; DevFn will not signal it.`, { name: managed.name, pid: managed.pid });
-    }
-    try {
-      await terminateProcess(managed.pid);
-      if (!await waitForProcessExit(managed.pid, timeoutMs)) {
-        await terminateProcess(managed.pid, true);
-        if (!await waitForProcessExit(managed.pid, 5_000)) throw new ProcessError("DEVFN_PROCESS_STOP_FAILED", `Process ${managed.name} did not exit after forced termination.`);
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw new ProcessError("DEVFN_PROCESS_STOP_FAILED", `Unable to stop ${managed.name}.`, { cause: error instanceof Error ? error.message : String(error) });
-    }
+    await stopProcessGroup(managed, managed.name, timeoutMs);
   }
 
   /**
-   * "stopped" and "identity-mismatch" prove the recorded process is gone;
-   * "unverified" is a live PID whose identity cannot be read, which may
-   * still be that process and must never be treated as stopped.
+   * "stopped" and "identity-mismatch" prove nothing the process ran remains;
+   * "unverified" is a live PID whose identity cannot be read, or a wrapper
+   * that exited while processes remain in its group, either of which may
+   * still be it and must never be treated as stopped.
    */
   public async status(managed: ManagedProcess): Promise<"running" | "stopped" | "identity-mismatch" | "unverified"> {
-    const status = await processIdentityStatus(managed.pid, managed.birthSignature);
+    const status = await processGroupStatus(managed.pid, managed.birthSignature);
     return status === "exited" ? "stopped" : status;
   }
 }

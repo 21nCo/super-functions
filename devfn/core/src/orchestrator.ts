@@ -385,24 +385,26 @@ export async function recoverOrphanedProxyRoutes(requestedStateDir: string): Pro
 }
 
 /**
- * Stop a recorded process only through its verified identity. An exited PID
- * or a readable different birth signature proves it gone; a live PID whose
- * identity cannot be read may still be it, so teardown cannot complete. A
- * stop refused on identity grounds proves nothing by itself: only a later
- * status of stopped or identity-mismatch does.
+ * Stop a recorded process and its group only through its verified identity.
+ * An exited wrapper with an empty group, or a readable different birth
+ * signature, proves it gone; a live PID whose identity cannot be read, or a
+ * wrapper that exited while its group lives on, may still be it, so teardown
+ * cannot complete. A stop refused on identity grounds proves nothing by
+ * itself: only a later status of stopped or identity-mismatch does.
  */
 async function stopVerifiedProcess(managed: ManagedProcess, supervisor: ProcessSupervisor, result: CleanupResult): Promise<void> {
-  const unverified = () => `Process ${managed.name} (PID ${managed.pid}) may still run but its identity cannot be verified; DevFn will not signal it. Stop it, then rerun devfn down.`;
+  const unverified = () => `Process ${managed.name} (PID ${managed.pid}) may still run but its identity cannot be verified; DevFn will not signal it.`;
   const status = await supervisor.status(managed);
-  if (status === "unverified") { result.errors.push(unverified()); return; }
-  if (status !== "running") return;
+  if (status === "stopped" || status === "identity-mismatch") return;
   try {
     await supervisor.stop(managed);
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
     if (code !== "DEVFN_PROCESS_OWNERSHIP_MISMATCH" && code !== "DEVFN_PROCESS_IDENTITY_UNVERIFIED") throw error;
     const after = await supervisor.status(managed);
-    if (after === "running" || after === "unverified") result.errors.push(unverified());
+    if (after === "running" || after === "unverified") {
+      result.errors.push(`${code === "DEVFN_PROCESS_IDENTITY_UNVERIFIED" && error instanceof Error ? error.message : unverified()} Stop what remains, then rerun devfn down.`);
+    }
     return;
   }
   const after = await supervisor.status(managed);

@@ -5,7 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { processExists, processIdentityStatus } from "@devfn/processes";
+import { processExists, processGroupStatus } from "@devfn/processes";
 
 import { allocateEphemeralPort, bindProbe, connectionRefused, isPortAvailable, scanListenerState } from "./listeners.js";
 import { withFileLock, withRoutingLock } from "./lock.js";
@@ -228,9 +228,13 @@ function allocationOwners(allocation: PortAllocation): LifecycleOwner[] {
   ];
 }
 
-/** Only a verified-dead identity is death evidence; a live or unverifiable one may still run. */
+/**
+ * Only a verified-dead identity is death evidence; a live or unverifiable one
+ * may still run. A recorded process leads its own group, so its exit proves
+ * nothing while processes it started remain in that group.
+ */
 async function processOwnerMayRun(owner: NonNullable<PortAllocation["process"]>): Promise<boolean> {
-  const status = await processIdentityStatus(owner.pid, owner.birthSignature);
+  const status = await processGroupStatus(owner.pid, owner.birthSignature);
   return status === "running" || status === "unverified";
 }
 

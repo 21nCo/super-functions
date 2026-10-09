@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { FilePortRegistry, isPortAvailable } from "@devfn/ports";
-import { validateDevFnConfig } from "@devfn/config";
+import { processBirthSignature, validateDevFnConfig } from "@devfn/config";
 import { readReceipt, resolveInstanceIdentity, writeReceipt } from "@devfn/core";
 import { runCli } from "../src/index.js";
 
@@ -231,7 +231,7 @@ describe("devfn CLI", () => {
     await writeReceipt({
       version: 1, projectId: config.project.id, instanceId: identity.instanceId, invocationId: "stale-invocation", profile: "default", state: "ready",
       root: cwd, runtimeDir, stateDir: canonicalStateDir, startedAt: now, updatedAt: now, allocations: [],
-      processes: [{ name: "stale", pid: process.pid, birthSignature: "different-process", command: [process.execPath], cwd, logPath: path.join(runtimeDir, "stale.log"), startedAt: now }],
+      processes: [{ name: "stale", pid: process.pid, birthSignature: `${(await processBirthSignature(process.pid))!.split(":")[0]}:different-process`, command: [process.execPath], cwd, logPath: path.join(runtimeDir, "stale.log"), startedAt: now }],
       services: [], startedNodes: [{ name: "stale", kind: "process" }], routes: [], urls: {}, environmentOutputs: [],
     });
     let stdout = "";

@@ -92,7 +92,7 @@ describe("FilePortRegistry", () => {
         await registry.reserve({ projectId: "app", instanceId: "abandoned", invocationId: "old", profile: "default",
           requests: [], proxyListenerPorts: [port] });
         await registry.updateInvocation("old", { state: invocationState });
-        await writeFile(path.join(dir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature: "reused-pid" }));
+        await writeFile(path.join(dir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature: `${(await processBirthSignature(process.pid))!.split(":")[0]}:reused-pid` }));
         const state = await registry.read();
         state.invocations[0].updatedAt = "2020-01-01T00:00:00.000Z";
         await writeFile(registry.filePath, JSON.stringify(state));

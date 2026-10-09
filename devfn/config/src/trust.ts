@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/p
 import os from "node:os";
 import path from "node:path";
 
-import { processBirthSignature, processExists } from "./process-identity.js";
+import { processBirthSignature, processIdentityStatus } from "./process-identity.js";
 
 interface TrustRecord { root: string; configPath: string; digest: string; trustedAt: string }
 interface TrustState { version: 1; records: TrustRecord[] }
@@ -39,10 +39,8 @@ async function staleTicket(filePath: string, ticket: TrustLockTicket | undefined
   const createdAt = ticket?.createdAt ? Date.parse(ticket.createdAt) : await stat(filePath).then((value) => value.mtimeMs).catch(() => Date.now());
   if (!Number.isFinite(createdAt) || Date.now() - createdAt <= staleMs) return false;
   if (!ticket?.pid) return true;
-  if (!processExists(ticket.pid)) return true;
-  if (!ticket.birthSignature) return false;
-  const currentSignature = await processBirthSignature(ticket.pid);
-  return currentSignature !== undefined && currentSignature !== ticket.birthSignature;
+  const owner = await processIdentityStatus(ticket.pid, ticket.birthSignature);
+  return owner === "exited" || owner === "identity-mismatch";
 }
 
 async function ticketPaths(lockPath: string): Promise<string[]> {

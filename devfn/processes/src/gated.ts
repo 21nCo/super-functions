@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { processBirthSignature, processIdentityStatus } from "./identity.js";
+import { stopProcessGroup } from "./group.js";
+import { processBirthSignature, processGroupStatus } from "./identity.js";
 import { ProcessError, type ProcessOwnerIdentity } from "./types.js";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -18,33 +19,14 @@ export interface GatedCommandOptions {
 export type GatedCommandRunner = (file: string, args: string[], options: GatedCommandOptions) => Promise<{ stdout: string; stderr: string }>;
 
 /**
- * Whether anything a gated launcher ran may still run. The launcher leads its
- * own process group on POSIX, and a group ID is not reused while any member
- * lives, so a remaining member is something it started even after the
- * launcher itself died. "gone" is the only conclusive answer.
+ * Whether anything a gated launcher ran may still run, by the process group
+ * rule: the launcher leads its own group on POSIX, so a member left after it
+ * died is something it started, while a reused launcher PID proves its group
+ * gone. "gone" is the only conclusive answer.
  */
 export async function gatedLauncherStatus(launcher: ProcessOwnerIdentity): Promise<"running" | "unverified" | "gone"> {
-  const status = await processIdentityStatus(launcher.pid, launcher.birthSignature);
-  if (status === "running" || status === "unverified") return status;
-  if (process.platform === "win32") return "gone";
-  try { process.kill(-launcher.pid, 0); return "unverified"; }
-  catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH" ? "gone" : "unverified"; }
-}
-
-async function signalGroup(pid: number, force: boolean): Promise<void> {
-  try {
-    if (process.platform !== "win32") process.kill(-pid, force ? "SIGKILL" : "SIGTERM");
-    else process.kill(pid, force ? "SIGKILL" : "SIGTERM");
-  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
-}
-
-async function waitUntilGone(launcher: ProcessOwnerIdentity, timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await gatedLauncherStatus(launcher) === "gone") return true;
-    await delay(50);
-  }
-  return await gatedLauncherStatus(launcher) === "gone";
+  const status = await processGroupStatus(launcher.pid, launcher.birthSignature);
+  return status === "exited" || status === "identity-mismatch" ? "gone" : status;
 }
 
 /**
@@ -52,17 +34,7 @@ async function waitUntilGone(launcher: ProcessOwnerIdentity, timeoutMs: number):
  * a verified launcher identity. Resolves only once nothing it ran remains.
  */
 export async function stopGatedLauncher(launcher: ProcessOwnerIdentity, timeoutMs = 10_000): Promise<void> {
-  const status = await gatedLauncherStatus(launcher);
-  if (status === "gone") return;
-  if (status !== "running") {
-    throw new ProcessError("DEVFN_PROCESS_STOP_FAILED", `Launcher PID ${launcher.pid} or a process it started may still run, but DevFn cannot verify it; it was not signalled.`, { pid: launcher.pid });
-  }
-  await signalGroup(launcher.pid, false);
-  if (await waitUntilGone(launcher, timeoutMs)) return;
-  // A POSIX group outlives its verified leader only through members it
-  // started; elsewhere only the verified launcher itself is signalled.
-  if (process.platform !== "win32" || await processIdentityStatus(launcher.pid, launcher.birthSignature) === "running") await signalGroup(launcher.pid, true);
-  if (!await waitUntilGone(launcher, 5_000)) throw new ProcessError("DEVFN_PROCESS_STOP_FAILED", `Launcher PID ${launcher.pid} did not exit after forced termination.`, { pid: launcher.pid });
+  await stopProcessGroup(launcher, "The launcher", timeoutMs);
 }
 
 /**
@@ -81,11 +53,29 @@ export const runGatedCommand: GatedCommandRunner = async (file, args, options) =
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
   const maxBuffer = options.maxBuffer ?? 1024 * 1024;
-  let stdout = "";
-  let stderr = "";
-  let overflow = false;
-  child.stdout!.setEncoding("utf8").on("data", (chunk: string) => { if ((stdout += chunk).length > maxBuffer) overflow = true; });
-  child.stderr!.setEncoding("utf8").on("data", (chunk: string) => { if ((stderr += chunk).length > maxBuffer) overflow = true; });
+  // Output is kept only up to the limit; passing it stops the launcher.
+  let overflowed!: () => void;
+  const overflow = new Promise<"overflow">((resolve) => { overflowed = () => resolve("overflow"); });
+  let exceeded = false;
+  const capture = (stream: NodeJS.ReadableStream) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    stream.on("data", (chunk: Buffer) => {
+      if (exceeded) return;
+      if (size + chunk.length > maxBuffer) {
+        chunks.push(chunk.subarray(0, maxBuffer - size));
+        size = maxBuffer;
+        exceeded = true;
+        overflowed();
+        return;
+      }
+      chunks.push(chunk);
+      size += chunk.length;
+    });
+    return () => Buffer.concat(chunks).toString("utf8");
+  };
+  const stdout = capture(child.stdout!);
+  const stderr = capture(child.stderr!);
   // "close" never follows a disconnected IPC channel, so wait for the exit
   // and the end of the output instead.
   const ended = (stream: NodeJS.ReadableStream) => new Promise<void>((resolve) => { stream.once("close", resolve); stream.once("error", () => resolve()); });
@@ -106,15 +96,7 @@ export const runGatedCommand: GatedCommandRunner = async (file, args, options) =
   // This launcher is this process's child: its PID is not reused before it is
   // reaped, and afterwards its group ID is not reused while a member remains,
   // so what is left in that group is its own and may be stopped.
-  const stopOwnLauncher = async () => {
-    for (const force of [false, true]) {
-      if (await gatedLauncherStatus(launcher) === "gone") return;
-      if (process.platform !== "win32") await signalGroup(pid, force);
-      else if (child.exitCode === null && child.signalCode === null) child.kill(force ? "SIGKILL" : "SIGTERM");
-      if (await waitUntilGone(launcher, force ? 5_000 : 10_000)) return;
-    }
-    throw new ProcessError("DEVFN_PROCESS_STOP_FAILED", `Launcher PID ${pid} for ${file} or a process it started did not exit after forced termination.`, { pid });
-  };
+  const stopOwnLauncher = async () => await stopProcessGroup(launcher, `The launcher for ${file}`, 10_000, { ownGroup: { leaderUnreaped: () => child.exitCode === null && child.signalCode === null } });
   try {
     if (!birthSignature) throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Could not establish a launcher identity for ${file}; refusing to run it unrecorded.`);
     await options.onLaunched(launcher);
@@ -139,17 +121,16 @@ export const runGatedCommand: GatedCommandRunner = async (file, args, options) =
   });
   let timer: NodeJS.Timeout | undefined;
   const timedOut = options.timeout ? new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), options.timeout); }) : undefined;
-  const outcome = await (timedOut ? Promise.race([closed, timedOut]) : closed);
+  const outcome = await Promise.race([closed, overflow, ...(timedOut ? [timedOut] : [])]);
   clearTimeout(timer);
-  if (outcome === "timeout") {
-    await stopOwnLauncher();
-    throw Object.assign(new Error(`Command ${file} ${args.join(" ")} timed out after ${options.timeout}ms.`), { stdout, stderr, killed: true });
-  }
-  // The launcher exited; a member it left behind could still act for it.
+  // An exited launcher may have left a member that could still act for it.
   await stopOwnLauncher();
-  if (overflow) throw Object.assign(new Error(`Command ${file} output exceeded ${maxBuffer} bytes.`), { stdout, stderr });
-  if (outcome.code !== 0) {
-    throw Object.assign(new Error(`Command failed: ${file} ${args.join(" ")}${stderr ? `\n${stderr}` : ""}`), { stdout, stderr, code: outcome.code, signal: outcome.signal });
+  if (outcome === "timeout") {
+    throw Object.assign(new Error(`Command ${file} ${args.join(" ")} timed out after ${options.timeout}ms.`), { stdout: stdout(), stderr: stderr(), killed: true });
   }
-  return { stdout, stderr };
+  if (exceeded || outcome === "overflow") throw Object.assign(new Error(`Command ${file} output exceeded ${maxBuffer} bytes.`), { stdout: stdout(), stderr: stderr(), killed: true });
+  if (outcome.code !== 0) {
+    throw Object.assign(new Error(`Command failed: ${file} ${args.join(" ")}${stderr() ? `\n${stderr()}` : ""}`), { stdout: stdout(), stderr: stderr(), code: outcome.code, signal: outcome.signal });
+  }
+  return { stdout: stdout(), stderr: stderr() };
 };

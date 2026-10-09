@@ -53,7 +53,7 @@ async function withLifecycle(prefix: string, action: (fixture: { root: string; s
   try {
     await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
     await writeFile(path.join(root, "server.mjs"),
-      "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+      "import { writeFileSync } from 'node:fs'; import { createServer } from 'node:http'; writeFileSync('app.pid', String(process.pid)); createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
     await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
     process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
     const birthSignature = await processBirthSignature(process.pid);
@@ -151,6 +151,97 @@ it.skipIf(process.platform !== "darwin")("keeps an owner whose identity cannot b
     expect(stopped).toMatchObject({ state: "stopped", cleanup: { errors: [], stoppedProcesses: ["app"] } });
     expect(await waitFor(() => !processExists(pid))).toBe(true);
     expect(await routedInstances(stateDir)).toEqual([]);
+  });
+}, 120_000);
+
+it.skipIf(process.platform === "win32")("keeps a native owner whose wrapper died while its application still runs in the process group, through down, replace, gc and orphan recovery", async () => {
+  await withLifecycle("devfn-teardown-surviving-child-", async ({ root, stateDir, registry, instanceId }) => {
+    const orchestrator = new DevFnOrchestrator();
+    const ready = await orchestrator.up({ config, root, stateDir });
+    const wrapper = ready.processes[0];
+    const application = Number(await readFile(path.join(root, "app.pid"), "utf8"));
+    expect(application).not.toBe(wrapper.pid);
+    try {
+      // Only the recorded wrapper dies; the server it ran keeps serving.
+      process.kill(wrapper.pid, "SIGKILL");
+      expect(await waitFor(async () => await new ProcessSupervisor().status(wrapper) !== "running")).toBe(true);
+      expect(processExists(application)).toBe(true);
+      expect(await new ProcessSupervisor().status(wrapper)).toBe("unverified");
+
+      const down = await orchestrator.down({ config, root, stateDir });
+      expect(down.state).toBe("degraded");
+      expect(down.cleanup).toMatchObject({ removedProxy: false, releasedPorts: false, stoppedProcesses: [] });
+      expect(down.cleanup?.errors.join("\n")).toMatch(/process group/);
+      for (const replace of [false, true]) {
+        await expect(orchestrator.up({ config, root, stateDir, replace })).rejects.toMatchObject({ code: "DEVFN_RUNTIME_INVALID", details: { priorStopped: false } });
+      }
+      const aged = await registry.read();
+      for (const item of [...aged.invocations, ...aged.allocations]) item.updatedAt = "2020-01-01T00:00:00.000Z";
+      await writeFile(registry.filePath, JSON.stringify(aged));
+      await registry.reconcile();
+      await registry.gc();
+      const state = await registry.read();
+      expect(state.invocations.find((item) => item.id === ready.invocationId)).toMatchObject({ state: "stopping" });
+      expect(state.allocations.filter((item) => item.invocationId === ready.invocationId).map((item) => item.state)).toEqual(["active"]);
+      expect(await registry.instanceMayRun(instanceId)).toBe(true);
+      expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual([]);
+      expect(await routedInstances(stateDir)).toEqual([instanceId]);
+      expect(processExists(application)).toBe(true);
+    } finally {
+      try { process.kill(-wrapper.pid, "SIGKILL"); } catch { /* already gone */ }
+    }
+
+    // Once nothing in the group remains, teardown completes.
+    expect(await waitFor(() => !processExists(application))).toBe(true);
+    const stopped = await orchestrator.down({ config, root, stateDir });
+    expect(stopped).toMatchObject({ state: "stopped", cleanup: { errors: [] } });
+    expect(await routedInstances(stateDir)).toEqual([]);
+  });
+}, 120_000);
+
+it.skipIf(process.platform === "win32")("stops a native owner only once every process in its group is gone, forcing those that ignore termination", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "devfn-stop-group-"));
+  const supervisor = new ProcessSupervisor();
+  let managed: Awaited<ReturnType<ProcessSupervisor["start"]>> | undefined;
+  try {
+    const pidFile = path.join(root, "child.pid");
+    managed = await supervisor.start({ name: "app", root, runtimeDir: path.join(root, "runtime"), ports: {},
+      spec: { adapter: "command", command: [process.execPath, "-e", `process.on("SIGTERM", () => undefined); require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => undefined, 1000);`] } });
+    expect(await waitFor(async () => Boolean(await readFile(pidFile, "utf8").catch(() => "")))).toBe(true);
+    const application = Number(await readFile(pidFile, "utf8"));
+    await supervisor.stop(managed, 500);
+    expect(processExists(application)).toBe(false);
+    expect(await supervisor.status(managed)).toBe("stopped");
+  } finally {
+    if (managed) { try { process.kill(-managed.pid, "SIGKILL"); } catch { /* already gone */ } }
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+}, 60_000);
+
+it.skipIf(process.platform !== "darwin")("keeps and then stops an owner recorded under another time zone and locale", async () => {
+  await withLifecycle("devfn-teardown-time-zone-", async ({ root, stateDir, registry, instanceId }) => {
+    const orchestrator = new DevFnOrchestrator();
+    const saved = { TZ: process.env.TZ, LC_ALL: process.env.LC_ALL };
+    Object.assign(process.env, { TZ: "Pacific/Kiritimati", LC_ALL: "fr_FR.UTF-8" });
+    let ready: Awaited<ReturnType<DevFnOrchestrator["up"]>>;
+    try { ready = await orchestrator.up({ config, root, stateDir }); }
+    finally { for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    const pid = ready.processes[0].pid;
+    // A sibling running with another time zone and locale.
+    Object.assign(process.env, { TZ: "UTC", LC_ALL: "C" });
+    try {
+      const aged = await registry.read();
+      for (const item of [...aged.invocations, ...aged.allocations]) item.updatedAt = "2020-01-01T00:00:00.000Z";
+      await writeFile(registry.filePath, JSON.stringify(aged));
+      await registry.reconcile();
+      await registry.gc();
+      expect(await registry.instanceMayRun(instanceId)).toBe(true);
+      expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual([]);
+      expect(await routedInstances(stateDir)).toEqual([instanceId]);
+      const stopped = await orchestrator.down({ config, root, stateDir });
+      expect(stopped).toMatchObject({ state: "stopped", cleanup: { errors: [], stoppedProcesses: ["app"] } });
+      expect(await waitFor(() => !processExists(pid))).toBe(true);
+    } finally { for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   });
 }, 120_000);
 

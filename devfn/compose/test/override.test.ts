@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { checkReadinessNow, gatedLauncherStatus, runGatedCommand } from "@devfn/processes";
+import { checkReadinessNow, gatedLauncherStatus, processBirthSignature, runGatedCommand } from "@devfn/processes";
 import { describe, expect, it } from "vitest";
 import { ComposeController, composeProjectName, type ComposeLaunch, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
 import { assertComposeSourceGraphBounded } from "../src/source-files.js";
@@ -14,6 +14,15 @@ const MOCK_COMPOSE_HASH = "a".repeat(64);
 const ABSENT_LAUNCHER = { pid: 2_147_483_646 };
 
 /** A controller whose docker compose up goes through the stub, as if its gated launcher was recorded first. */
+async function readBirthSignature(pid: number): Promise<string> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const signature = await processBirthSignature(pid);
+    if (signature) return signature;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`No birth signature for ${pid}.`);
+}
+
 function stubbed(run: NonNullable<ConstructorParameters<typeof ComposeController>[0]>): ComposeController {
   return new ComposeController(run, async (file, args, options) => {
     await options.onLaunched(ABSENT_LAUNCHER);
@@ -1007,6 +1016,37 @@ describe("gated Compose launcher", () => {
     const leftover = "require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' }).unref();";
     await runGatedCommand(process.execPath, ["-e", leftover], { onLaunched: async (launcher) => { recorded = launcher; } });
     expect(await gatedLauncherStatus(recorded!)).toBe("gone");
+  });
+
+  it.skipIf(process.platform === "win32")("stops a launcher as soon as its output passes the limit, keeping only the bounded output", async () => {
+    let recorded: { pid: number; birthSignature?: string } | undefined;
+    // The command would write forever; no timeout bounds it.
+    const flood = "const chunk = 'x'.repeat(4096); setInterval(() => { process.stdout.write(chunk); process.stderr.write(chunk); }, 1);";
+    const started = Date.now();
+    const failure = await runGatedCommand(process.execPath, ["-e", flood], { maxBuffer: 64 * 1024, onLaunched: async (launcher) => { recorded = launcher; } })
+      .then(() => undefined, (error: unknown) => error as { message: string; stdout: string; stderr: string });
+    expect(failure?.message).toMatch(/output exceeded 65536 bytes/);
+    expect(Buffer.byteLength(failure!.stdout)).toBeLessThanOrEqual(64 * 1024);
+    expect(Buffer.byteLength(failure!.stderr)).toBeLessThanOrEqual(64 * 1024);
+    expect(Date.now() - started).toBeLessThan(15_000);
+    expect(await gatedLauncherStatus(recorded!)).toBe("gone");
+  }, 30_000);
+
+  it.skipIf(process.platform === "win32")("treats a launcher whose PID now belongs to another process as gone, without signalling that process", async () => {
+    // An unrelated process leads its own group under the recorded launcher's PID.
+    const unrelated = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { detached: true, stdio: "ignore" });
+    unrelated.unref();
+    try {
+      const [scheme] = (await readBirthSignature(unrelated.pid!)).split(":");
+      const reused = { pid: unrelated.pid!, birthSignature: `${scheme}:a launcher that exited long ago` };
+      expect(await gatedLauncherStatus(reused)).toBe("gone");
+      const calls: string[][] = [];
+      await stubbed(async (_file, args) => { calls.push(args); return { stdout: "", stderr: "" }; })
+        .stopLaunch({ name: "db", projectName: "devfn-owner", composeService: "db", preExisting: false, existingContainerIds: [], runningContainerIds: [], launcher: reused });
+      expect(calls.map((args) => args[0])).toEqual(["ps"]);
+      expect(unrelated.exitCode).toBeNull();
+      expect(() => process.kill(unrelated.pid!, 0)).not.toThrow();
+    } finally { try { process.kill(-unrelated.pid!, "SIGKILL"); } catch { /* already gone */ } }
   });
 
 });

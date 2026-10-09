@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { processBirthSignature, processExists } from "@devfn/processes";
+import { processBirthSignature, processIdentityStatus } from "@devfn/processes";
 
 import { PortRegistryError } from "./types.js";
 
@@ -46,10 +46,9 @@ export async function withFileLock<T>(lockPath: string, action: () => Promise<T>
       try {
         const observed = JSON.parse(await readFile(`${lockPath}/owner.json`, "utf8")) as { token?: string; pid?: number; birthSignature?: string; createdAt?: string };
         observedToken = observed.token ?? observedToken;
-        const alive = observed.pid ? processExists(observed.pid) : false;
-        const currentBirth = observed.pid ? await processBirthSignature(observed.pid) : undefined;
+        const owner = observed.pid ? await processIdentityStatus(observed.pid, observed.birthSignature) : "exited";
         const birthSignaturesSupported = process.platform === "linux" || process.platform === "darwin" || process.platform === "win32";
-        const ownerMatches = observed.birthSignature ? (currentBirth === undefined ? alive : currentBirth === observed.birthSignature) : alive;
+        const ownerMatches = owner === "running" || owner === "unverified";
         recover = birthSignaturesSupported && !ownerMatches && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
       } catch (ownerError) {
         if ((ownerError as NodeJS.ErrnoException).code !== "ENOENT") throw ownerError;

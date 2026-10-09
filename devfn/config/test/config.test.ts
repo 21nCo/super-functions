@@ -1,9 +1,11 @@
+import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
-import { classifyProcessIdentity, discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
+import { classifyProcessIdentity, processBirthSignature, processIdentityStatus, discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
 
 describe("DevFn configuration", () => {
   it("treats a recorded process as gone only when its PID is absent or a readable birth signature differs", () => {
@@ -12,6 +14,30 @@ describe("DevFn configuration", () => {
     expect(classifyProcessIdentity(true, "birth", "other")).toBe("identity-mismatch");
     expect(classifyProcessIdentity(true, "birth", undefined)).toBe("unverified");
     expect(classifyProcessIdentity(true, undefined, "birth")).toBe("unverified");
+    // Signatures read in different formats cannot be compared.
+    expect(classifyProcessIdentity(true, "darwin:Fri Oct  9 22:05:33 2026", "darwin-utc:Fri Oct  9 22:05:33 2026")).toBe("unverified");
+  });
+
+  it.skipIf(process.platform !== "darwin")("reads the same birth signature whatever time zone and locale DevFn runs in", async () => {
+    const saved = { TZ: process.env.TZ, LC_ALL: process.env.LC_ALL };
+    const baseline = await processBirthSignature(process.pid);
+    try {
+      expect(baseline).toBeTruthy();
+      for (const [TZ, LC_ALL] of [["UTC", "C"], ["Pacific/Kiritimati", "fr_FR.UTF-8"], ["America/Los_Angeles", "ja_JP.UTF-8"]]) {
+        Object.assign(process.env, { TZ, LC_ALL });
+        expect(await processBirthSignature(process.pid)).toBe(baseline);
+        expect(await processIdentityStatus(process.pid, baseline)).toBe("running");
+      }
+    } finally {
+      for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+
+  it.skipIf(process.platform !== "darwin")("identifies a process by an equal legacy signature but never retires it on a different one", async () => {
+    // Earlier releases recorded ps lstart in the recording shell's time zone and locale.
+    const legacy = `darwin:${(await promisify(execFile)("ps", ["-o", "lstart=", "-p", String(process.pid)])).stdout.trim()}`;
+    expect(await processIdentityStatus(process.pid, legacy)).toBe("running");
+    expect(await processIdentityStatus(process.pid, "darwin:Thu Jan  1 00:00:00 1970")).toBe("unverified");
   });
 
   it("rejects case-colliding allowlist and secret keys at schema validation", () => {
@@ -366,7 +392,7 @@ describe("DevFn configuration", () => {
     const configPath = path.join(root, "devfn.config.json");
     const lockPath = path.join(stateDir, "trust.lock");
     await mkdir(lockPath, { recursive: true });
-    await writeFile(path.join(lockPath, "reused.ticket"), JSON.stringify({ token: "reused", number: 1, pid: process.pid, birthSignature: "different-process", createdAt: "2000-01-01T00:00:00.000Z" }));
+    await writeFile(path.join(lockPath, "reused.ticket"), JSON.stringify({ token: "reused", number: 1, pid: process.pid, birthSignature: `${(await processBirthSignature(process.pid))!.split(":")[0]}:different-process`, createdAt: "2000-01-01T00:00:00.000Z" }));
     await writeFile(configPath, "reused");
     await expect(trustProject(root, configPath, stateDir)).resolves.toBeUndefined();
   });
