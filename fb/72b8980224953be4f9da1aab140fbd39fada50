@@ -1,0 +1,32 @@
+devfn/config/src/index.ts
+  h_bdc5b81c173ee9 6
+devfn/config/src/process-identity.ts
+  h_bdc5b81c173ee9 33-51,53
+devfn/config/test/config.test.ts
+  h_bdc5b81c173ee9 6,9-16
+devfn/core/test/domain-routing.test.ts
+  h_bdc5b81c173ee9 42,75,77-81,86
+devfn/core/test/proxy-readiness.test.ts
+  h_bdc5b81c173ee9 203-245
+devfn/ports/src/proxy-owner.ts
+  h_bdc5b81c173ee9 1,16-17
+devfn/ports/src/registry.ts
+  h_bdc5b81c173ee9 8,171,200-204,232-236,238,243-260,673-682,685-690,693-695,703-707,711-713,734,737,741-747
+devfn/ports/test/registry.test.ts
+  h_bdc5b81c173ee9 1-2,594-706
+devfn/processes/src/identity.ts
+  h_bdc5b81c173ee9 1
+devfn/processes/src/index.ts
+  h_bdc5b81c173ee9 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fb72b8980224953be4f9da1aab140fbd39fada50",
+  "prompts": {},
+  "humans": {
+    "h_bdc5b81c173ee9": {
+      "author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
