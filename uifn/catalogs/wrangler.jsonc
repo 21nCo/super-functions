@@ -17,6 +17,7 @@
   "env": {
     "preview": {
       "name": "uifn-components-preview",
+      "account_id": "c801efc2879825babdb9b2534199c4dd",
       "workers_dev": true
     },
     "production": {

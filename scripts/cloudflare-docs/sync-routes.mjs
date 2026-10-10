@@ -73,7 +73,11 @@ async function resolveZoneId(zoneName, token) {
   const specificZoneId = process.env[specificEnvName];
   if (specificZoneId) return specificZoneId;
 
-  const zones = await cloudflare(`/zones?name=${encodeURIComponent(zoneName)}`, token);
+  // The same zone name can exist in more than one account (21n.site is in both
+  // the production and 21n-dev accounts), so scope the lookup when possible.
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const accountFilter = accountId ? `&account.id=${encodeURIComponent(accountId)}` : "";
+  const zones = await cloudflare(`/zones?name=${encodeURIComponent(zoneName)}${accountFilter}`, token);
   const zone = zones.find((entry) => entry.name === zoneName);
   if (!zone) {
     throw new Error(`Cloudflare zone not found: ${zoneName}`);

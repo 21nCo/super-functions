@@ -3,6 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import {
+  devAccountId,
   docsProducts,
   hasDocsPackage,
   normalizeEnvironment,
@@ -114,6 +115,7 @@ function writeWranglerConfig(docsDir, options) {
       directory: options.assetsDirectory,
     },
   };
+  if (environment === "dev") config.account_id = devAccountId;
   if (options.main) config.main = options.main;
   if (options.compatibilityFlags) config.compatibility_flags = options.compatibilityFlags;
 

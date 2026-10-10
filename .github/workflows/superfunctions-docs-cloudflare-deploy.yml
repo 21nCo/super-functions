@@ -107,8 +107,18 @@ jobs:
       - name: Ensure Rollup native package
         run: node scripts/ci-install-rollup-native.mjs
 
-      - name: Deploy docs Worker
+      # Dev docs deploy to the 21n-dev Cloudflare account.
+      - name: Deploy docs Worker (dev)
+        if: needs.detect.outputs.environment == 'dev'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEV_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_DEV_ACCOUNT_ID }}
+        run: node scripts/cloudflare-docs/deploy.mjs dev --products=${{ matrix.product }}
+
+      # Live docs deploy to the production account (unchanged).
+      - name: Deploy docs Worker (live)
+        if: needs.detect.outputs.environment == 'live'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node scripts/cloudflare-docs/deploy.mjs ${{ needs.detect.outputs.environment }} --products=${{ matrix.product }}
+        run: node scripts/cloudflare-docs/deploy.mjs live --products=${{ matrix.product }}

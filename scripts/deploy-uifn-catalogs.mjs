@@ -42,7 +42,7 @@ run(wranglerBin, [
 const deploymentOrigin =
   environment === "production"
     ? "https://uifn.dev"
-    : "https://uifn-components-preview.21n.workers.dev";
+    : "https://uifn-components-preview.21n-dev.workers.dev";
 const expectedManifest = JSON.parse(
   fs.readFileSync(path.join(catalogsRoot, "dist", "catalog-manifest.json"), "utf8"),
 );
