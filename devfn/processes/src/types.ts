@@ -12,6 +12,14 @@ export interface ManagedProcess {
   shutdownTimeoutMs?: number;
 }
 
+/** A recorded process identity; the birth signature tells a reused PID apart. */
+export interface ProcessOwnerIdentity {
+  pid: number;
+  birthSignature?: string;
+  /** When DevFn recorded this identity, after reading it from the live process. */
+  startedAt?: string;
+}
+
 export interface StartProcessInput {
   name: string;
   spec: ProcessSpec;
@@ -24,7 +32,7 @@ export interface StartProcessInput {
 
 export class ProcessError extends Error {
   public constructor(
-    public readonly code: "DEVFN_PROCESS_START_FAILED" | "DEVFN_PROCESS_NOT_READY" | "DEVFN_PROCESS_OWNERSHIP_MISMATCH" | "DEVFN_PROCESS_STOP_FAILED",
+    public readonly code: "DEVFN_PROCESS_START_FAILED" | "DEVFN_PROCESS_NOT_READY" | "DEVFN_PROCESS_OWNERSHIP_MISMATCH" | "DEVFN_PROCESS_IDENTITY_UNVERIFIED" | "DEVFN_PROCESS_STOP_FAILED",
     message: string,
     public readonly details?: Record<string, unknown>,
   ) {

@@ -6,15 +6,15 @@ import { promisify } from "node:util";
 
 import { ComposeController, composeProjectName, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, selectedComposeEndpointReferences, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, isCredentialKey, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
-import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
+import { FilePortRegistry, inspectContainerRunning, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, withRoutingLock, type ListenerInfo, type ListenerScanResult, type PortAllocation, type RegistryInvocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
-import { CaddyProxyController, type ProxyRoute } from "@devfn/proxy";
+import { CaddyProxyController, proxyListenerPorts, readRegisteredDomains, renderCaddyfile, verifyCertificate, verifyLocalDns, type ProxyRoute, type ProxyRouteSnapshot } from "@devfn/proxy";
 
-import { resolveInstanceIdentity } from "./identity.js";
+import { domainAliases, resolveInstanceIdentity } from "./identity.js";
 import { resolveEndpointTemplates, resolveLocalHostname } from "./endpoints.js";
 import { createPlan } from "./planner.js";
 import { readReceipt, secureRuntimeDirectory, writeEnvironmentOutputs, writeReceipt } from "./runtime.js";
-import { DevFnError, type CleanupResult, type InstanceIdentity, type LifecyclePlan, type LifecycleReceipt, type UpOptions } from "./types.js";
+import { DevFnError, type CleanupResult, type InstanceIdentity, type RoutingIdentity, type LifecyclePlan, type LifecycleReceipt, type UpOptions } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -54,14 +54,14 @@ function provisionalComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, ow
     [node.name, [`${composeProjectName(config.services![node.name].projectName ?? "devfn", ownerId)}_default`]]));
 }
 
-async function needsNetworkPreflight(config: DevFnConfig, plan: LifecyclePlan, root: string, ownerId: string,
+async function needsNetworkPreflight(config: DevFnConfig, plan: LifecyclePlan, root: string, identity: RoutingIdentity,
   ports: Record<string, number>, hostnameSuffix?: string): Promise<boolean> {
   // A selected sibling URL reference must fail before creating lifecycle state.
   // Without one, pure template validation is enough here; the locked pass
   // below still reads effective Compose networks before startup or publication.
   if (JSON.stringify(config).includes("{{env.DEVFN_URL_")) return true;
-  const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix,
-    composeNetworks: provisionalComposeNetworks(config, plan, ownerId) });
+  const provisional = resolveEndpointTemplates({ config, plan, ownerId: identity.instanceId, ports, hostnameSuffix, routingIdentity: identity,
+    composeNetworks: provisionalComposeNetworks(config, plan, identity.instanceId) });
   const deadline = Date.now() + 20_000;
   for (const node of plan.nodes) {
     if (node.kind !== "service") continue;
@@ -73,11 +73,12 @@ async function needsNetworkPreflight(config: DevFnConfig, plan: LifecyclePlan, r
   return false;
 }
 
-async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, root: string, ownerId: string, ports: Record<string, number>, hostnameSuffix?: string): Promise<ReturnType<typeof resolveEndpointTemplates>> {
+async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePlan, root: string, identity: RoutingIdentity, ports: Record<string, number>, hostnameSuffix?: string): Promise<ReturnType<typeof resolveEndpointTemplates>> {
   // Validate literals before calling Docker. Provisional defaults are used only
   // for that read-only validation; the result is never published or started.
+  const ownerId = identity.instanceId;
   const provisionalNetworks = provisionalComposeNetworks(config, plan, ownerId);
-  const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks: provisionalNetworks });
+  const provisional = resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, routingIdentity: identity, composeNetworks: provisionalNetworks });
   const composeNetworks: Record<string, string[]> = {};
   const composeReferences: Record<string, Set<string>> = {};
   const deadline = Date.now() + 20_000;
@@ -89,7 +90,7 @@ async function resolveWithComposeNetworks(config: DevFnConfig, plan: LifecyclePl
     composeNetworks[node.name] = await effectiveComposeServiceNetworks({ ...spec, env: provisional.nodes[node.name].environment }, root, ownerId, environment, deadline, references);
     composeReferences[node.name] = references;
   }
-  return resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, composeNetworks, composeReferences });
+  return resolveEndpointTemplates({ config, plan, ownerId, ports, hostnameSuffix, routingIdentity: identity, composeNetworks, composeReferences });
 }
 
 function compareCodepoint(left: string, right: string): number {
@@ -163,22 +164,55 @@ export function hasRecordedProcessOwner(allocations: readonly PortAllocation[], 
 
 export function resolveAllocationUrls(allocations: readonly PortAllocation[], routes: readonly ProxyRoute[], httpPorts: ReadonlySet<string>, directUrls: Readonly<Record<string, string>> = {}): Record<string, string> {
   const urls: Record<string, string> = {};
+  const listenerPorts = proxyListenerPorts();
   for (const allocation of allocations) {
-    const route = allocation.protocol === "tcp" ? routes.find((item) => item.targetPort === allocation.port) : undefined;
-    if (route) urls[allocation.service] = `${route.tls === "internal" ? "https" : "http"}://${route.hostname}`;
+    // A service can have several aliases and paths. Prefer a root URL, then
+    // choose by stable route ID instead of the persisted route order.
+    const route = allocation.protocol === "tcp" ? routes.filter((item) => item.targetPort === allocation.port)
+      .sort((a, b) => {
+        const rootA = (a.path ?? "/") === "/" ? 0 : 1;
+        const rootB = (b.path ?? "/") === "/" ? 0 : 1;
+        return rootA - rootB || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      })[0] : undefined;
+    if (route) {
+      const port = route.tls === "off" ? listenerPorts.httpPort : listenerPorts.httpsPort;
+      urls[allocation.service] = `${route.tls === "off" ? "http" : "https"}://${route.hostname}${port === (route.tls === "off" ? 80 : 443) ? "" : `:${port}`}${route.path && route.path !== "/" ? route.path : ""}`;
+    }
     else if (allocation.protocol === "tcp" && httpPorts.has(allocation.service)) urls[allocation.service] = directUrls[allocation.service] ?? `http://127.0.0.1:${allocation.port}`;
   }
   return urls;
 }
 
-function selectedProxyRoutes(config: DevFnConfig, plan: LifecyclePlan, instanceId: string, ports: Readonly<Record<string, number>>, suffix: string): Array<Omit<ProxyRoute, "updatedAt">> {
+async function selectedProxyRoutes(config: DevFnConfig, plan: LifecyclePlan, identity: RoutingIdentity, ports: Readonly<Record<string, number>>, suffix: string, stateDir: string, verifyActivation = true): Promise<Array<Omit<ProxyRoute, "updatedAt">>> {
   if (!plan.proxy) return [];
-  return Object.entries(config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile))
-    .map(([name, spec]) => ({
-      id: `${instanceId}:${name}`, instanceId,
-      hostname: resolveLocalHostname(spec.hostname, name, config.project.id, instanceId, suffix),
-      targetHost: "127.0.0.1", targetPort: ports[spec.target], tls: spec.tls ?? "off",
-    }));
+  const registrations = Object.values(config.hostnames ?? {}).some((spec) => spec.domain && (!spec.profiles || spec.profiles.includes(plan.profile)))
+    ? await readRegisteredDomains(stateDir) : [];
+  const routes: Array<Omit<ProxyRoute, "updatedAt">> = [];
+  for (const [name, spec] of Object.entries(config.hostnames ?? {}).filter(([, value]) => !value.profiles || value.profiles.includes(plan.profile))) {
+    if (!plan.portNames.includes(spec.target) || !Number.isInteger(ports[spec.target])) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Selected route ${name} has no selected target port.`);
+    const common = { instanceId: identity.instanceId, targetHost: "127.0.0.1", targetPort: ports[spec.target],
+      ...(spec.path ? { path: spec.path } : {}), ...(spec.match ? { match: spec.match } : {}), ...(spec.stripPrefix ? { stripPrefix: true } : {}) };
+    if (!spec.domain) {
+      routes.push({ ...common, id: `${identity.instanceId}:${name}`, hostname: resolveLocalHostname(spec.hostname, name, config.project.id, identity.instanceId, suffix), tls: spec.tls ?? "off" });
+      continue;
+    }
+    const registration = registrations.find((item) => item.domain === spec.domain && item.projectId === config.project.id && item.repositoryIdentity === identity.repositoryIdentity);
+    if (!registration) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Domain ${spec.domain} is not registered to this repository and project.`);
+    let aliases: string[];
+    try { aliases = domainAliases(spec.host ?? name, spec.domain, identity); }
+    catch (error) { throw new DevFnError("DEVFN_RUNTIME_INVALID", `Route ${name}: ${error instanceof Error ? error.message : String(error)}`); }
+    for (const [index, hostname] of aliases.entries()) {
+      if (verifyActivation) {
+        await verifyLocalDns(hostname);
+        if (registration.tls === "certificate") await verifyCertificate(hostname, registration.certificateFile, registration.keyFile);
+      }
+      routes.push({ ...common, id: `${identity.instanceId}:${name}:${index}`, hostname, tls: registration.tls,
+        registeredDomain: registration.domain, projectId: registration.projectId, repositoryIdentity: registration.repositoryIdentity,
+        ...(registration.certificateFile ? { certificateFile: registration.certificateFile, keyFile: registration.keyFile } : {}) });
+    }
+  }
+  renderCaddyfile(routes.map((route) => ({ ...route, updatedAt: "preflight" })));
+  return routes;
 }
 
 function receiptRoutesMatch(receipt: LifecycleReceipt, expected: readonly Omit<ProxyRoute, "updatedAt">[]): boolean {
@@ -187,8 +221,13 @@ function receiptRoutesMatch(receipt: LifecycleReceipt, expected: readonly Omit<P
   if (actual.size !== expected.length) return false;
   return expected.every((route) => {
     const saved = actual.get(route.id);
-    return saved?.instanceId === route.instanceId && saved.hostname === route.hostname &&
-      saved.targetHost === route.targetHost && saved.targetPort === route.targetPort && saved.tls === route.tls;
+    if (!saved) return false;
+    const current = saved as unknown as Record<string, unknown>;
+    const planned = route as unknown as Record<string, unknown>;
+    if (current.certificateDigest !== undefined &&
+      (route.tls !== "certificate" || typeof current.certificateDigest !== "string" || !/^[a-f0-9]{64}$/.test(current.certificateDigest))) return false;
+    return new Set([...Object.keys(current).filter((key) => key !== "updatedAt" && key !== "certificateDigest"), ...Object.keys(planned)]).size === Object.keys(planned).length &&
+      Object.entries(planned).every(([key, value]) => current[key] === value);
   });
 }
 
@@ -260,15 +299,27 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     if (receipt.allocations.some((allocation) => allocation.protocol !== (config.ports?.[allocation.service]?.protocol ?? "tcp") ||
       allocation.host !== (config.ports?.[allocation.service]?.exposure === "public" ? "0.0.0.0" : "127.0.0.1"))) return false;
     const loadedPolicy = await loadDevFnPolicy(root, config.policy);
-    resolved = await resolveWithComposeNetworks(config, plan, root, receipt.instanceId, ports, loadedPolicy?.policy.hostnameSuffix);
-    if (!receiptRoutesMatch(receipt, selectedProxyRoutes(config, plan, receipt.instanceId, ports,
-      loadedPolicy?.policy.hostnameSuffix ?? ".localhost"))) return false;
+    const identity = await resolveInstanceIdentity(config.project.id, root);
+    resolved = await resolveWithComposeNetworks(config, plan, root, identity, ports, loadedPolicy?.policy.hostnameSuffix);
+    if (!receiptRoutesMatch(receipt, await selectedProxyRoutes(config, plan, identity, ports,
+      loadedPolicy?.policy.hostnameSuffix ?? ".localhost", receipt.stateDir ?? defaultStateDir(), false))) return false;
+    // The receipt is only as live as the proxy: a dead Caddy owner, a missing
+    // listener or routes switched by an interrupted replacement all mean the
+    // recorded URLs no longer reach this lifecycle.
+    if (!await new CaddyProxyController(receipt.stateDir ?? defaultStateDir()).instanceRoutesLive(receipt.instanceId, receipt.routes)) return false;
+    const currentUrls = resolveAllocationUrls(receipt.allocations, receipt.routes, selectedHttpPorts(config, plan), resolved.directUrls);
+    if (Object.keys(currentUrls).length !== Object.keys(receipt.urls).length ||
+      Object.entries(currentUrls).some(([name, url]) => receipt.urls[name] !== url)) return false;
     if (receipt.startupFingerprints) {
       const current = await startupFingerprints(config, root, resolved);
       if (Object.keys(current).length !== Object.keys(receipt.startupFingerprints).length ||
         Object.entries(current).some(([name, fingerprint]) => receipt.startupFingerprints?.[name] !== fingerprint)) return false;
     }
-  } catch { return false; }
+  } catch (error) {
+    // A busy proxy proves nothing about this lifecycle; never replace it on that basis.
+    if (error && typeof error === "object" && "code" in error && error.code === "DEVFN_REGISTRY_LOCK_TIMEOUT") throw error;
+    return false;
+  }
   const compose = new ComposeController();
   const supervisor = new ProcessSupervisor();
   const processReady = await Promise.all(receipt.processes.map(async (managed, index) => {
@@ -296,6 +347,110 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
   return processReady.every(Boolean) && serviceReady.every(Boolean);
 }
 
+/**
+ * Remove proxy routes no lifecycle can still own, for example after a
+ * worktree was deleted while running. Holding an instance's lifecycle lock
+ * proves no command of it runs; every process and container identity its
+ * lifecycles recorded must then be verified dead. Live or ambiguous
+ * instances keep their routes.
+ */
+export async function recoverOrphanedProxyRoutes(requestedStateDir: string): Promise<string[]> {
+  let stateDir: string;
+  try { stateDir = await realpath(requestedStateDir); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const proxy = new CaddyProxyController(stateDir);
+  const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+  const recovered: string[] = [];
+  for (const instanceId of await proxy.routedInstanceIds()) {
+    let entered = false;
+    try {
+      await withFileLock(path.join(stateDir, `lifecycle-${instanceId}.lock`), async () => {
+        entered = true;
+        await withRoutingLock(stateDir, async () => {
+          if (await registry.instanceMayRun(instanceId)) return;
+          await proxy.removeInstance(instanceId);
+          recovered.push(instanceId);
+        });
+      }, { timeoutMs: 1_000 });
+    } catch (error) {
+      // A lifecycle command of this instance is running; it owns its routes.
+      if (!entered && error && typeof error === "object" && "code" in error && error.code === "DEVFN_REGISTRY_LOCK_TIMEOUT") continue;
+      throw error;
+    }
+  }
+  return recovered;
+}
+
+/**
+ * Stop a recorded process and its group only through its verified identity.
+ * An exited wrapper with an empty group, or a readable different birth
+ * signature, proves it gone; a live PID whose identity cannot be read, or a
+ * wrapper that exited while its group lives on, may still be it, so teardown
+ * cannot complete. A stop refused on identity grounds proves nothing by
+ * itself: only a later status of stopped or identity-mismatch does.
+ */
+async function stopVerifiedProcess(managed: ManagedProcess, supervisor: ProcessSupervisor, result: CleanupResult): Promise<void> {
+  const unverified = () => `Process ${managed.name} (PID ${managed.pid}) may still run but its identity cannot be verified; DevFn will not signal it.`;
+  const status = await supervisor.status(managed);
+  if (status === "stopped" || status === "identity-mismatch") return;
+  try {
+    await supervisor.stop(managed);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    if (code !== "DEVFN_PROCESS_OWNERSHIP_MISMATCH" && code !== "DEVFN_PROCESS_IDENTITY_UNVERIFIED") throw error;
+    const after = await supervisor.status(managed);
+    if (after === "running" || after === "unverified") {
+      result.errors.push(`${code === "DEVFN_PROCESS_IDENTITY_UNVERIFIED" && error instanceof Error ? error.message : unverified()} Stop what remains, then rerun devfn down.`);
+    }
+    return;
+  }
+  const after = await supervisor.status(managed);
+  if (after === "running" || after === "unverified") { result.errors.push(`Process ${managed.name} (PID ${managed.pid}) did not exit when stopped.`); return; }
+  result.stoppedProcesses.push(managed.name);
+}
+
+/**
+ * The registry journal outlives the receipt and can hold what the receipt
+ * never listed: an owner of a receipt rewritten outside DevFn, or a Compose
+ * launch interrupted before its identity was recorded, which resolves only
+ * once its launcher is verified gone. Each is stopped by verified identity or
+ * reported; none is assumed gone.
+ */
+async function stopJournaledOwners(receipt: LifecycleReceipt, registry: FilePortRegistry, supervisor: ProcessSupervisor, compose: ComposeController, result: CleanupResult): Promise<void> {
+  let invocation: RegistryInvocation | undefined;
+  try { invocation = (await registry.read()).invocations.find((item) => item.id === receipt.invocationId); }
+  catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); return; }
+  if (!invocation) return;
+  const listedProcesses = new Set(receipt.processes.map((managed) => `${managed.pid}:${managed.birthSignature ?? ""}`));
+  const listedContainers = new Set(receipt.services.flatMap((managed) => managed.containerIds));
+  for (const owner of invocation.owners ?? []) {
+    try {
+      if (owner.process && !listedProcesses.has(`${owner.process.pid}:${owner.process.birthSignature ?? ""}`)) {
+        // The receipt began before this owner started, so only the owner's
+        // own record time can judge a legacy signature; without it, none.
+        await stopVerifiedProcess({ name: owner.node, pid: owner.process.pid, ...(owner.process.birthSignature ? { birthSignature: owner.process.birthSignature } : {}),
+          command: [], cwd: receipt.root, logPath: "", startedAt: owner.process.recordedAt ?? "" }, supervisor, result);
+      } else if (owner.container && !listedContainers.has(owner.container.id) && await inspectContainerRunning(owner.container) !== false) {
+        result.errors.push(`Container ${owner.container.id} of ${owner.node} is journaled for invocation ${receipt.invocationId} but not in its receipt and may still run; stop it, then rerun devfn down.`);
+      }
+    } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
+  }
+  for (const node of invocation.launching ?? []) {
+    const launch = invocation.composeLaunches?.[node];
+    if (!launch) {
+      result.errors.push(`The launch of ${node} by invocation ${receipt.invocationId} was interrupted before its identity was recorded; DevFn cannot find what it started.`);
+      continue;
+    }
+    try {
+      await compose.stopLaunch({ name: node, ...launch });
+      if (!result.stoppedServices.includes(node)) result.stoppedServices.push(node);
+    } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
+  }
+}
+
 export class DevFnOrchestrator {
   public async up(options: UpOptions): Promise<LifecycleReceipt> {
     validateDevFnConfig(options.config);
@@ -312,22 +467,34 @@ export class DevFnOrchestrator {
     // before state creation. Re-read it under the lifecycle lock after ports
     // are reserved because the Compose source can change between these steps.
     const preflightPorts = Object.fromEntries(plan.portNames.map((name) => [name, 1]));
-    if (await needsNetworkPreflight(options.config, plan, options.root, identity.instanceId, preflightPorts, loadedPolicy?.policy.hostnameSuffix)) {
-      await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, preflightPorts, loadedPolicy?.policy.hostnameSuffix);
+    await selectedProxyRoutes(options.config, plan, identity, preflightPorts, loadedPolicy?.policy.hostnameSuffix ?? ".localhost", requestedStateDir);
+    if (await needsNetworkPreflight(options.config, plan, options.root, identity, preflightPorts, loadedPolicy?.policy.hostnameSuffix)) {
+      await resolveWithComposeNetworks(options.config, plan, options.root, identity, preflightPorts, loadedPolicy?.policy.hostnameSuffix);
     } else {
-      resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, ports: preflightPorts,
+      resolveEndpointTemplates({ config: options.config, plan, ownerId: identity.instanceId, routingIdentity: identity, ports: preflightPorts,
         hostnameSuffix: loadedPolicy?.policy.hostnameSuffix, composeNetworks: provisionalComposeNetworks(options.config, plan, identity.instanceId) });
     }
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
     const stateDir = await realpath(requestedStateDir);
-    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.upLocked(options, stateDir, identity, loadedPolicy), { timeoutMs: 30_000 });
+    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => {
+      // Health and teardown may wait for minutes. The instance lock protects
+      // this lifecycle while sibling route/lease transitions use the short
+      // shared routing lock below.
+      const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+      const oldReady = await this.prepareExisting(options, stateDir, identity, loadedPolicy, registry, true);
+      const start = await this.prepareUpLocked(options, stateDir, identity, loadedPolicy, oldReady);
+      return await start();
+    }, { timeoutMs: 30_000 });
   }
 
-  private async upLocked(options: UpOptions, stateDir: string, identity: InstanceIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>): Promise<LifecycleReceipt> {
+  private async prepareUpLocked(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>, oldReady?: LifecycleReceipt): Promise<() => Promise<LifecycleReceipt>> {
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
-    await this.prepareExisting(options, stateDir, identity, loadedPolicy, registry);
-    await registry.recoverInterrupted(identity.instanceId);
     const plan = createPlan(options.config, options.profile);
+    const profileHostnames = Object.entries(options.config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile));
+    const listenerPorts = plan.proxy && profileHostnames.length ? Object.values(proxyListenerPorts()) : [];
+    const preflightPorts = Object.fromEntries(plan.portNames.map((name) => [name, 1]));
+    const routes = await selectedProxyRoutes(options.config, plan, identity, preflightPorts,
+      loadedPolicy?.policy.hostnameSuffix ?? ".localhost", stateDir);
     const publicNodes = plan.nodes.filter((node) => node.kind === "process" && options.config.processes?.[node.name]?.exposure === "public").map((node) => node.name);
     const publicPorts = plan.portNames.filter((name) => options.config.ports?.[name]?.exposure === "public");
     if ((publicNodes.length || publicPorts.length) && !options.allowPublic) {
@@ -337,19 +504,35 @@ export class DevFnOrchestrator {
     const runtimeDir = await secureRuntimeDirectory(options.config, options.root, identity.instanceId);
     const policy = resolvePolicy(loadedPolicy?.policy ?? null, options.config.project.id);
     const suffix = loadedPolicy?.policy.hostnameSuffix ?? ".localhost";
-    const profileHostnames = Object.entries(options.config.hostnames ?? {}).filter(([, spec]) => !spec.profiles || spec.profiles.includes(plan.profile));
-    const configuredHostnames = Object.fromEntries(profileHostnames.map(([name, spec]) => [spec.target, resolveLocalHostname(spec.hostname, name, options.config.project.id, identity.instanceId, suffix)]));
-    const allocations = await registry.reserve({
-      projectId: options.config.project.id,
-      instanceId: identity.instanceId,
-      invocationId,
-      profile: plan.profile,
-      requests: plan.portNames.map((name) => ({ name, spec: options.config.ports?.[name] ?? {}, ...(configuredHostnames[name] ? { hostname: configuredHostnames[name] } : {}) })),
-      ...policy,
+    const configuredHostnames = Object.fromEntries(profileHostnames.filter(([, spec]) => !spec.domain).map(([name, spec]) => [spec.target, resolveLocalHostname(spec.hostname, name, options.config.project.id, identity.instanceId, suffix)]));
+    const allocations = await withRoutingLock(stateDir, async () => {
+      const prior = await readReceipt(options.config, options.root, identity.instanceId);
+      if (prior && prior.state !== "stopped") assertReceiptStateDir(prior, stateDir);
+      const replacingInvocationId = prior?.state === "ready" ? prior.invocationId : undefined;
+      await registry.assertReplacementAvailable(listenerPorts, identity.instanceId,
+        plan.portNames.map((name) => ({ name, spec: options.config.ports?.[name] ?? {} })),
+        async () => {
+          if (!routes.length) return;
+          const proxy = new CaddyProxyController(stateDir);
+          await proxy.assertRouteOwnershipAvailable(routes, identity.instanceId);
+          await proxy.assertActivationReady(routes, identity.instanceId);
+        }, replacingInvocationId);
+      await registry.recoverInterrupted(identity.instanceId);
+      return await registry.reserve({
+        projectId: options.config.project.id,
+        instanceId: identity.instanceId,
+        invocationId,
+        profile: plan.profile,
+        requests: plan.portNames.map((name) => ({ name, spec: options.config.ports?.[name] ?? {}, ...(configuredHostnames[name] ? { hostname: configuredHostnames[name] } : {}) })),
+        ...policy,
+        // A selected proxy route claims both listener ports across protocols.
+        ...(listenerPorts.length ? { proxyListenerPorts: listenerPorts } : {}),
+        ...(oldReady ? { replacingInvocationId: oldReady.invocationId } : {}),
+      });
     });
     const ports = Object.fromEntries(allocations.map((item) => [item.service, item.port]));
     let resolved: ReturnType<typeof resolveEndpointTemplates>;
-    try { resolved = await resolveWithComposeNetworks(options.config, plan, options.root, identity.instanceId, ports, suffix); }
+    try { resolved = await resolveWithComposeNetworks(options.config, plan, options.root, identity, ports, suffix); }
     catch (error) {
       await registry.release({ invocationId, errorCode: "DEVFN_ENDPOINT_RESOLUTION_FAILED" });
       throw error;
@@ -361,81 +544,183 @@ export class DevFnOrchestrator {
       await registry.release({ invocationId, errorCode: "DEVFN_STARTUP_FINGERPRINT_FAILED" });
       throw error;
     }
+    const proxy = new CaddyProxyController(stateDir);
+    let activatedRoutes: Awaited<ReturnType<typeof proxy.upsert>> | undefined;
+    // An interrupted replacement can leave committed routes the prior receipt
+    // never recorded, so the proxy's own state decides what to reconcile.
+    let reconcileRoutes = false;
+    let priorRoutes: ProxyRouteSnapshot | undefined;
+    try {
+      reconcileRoutes = oldReady !== undefined && (routes.length > 0 || oldReady.routes.length > 0 || await proxy.hasInstanceRoutes(identity.instanceId));
+      // Activation prunes certificate snapshots no committed route uses, so
+      // the prior routes' material is captured now for any rollback.
+      if (reconcileRoutes) priorRoutes = await proxy.captureInstanceRoutes(identity.instanceId);
+    } catch (error) {
+      await registry.release({ invocationId, errorCode: "DEVFN_PROXY_CONFIG_INVALID" });
+      throw error;
+    }
+    // Restore this instance's routes as they were before preactivation, and
+    // only when its committed or pending route state actually changed: a
+    // rejected candidate leaves both untouched and keeps its own error.
+    const restorePriorRoutes = async (): Promise<void> => {
+      if (!priorRoutes) return;
+      const before = new Set([priorRoutes.committed, priorRoutes.pending].filter(Boolean).map((value) => JSON.stringify(value)));
+      const after = await proxy.instanceRouteState(identity.instanceId).catch(() => undefined);
+      if (after && [after.committed, after.pending].filter(Boolean).every((value) => before.has(JSON.stringify(value)))) return;
+      await proxy.restoreInstanceRoutes(identity.instanceId, priorRoutes);
+    };
+    const rollbackFailure = async (): Promise<string | undefined> => activatedRoutes
+      ? await restorePriorRoutes().then(() => undefined, (error: unknown) => `prior routes could not be restored: ${error instanceof Error ? error.message : String(error)}`)
+      : undefined;
+    if (oldReady && reconcileRoutes) {
+      try {
+        // Caddy run/reload can fail after validate. Activate the final routes
+        // while the previous ready lifecycle and receipt are still intact.
+        const finalRoutes = await selectedProxyRoutes(options.config, plan, identity, ports, suffix, stateDir);
+        activatedRoutes = await proxy.upsert(finalRoutes, identity.instanceId);
+      } catch (error) {
+        try { await restorePriorRoutes(); }
+        catch (rollbackError) {
+          // The invocation's listener claim stays while its routes remain.
+          await registry.release({ invocationId, errorCode: "DEVFN_PROXY_RELOAD_FAILED" }).catch(() => undefined);
+          throw new DevFnError("DEVFN_RUNTIME_INVALID", `Proxy activation failed and prior routes could not be restored: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+        }
+        await registry.release({ invocationId, errorCode: "DEVFN_PROXY_RELOAD_FAILED" });
+        throw error;
+      }
+    }
     const receipt: LifecycleReceipt = {
       version: 1, projectId: options.config.project.id, instanceId: identity.instanceId, invocationId, profile: plan.profile,
       state: "starting", root: options.root, runtimeDir, stateDir: path.resolve(stateDir), startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      allocations, processes: [], services: [], startedNodes: [], routes: [], urls: {}, environmentOutputs: [],
+      allocations, processes: [], services: [], startedNodes: [], routes: activatedRoutes ?? [], urls: {}, environmentOutputs: [],
       startupFingerprints: fingerprints,
       portSpecFingerprints: portSpecFingerprints(options.config, plan.portNames),
     };
     try {
       await registry.updateInvocation(invocationId, { state: "starting" });
-      await writeReceipt(receipt);
     } catch (error) {
+      const rollback = await rollbackFailure();
       await registry.release({ invocationId, errorCode: "DEVFN_RECEIPT_WRITE_FAILED" }).catch(() => undefined);
+      if (rollback) {
+        throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to record the replacement, and its ${rollback}`,
+          { cause: error instanceof Error ? error.message : String(error), priorInvocationId: oldReady?.invocationId, priorStopped: false, routesRestored: false });
+      }
       throw error;
     }
-    const heartbeat = setInterval(() => { void registry.updateInvocation(invocationId, {}).catch(() => undefined); }, 60_000);
-    heartbeat.unref();
-    const supervisor = new ProcessSupervisor();
-    const compose = new ComposeController();
-    const proxy = new CaddyProxyController(stateDir);
-    try {
-      receipt.environmentOutputs = await writeEnvironmentOutputs(options.root, runtimeDir, options.config.environmentOutputs ?? [], environment);
-      for (const node of plan.nodes) {
-        await this.startSelectedNode(node, { options, identity, receipt, resolved, ports, allocations, supervisor, compose });
+    return async () => {
+      const heartbeat = setInterval(() => { void registry.updateInvocation(invocationId, {}).catch(() => undefined); }, 60_000);
+      heartbeat.unref();
+      const supervisor = new ProcessSupervisor();
+      const compose = new ComposeController();
+      if (oldReady) {
+        // Replacement is stop-then-start: everything that can be checked
+        // without running the new source was validated above. The old
+        // processes are not relaunched after a later failure because their
+        // source in the working tree may already have changed.
+        const stopped = await this.cleanup(oldReady, registry, supervisor, compose, proxy, false, true, true);
+        if (stopped.errors.length) {
+          clearInterval(heartbeat);
+          // Part of the prior lifecycle may still run, so it keeps its receipt,
+          // leases and routes for an explicit down. A failed route rollback
+          // is reported as such, never as routes kept.
+          const rollback = await rollbackFailure();
+          await registry.release({ invocationId, errorCode: "DEVFN_REPLACEMENT_STOP_FAILED" }).catch(() => undefined);
+          oldReady.cleanup = rollback ? { ...stopped, errors: [...stopped.errors, rollback] } : stopped;
+          oldReady.state = "degraded";
+          oldReady.updatedAt = new Date().toISOString();
+          await writeReceipt(oldReady).catch(() => undefined);
+          throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to stop the prior lifecycle for replacement${rollback ? `, and its ${rollback}` : ""}; run devfn down before retrying.`,
+            { cleanup: oldReady.cleanup, priorInvocationId: oldReady.invocationId, priorStopped: false, ...(activatedRoutes ? { routesRestored: !rollback } : {}) });
+        }
+      }
+      try {
+        // The prior processes are gone. The replacement's planned leases
+        // already cover every port it reuses, so the prior leases end here,
+        // before its receipt is superseded.
+        if (oldReady) await registry.release({ invocationId: oldReady.invocationId });
+        await writeReceipt(receipt);
+        receipt.environmentOutputs = await writeEnvironmentOutputs(options.root, runtimeDir, options.config.environmentOutputs ?? [], environment);
+        for (const node of plan.nodes) {
+          await this.startSelectedNode(node, { options, identity, receipt, resolved, ports, allocations, supervisor, compose, registry });
+          receipt.updatedAt = new Date().toISOString();
+          await writeReceipt(receipt);
+        }
+        if (plan.proxy && !activatedRoutes) {
+          const routes = await selectedProxyRoutes(options.config, plan, identity, ports, suffix, stateDir);
+          receipt.routes = await proxy.upsert(routes, identity.instanceId);
+        } else if (activatedRoutes) receipt.routes = activatedRoutes;
+        receipt.urls = resolveAllocationUrls(allocations, receipt.routes, selectedHttpPorts(options.config, plan), resolved.directUrls);
+        if (!receipt.routes.length && await proxy.hasInstanceRoutes(identity.instanceId)) await proxy.removeInstance(identity.instanceId);
+        clearInterval(heartbeat);
+        await registry.markActive(invocationId, startupOwners(options.config, receipt));
+        receipt.state = "ready";
         receipt.updatedAt = new Date().toISOString();
         await writeReceipt(receipt);
+        return receipt;
+      } catch (error) {
+        const cleanup = await this.cleanup(receipt, registry, supervisor, compose, proxy, true);
+        receipt.state = "failed";
+        receipt.cleanup = cleanup;
+        receipt.error = { code: error && typeof error === "object" && "code" in error ? String(error.code) : "DEVFN_START_FAILED", message: error instanceof Error ? error.message : String(error) };
+        receipt.updatedAt = new Date().toISOString();
+        await writeReceipt(receipt).catch(() => undefined);
+        if (oldReady) {
+          throw new DevFnError("DEVFN_START_FAILED", `DevFn replacement failed after prior invocation ${oldReady.invocationId} was stopped; it was not restarted: ${receipt.error.message}`,
+            { cleanup, causeCode: receipt.error.code, priorInvocationId: oldReady.invocationId, priorStopped: true });
+        }
+        throw new DevFnError("DEVFN_START_FAILED", `DevFn startup failed: ${receipt.error.message}`, { cleanup, causeCode: receipt.error.code });
+      } finally {
+        clearInterval(heartbeat);
       }
-      if (plan.proxy) {
-        const routes = selectedProxyRoutes(options.config, plan, identity.instanceId, ports, suffix);
-        receipt.routes = await proxy.upsert(routes);
-      }
-      receipt.urls = resolveAllocationUrls(allocations, receipt.routes, selectedHttpPorts(options.config, plan), resolved.directUrls);
-      clearInterval(heartbeat);
-      await registry.markActive(invocationId, startupOwners(options.config, receipt));
-      receipt.state = "ready";
-      receipt.updatedAt = new Date().toISOString();
-      await writeReceipt(receipt);
-      return receipt;
-    } catch (error) {
-      const cleanup = await this.cleanup(receipt, registry, supervisor, compose, proxy, true);
-      receipt.state = "failed";
-      receipt.cleanup = cleanup;
-      receipt.error = { code: error && typeof error === "object" && "code" in error ? String(error.code) : "DEVFN_START_FAILED", message: error instanceof Error ? error.message : String(error) };
-      receipt.updatedAt = new Date().toISOString();
-      await writeReceipt(receipt);
-      throw new DevFnError("DEVFN_START_FAILED", `DevFn startup failed: ${receipt.error.message}`, { cleanup, causeCode: receipt.error.code });
-    } finally {
-      clearInterval(heartbeat);
-    }
+    };
   }
 
-  private async prepareExisting(options: UpOptions, stateDir: string, identity: InstanceIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>, registry: FilePortRegistry): Promise<void> {
+  private async prepareExisting(options: UpOptions, stateDir: string, identity: RoutingIdentity, loadedPolicy: Awaited<ReturnType<typeof loadDevFnPolicy>>, registry: FilePortRegistry, deferReadyCleanup = false): Promise<LifecycleReceipt | undefined> {
     const existing = await readReceipt(options.config, options.root, identity.instanceId);
     if (existing && existing.state !== "stopped") {
       assertReceiptStateDir(existing, stateDir);
+      // down holds this instance lock for its whole run, so a stopping
+      // invocation seen here was interrupted; finish that stop first. A ready
+      // receipt is replaceable only while its registry invocation is ready.
+      const registered = (await registry.read()).invocations.find((item) => item.id === existing.invocationId)?.state;
+      if (registered === "stopping") {
+        await this.stopExisting(existing, stateDir, registry);
+        return undefined;
+      }
       const processStates = await Promise.all(existing.processes.map((item) => new ProcessSupervisor().status(item)));
       const serviceStates = await Promise.all(existing.services.map((item) => new ComposeController().status(item)));
       const managedCount = processStates.length + serviceStates.length;
       const allRunning = managedCount > 0 && processStates.every((state) => state === "running") && serviceStates.every((state) => state === "running");
       const allReady = allRunning && existing.profile === (options.profile ?? options.config.defaultProfile ?? "default") &&
         await receiptIsReady(options.config, options.root, existing, processStates, serviceStates);
-      if (existing.state === "ready" && allReady) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
+      if (existing.state === "ready" && allReady && !options.replace) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
       // Validate the replacement while the old lifecycle still owns its ports
       // and containers. A malformed source must never turn a ready service off.
       const replacementPlan = createPlan(options.config, options.profile);
       const existingPorts = Object.fromEntries(existing.allocations.map((allocation) => [allocation.service, allocation.port]));
       const replacementPorts = Object.fromEntries(replacementPlan.portNames.map((name) => [name, existingPorts[name] ?? 1]));
-      const replacement = await resolveWithComposeNetworks(options.config, replacementPlan, options.root, identity.instanceId, replacementPorts, loadedPolicy?.policy.hostnameSuffix);
+      const replacement = await resolveWithComposeNetworks(options.config, replacementPlan, options.root, identity, replacementPorts, loadedPolicy?.policy.hostnameSuffix);
       await startupFingerprints(options.config, options.root, replacement);
-      const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
-      if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
-      existing.cleanup = recovered;
-      existing.state = "stopped";
-      existing.updatedAt = new Date().toISOString();
-      await writeReceipt(existing);
+      if (existing.state === "ready" && allRunning && deferReadyCleanup && registered === "ready") return existing;
+      await this.stopExisting(existing, stateDir, registry);
     }
+  }
+
+  private async stopExisting(existing: LifecycleReceipt, stateDir: string, registry: FilePortRegistry, preserveRoutes = false): Promise<void> {
+    const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready", preserveRoutes);
+    if (recovered.errors.length) {
+      // Part of it may still run: it keeps its receipt, leases and routes
+      // for an explicit down, and is never reported stopped.
+      existing.cleanup = recovered;
+      existing.state = "degraded";
+      existing.updatedAt = new Date().toISOString();
+      await writeReceipt(existing).catch(() => undefined);
+      throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to stop prior invocation ${existing.invocationId}; it was not replaced: ${recovered.errors.join(" ")}`, { cleanup: recovered, priorStopped: false });
+    }
+    existing.cleanup = recovered;
+    existing.state = "stopped";
+    existing.updatedAt = new Date().toISOString();
+    await writeReceipt(existing);
   }
 
   private async startSelectedNode(node: LifecyclePlan["nodes"][number], context: {
@@ -447,19 +732,30 @@ export class DevFnOrchestrator {
     allocations: readonly PortAllocation[];
     supervisor: ProcessSupervisor;
     compose: ComposeController;
+    registry: FilePortRegistry;
   }): Promise<void> {
-    const { options, identity, receipt, resolved, ports, allocations, supervisor, compose } = context;
+    const { options, identity, receipt, resolved, ports, allocations, supervisor, compose, registry } = context;
+    // Routes may already target this lifecycle's ports. Its owner identities
+    // are journaled in the registry, which outlives the worktree, so orphan
+    // recovery can tell a running interrupted start from a dead one. Each
+    // identity is in the receipt before the journal, so teardown of the
+    // receipt reaches every journaled owner; a Compose launch and its
+    // launcher are journaled before the launcher runs, and a process command
+    // runs only once both hold it.
     if (node.kind === "service") {
       const spec = options.config.services![node.name];
       await compose.start({
         name: node.name, spec: { ...spec, env: resolved.nodes[node.name].environment, health: resolvedHealth(spec.health, resolved.nodes[node.name].healthCommand, resolved.nodes[node.name].healthUrl) }, root: options.root, runtimeDir: receipt.runtimeDir, instanceId: identity.instanceId, ports,
         portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
         portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment: resolved.nodes[node.name].environment, readinessEnvironment: resolved.nodes[node.name].readinessEnvironment,
+        onLaunch: async ({ name: _name, ...launch }) => await registry.beginLaunch(receipt.invocationId, node.name, launch),
         onStarted: async (managed) => {
           receipt.services.push(managed);
           receipt.startedNodes?.push({ name: node.name, kind: node.kind });
           receipt.updatedAt = new Date().toISOString();
           await writeReceipt(receipt);
+          await registry.recordOwners(receipt.invocationId, node.name, managed.containerIds.map((id) => ({ container: { id, name: managed.composeService,
+            ...(managed.dockerEnvironment !== undefined ? { dockerEnvironment: managed.dockerEnvironment } : {}) } })));
         },
       });
       return;
@@ -472,6 +768,7 @@ export class DevFnOrchestrator {
         receipt.startedNodes?.push({ name: node.name, kind: node.kind });
         receipt.updatedAt = new Date().toISOString();
         await writeReceipt(receipt);
+        await registry.recordOwners(receipt.invocationId, node.name, [{ process: { pid: started.pid, ...(started.birthSignature ? { birthSignature: started.birthSignature } : {}) } }]);
       },
     });
     if (spec.exposure !== "public") {
@@ -480,7 +777,7 @@ export class DevFnOrchestrator {
     }
   }
 
-  private async cleanup(receipt: LifecycleReceipt, registry: FilePortRegistry, supervisor: ProcessSupervisor, compose: ComposeController, proxy: CaddyProxyController, failed: boolean): Promise<CleanupResult> {
+  private async cleanup(receipt: LifecycleReceipt, registry: FilePortRegistry, supervisor: ProcessSupervisor, compose: ComposeController, proxy: CaddyProxyController, failed: boolean, preserveRoutes = false, preserveLeases = false): Promise<CleanupResult> {
     const result: CleanupResult = { stoppedProcesses: [], stoppedServices: [], removedProxy: false, releasedPorts: false, errors: [] };
     const historical = [
       ...receipt.processes.map((value) => ({ kind: "process" as const, value })),
@@ -494,20 +791,19 @@ export class DevFnOrchestrator {
       : historical.sort((a, b) => Date.parse(b.value.startedAt) - Date.parse(a.value.startedAt));
     for (const item of started) {
       try {
-        if (item.kind === "process") {
-          if (await supervisor.status(item.value) !== "running") continue;
-          await supervisor.stop(item.value);
-          result.stoppedProcesses.push(item.value.name);
-        }
+        if (item.kind === "process") await stopVerifiedProcess(item.value, supervisor, result);
         else { await compose.stop(item.value); result.stoppedServices.push(item.value.name); }
       } catch (error) {
-        if (item.kind !== "process" || !error || typeof error !== "object" || !("code" in error) || error.code !== "DEVFN_PROCESS_OWNERSHIP_MISMATCH") {
-          result.errors.push(error instanceof Error ? error.message : String(error));
-        }
+        result.errors.push(error instanceof Error ? error.message : String(error));
       }
     }
-    try { await proxy.removeInstance(receipt.instanceId); result.removedProxy = true; } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
-    if (result.errors.length === 0) {
+    await stopJournaledOwners(receipt, registry, supervisor, compose, result);
+    // Routes of an owner that may still run keep pointing at it until a
+    // later teardown resolves it.
+    if (!preserveRoutes && result.errors.length === 0) {
+      try { await proxy.removeInstance(receipt.instanceId); result.removedProxy = true; } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
+    }
+    if (result.errors.length === 0 && !preserveLeases) {
       try { await registry.release({ invocationId: receipt.invocationId, ...(failed ? { errorCode: receipt.error?.code ?? "DEVFN_START_FAILED" } : {}) }); result.releasedPorts = true; } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
     }
     return result;
@@ -518,14 +814,34 @@ export class DevFnOrchestrator {
     const identity = await resolveInstanceIdentity(options.config.project.id, options.root);
     await mkdir(requestedStateDir, { recursive: true, mode: 0o700 });
     const stateDir = await realpath(requestedStateDir);
-    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.downLocked(options, stateDir, identity), { timeoutMs: 30_000 });
+    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => {
+      // Coordinate the destructive decision with sibling route/lease changes,
+      // then let long process and Compose stops run under the instance lock.
+      await withRoutingLock(stateDir, async () => {
+        const receipt = await readReceipt(options.config, options.root, identity.instanceId);
+        if (!receipt || receipt.state === "stopped") throw new DevFnError("DEVFN_NOT_RUNNING", `DevFn instance ${identity.instanceId} is not running.`);
+        assertReceiptStateDir(receipt, stateDir);
+        await new FilePortRegistry(path.join(stateDir, "registry.json")).updateInvocation(receipt.invocationId, { state: "stopping" });
+      });
+      return await this.downLocked(options, stateDir, identity);
+    }, { timeoutMs: 30_000 });
   }
 
   private async downLocked(options: { config: DevFnConfig; root: string; stateDir?: string }, stateDir: string, identity: InstanceIdentity): Promise<LifecycleReceipt> {
     const receipt = await readReceipt(options.config, options.root, identity.instanceId);
     if (!receipt || receipt.state === "stopped") throw new DevFnError("DEVFN_NOT_RUNNING", `DevFn instance ${identity.instanceId} is not running.`);
     assertReceiptStateDir(receipt, stateDir);
-    const cleanup = await this.cleanup(receipt, new FilePortRegistry(path.join(stateDir, "registry.json")), new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), false);
+    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    // Siblings honour a stopping claim only while it is refreshed; an
+    // interrupted down expires and the next lifecycle command completes it.
+    const heartbeat = setInterval(() => { void registry.updateInvocation(receipt.invocationId, {}).catch(() => undefined); }, 60_000);
+    heartbeat.unref();
+    let cleanup: CleanupResult;
+    try { cleanup = await this.cleanup(receipt, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), false); }
+    finally { clearInterval(heartbeat); }
+    // The instance lock is held, so any other planning/starting invocation of
+    // this worktree belongs to an interrupted command.
+    if (cleanup.errors.length === 0) await registry.recoverInterrupted(identity.instanceId);
     receipt.cleanup = cleanup;
     receipt.state = cleanup.errors.length ? "degraded" : "stopped";
     receipt.updatedAt = new Date().toISOString();

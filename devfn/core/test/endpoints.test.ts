@@ -7,7 +7,7 @@ import { composeProjectName } from "@devfn/compose";
 import { checkReadinessNow, waitForReadiness } from "@devfn/processes";
 import { describe, expect, it, vi } from "vitest";
 
-import { createPlan, DevFnOrchestrator, resolveEndpointTemplates, resolveLocalHostname } from "../src/index.js";
+import { createPlan, DevFnOrchestrator, domainAliases, resolveEndpointTemplates, resolveLocalHostname } from "../src/index.js";
 
 const fixture = (): DevFnConfig => validateDevFnConfig({
   version: 1, project: { id: "fixture" },
@@ -195,6 +195,23 @@ describe("endpoint and template contract", () => {
     const resolved = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 } });
     expect(resolved.directUrls.api).toBe("http://127.0.0.1:4101");
     expect(resolved.nodes.api.healthUrl).toBe("http://127.0.0.1:4101/health?ready=1");
+  });
+
+  it("rejects startup probes through a stripped published prefix for process and Compose", () => {
+    for (const kind of ["process", "service"] as const) {
+      const config = directProxyHealthFixture(kind);
+      config.hostnames!.api = { target: "api", hostname: "api.localhost", path: "/api", match: "prefix", stripPrefix: true };
+      if (kind === "process") config.processes!.api.health = { type: "http", port: "api", url: "http://api.localhost/api/ready" };
+      else config.services!.api.health = { type: "http", port: "api", url: "http://api.localhost/api/ready" };
+      expect(() => resolveDirectProxyHealth(config, 4101)).toThrow(/upstream direct path/);
+      if (kind === "process") config.processes!.api.health.url = "http://api.localhost/apix/ready";
+      else config.services!.api.health.url = "http://api.localhost/apix/ready";
+      expect(resolveDirectProxyHealth(config, 4101).nodes.api.healthUrl).toBe("http://127.0.0.1:4101/apix/ready");
+      config.hostnames!.ready = { target: "api", hostname: "api.localhost", path: "/api/ready", match: "exact" };
+      if (kind === "process") config.processes!.api.health.url = "http://api.localhost/api/ready";
+      else config.services!.api.health.url = "http://api.localhost/api/ready";
+      expect(resolveDirectProxyHealth(config, 4101).nodes.api.healthUrl).toBe("http://127.0.0.1:4101/api/ready");
+    }
   });
 
   it("uses upstream HTTP for an HTTPS proxy route and retains direct HTTPS elsewhere", () => {
@@ -1603,6 +1620,45 @@ describe("endpoint and template contract", () => {
     config.processes!.api.health = { type: "http", url: `http://${resolveLocalHostname(undefined, "api", "fixture", "owner", ".test.localhost")}/health` };
     expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", ports: { api: 4101, worker: 4102 }, hostnameSuffix: ".test.localhost" }))
       .toThrow(/URL-only readiness cannot wait for a selected proxy route/);
+  });
+
+  it("uses the direct HTTP lease for registered TLS aliases and rejects URL-only waits", () => {
+    const config = fixture();
+    config.profiles.default.proxy = true;
+    config.hostnames = { api: { target: "api", domain: "dev.example.test", host: "api" } };
+    const routingIdentity = {
+      projectId: "fixture", repositoryRoot: "/fixture", repositoryIdentity: "/fixture", worktreePath: "/fixture",
+      instanceId: "owner", isPrimaryWorktree: true, readableWorktreeLabel: `primary-${"0123456789".repeat(2)}`,
+    };
+    const [readable, canonical] = domainAliases("api", "dev.example.test", routingIdentity);
+    for (const hostname of [readable, canonical]) {
+      config.processes!.api.health = { type: "http", port: "api", url: `https://${hostname}/health?ready=1` };
+      const direct = resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", routingIdentity,
+        ports: { api: 4101, worker: 4102 } });
+      expect(direct.nodes.api.healthUrl).toBe("http://127.0.0.1:4101/health?ready=1");
+      config.processes!.api.health = { type: "http", url: `https://${hostname}/health` };
+      expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", routingIdentity,
+        ports: { api: 4101, worker: 4102 } })).toThrow(/URL-only readiness cannot wait/);
+    }
+  });
+
+  it("reports a registered alias that cannot fit DNS as an invalid hostname field", () => {
+    const config = fixture();
+    config.profiles.default.proxy = true;
+    const domain = `${Array.from({ length: 4 }, () => "a".repeat(55)).join(".")}.test`;
+    config.hostnames = { api: { target: "api", domain } };
+    const routingIdentity = {
+      projectId: "fixture", repositoryRoot: "/fixture", repositoryIdentity: "/fixture", worktreePath: "/fixture",
+      instanceId: "owner", isPrimaryWorktree: false, readableWorktreeLabel: `primary-${"0123456789".repeat(2)}`,
+    };
+    expect(() => resolveEndpointTemplates({ config, plan: createPlan(config), ownerId: "owner", routingIdentity, ports: { api: 4101, worker: 4102 } }))
+      .toThrow(expect.objectContaining({ code: "DEVFN_RUNTIME_INVALID", message: expect.stringMatching(/^hostnames\.api: .*DNS hostname length/) }));
+  });
+
+  it("fits the shortest generated hostname under the longest accepted policy suffix", () => {
+    const suffix = (extra: number) => `.${Array.from({ length: 3 }, () => "a".repeat(63)).join(".")}.${"b".repeat(26 + extra)}.localhost`;
+    expect(resolveLocalHostname(undefined, "a", "fixture", "owner", suffix(0))).toHaveLength(253);
+    expect(() => resolveLocalHostname(undefined, "a", "fixture", "owner", suffix(1))).toThrow(/DNS length limit/);
   });
 
   it("rejects URL-only readiness on a selected proxy route before state creation", async () => {

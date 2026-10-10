@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { FilePortRegistry, isPortAvailable } from "@devfn/ports";
-import { resolveInstanceIdentity, writeReceipt } from "@devfn/core";
+import { processBirthSignature, validateDevFnConfig } from "@devfn/config";
+import { readReceipt, resolveInstanceIdentity, writeReceipt } from "@devfn/core";
 import { runCli } from "../src/index.js";
 
 async function withListenerTools<T>(action: () => Promise<T>): Promise<T> {
@@ -21,7 +22,37 @@ async function withListenerTools<T>(action: () => Promise<T>): Promise<T> {
   }
 }
 
+/** The JSON fields these tests read from a CLI result. */
+interface CliResult { error?: { message: string }; state?: string; invocationId?: string; allocations?: Array<{ port: number }> }
+
 describe("devfn CLI", () => {
+  it("rejects extra domains list arguments without reading machine state", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-domain-list-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-state-"));
+    try {
+      // Reading this malformed registry would fail with another error.
+      await writeFile(path.join(stateDir, "domains.json"), "{");
+      await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({ version: 1, project: { id: "fixture" }, profiles: { default: {} } }));
+      let output = "";
+      expect(await runCli(["domains", "list", "typo", "--trust", "--json", "--state-dir", stateDir],
+        { cwd, stdout: (text) => { output += text; }, stderr: () => undefined })).toBe(1);
+      expect(JSON.parse(output)).toMatchObject({ error: { code: "DEVFN_RUNTIME_INVALID", message: expect.stringContaining("no arguments") } });
+    } finally { await rm(cwd, { recursive: true, force: true }); await rm(stateDir, { recursive: true, force: true }); }
+  });
+
+  it("rejects unavailable DNS-01 registration without changing machine state", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-domain-cli-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-state-"));
+    try {
+      await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({ version: 1, project: { id: "fixture" }, profiles: { default: {} } }));
+      let output = "";
+      expect(await runCli(["domains", "register", "dev.example.test", "--tls", "dns-01", "--trust", "--json", "--state-dir", stateDir],
+        { cwd, stdout: (text) => { output += text; }, stderr: () => undefined })).toBe(1);
+      expect(JSON.parse(output)).toMatchObject({ error: { code: "DEVFN_RUNTIME_INVALID" } });
+      await expect(access(path.join(stateDir, "domains.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await rm(cwd, { recursive: true, force: true }); await rm(stateDir, { recursive: true, force: true }); }
+  });
+
   it("rejects invalid tail counts before command dispatch", async () => {
     for (const value of ["nope", "-1", "1.5", "9007199254740992"]) {
       let stdout = "";
@@ -132,6 +163,48 @@ describe("devfn CLI", () => {
     }
   }, 15_000);
 
+  it("validates a changed registered domain before restart stops a ready service", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-restart-domain-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-restart-state-"));
+    const manifest = path.join(cwd, "devfn.config.json");
+    const base = { version: 1, project: { id: "restart-fixture" }, ports: { app: {} },
+      processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "http", port: "app", timeoutMs: 5000 } } },
+      profiles: { default: { processes: ["app"], proxy: false } } };
+    const invoke = async (args: string[]) => {
+      let stdout = "";
+      const code = await runCli([...args, "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+      return { code, value: JSON.parse(stdout) as CliResult };
+    };
+    try {
+      await writeFile(path.join(cwd, "server.mjs"), "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+      await writeFile(manifest, JSON.stringify(base));
+      const first = await invoke(["up"]);
+      expect(first.code, JSON.stringify(first.value)).toBe(0);
+      const port = first.value.allocations![0].port;
+      await writeFile(manifest, JSON.stringify({ ...base, profiles: { default: { processes: ["app"], proxy: true } },
+        hostnames: { app: { target: "app", domain: "unregistered.example.test" } } }));
+      const failed = await invoke(["restart"]);
+      expect(failed.code).toBe(1);
+      expect(failed.value.error?.message).toContain("not registered");
+      await writeFile(manifest, JSON.stringify(base));
+      const status = await invoke(["status"]);
+      expect(status.value.state).toBe("ready");
+      const identity = await resolveInstanceIdentity(base.project.id, cwd);
+      expect((await readReceipt(validateDevFnConfig(base), cwd, identity.instanceId))?.invocationId).toBe(first.value.invocationId);
+      expect(await fetch(`http://127.0.0.1:${port}/`).then((response) => response.text())).toBe("ready");
+      const restarted = await invoke(["restart"]);
+      expect(restarted.code, JSON.stringify(restarted.value)).toBe(0);
+      expect(restarted.value.invocationId).not.toBe(first.value.invocationId);
+      expect(restarted.value.state).toBe("ready");
+      expect(restarted.value.allocations?.[0].port).toBe(port);
+    } finally {
+      await writeFile(manifest, JSON.stringify(base));
+      await invoke(["down"]).catch(() => undefined);
+      await rm(cwd, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  }, 25_000);
+
   it("restarts a live process whose configured readiness has degraded", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-readiness-recovery-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
@@ -175,7 +248,7 @@ describe("devfn CLI", () => {
     await writeReceipt({
       version: 1, projectId: config.project.id, instanceId: identity.instanceId, invocationId: "stale-invocation", profile: "default", state: "ready",
       root: cwd, runtimeDir, stateDir: canonicalStateDir, startedAt: now, updatedAt: now, allocations: [],
-      processes: [{ name: "stale", pid: process.pid, birthSignature: "different-process", command: [process.execPath], cwd, logPath: path.join(runtimeDir, "stale.log"), startedAt: now }],
+      processes: [{ name: "stale", pid: process.pid, birthSignature: `${(await processBirthSignature(process.pid))!.split(":")[0]}:different-process`, command: [process.execPath], cwd, logPath: path.join(runtimeDir, "stale.log"), startedAt: now }],
       services: [], startedNodes: [{ name: "stale", kind: "process" }], routes: [], urls: {}, environmentOutputs: [],
     });
     let stdout = "";

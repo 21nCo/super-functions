@@ -5,11 +5,14 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { validateDevFnConfig } from "@devfn/config";
-import { proxyOwnerStatus } from "@devfn/proxy";
+import { allocateEphemeralPort } from "@devfn/ports";
+import { ProcessSupervisor } from "@devfn/processes";
+import { proxyListenerPorts, proxyOwnerStatus } from "@devfn/proxy";
 import { describe, expect, it } from "vitest";
 
 import { DevFnOrchestrator, readReceipt, resolveInstanceIdentity, resolveLocalHostname, writeReceipt } from "../src/index.js";
 
+const restorePath = (value: string | undefined) => { if (value === undefined) delete process.env.PATH; else process.env.PATH = value; };
 const execFileAsync = promisify(execFile);
 
 async function stopFixtureProxy(stateDir: string): Promise<void> {
@@ -52,6 +55,8 @@ if (process.env.SECRET_TOKEN) console.log(process.env.SECRET_TOKEN);
 it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes when their hostname or TLS changes", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "devfn-route-replacement-"));
   const stateDir = path.join(root, "state");
+  const toolsDir = path.join(root, "tools");
+  const originalPath = process.env.PATH;
   const config = validateDevFnConfig({
     version: 1, project: { id: "route-fixture" }, ports: { native: {} },
     processes: { native: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["native"],
@@ -64,10 +69,39 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
     await writeFile(path.join(root, "server.mjs"), serverScript);
     const first = await orchestrator.up({ config, root, stateDir });
     expect(first.routes).toHaveLength(1);
+    await writeFile(path.join(root, "fail.mjs"), "process.exit(1);\n");
+    const originalCommand = config.processes!.native.command;
+    const originalPort = config.ports!.native;
+    config.processes!.native.command = [process.execPath, "fail.mjs"];
+    config.ports!.native = { preferred: await allocateEphemeralPort(), exact: true };
+    config.hostnames!.native.hostname = "failed.localhost";
+    // The failure happens after the prior lifecycle stopped; its routes and
+    // leases are released rather than claimed as restored.
+    await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED",
+      details: { priorInvocationId: first.invocationId, priorStopped: true } });
+    expect((await readReceipt(config, root, first.instanceId))?.state).toBe("failed");
+    await expect(fetch(`http://127.0.0.1:${first.allocations[0].port}/health`)).rejects.toThrow();
+    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes
+      .filter((route: { instanceId: string }) => route.instanceId === first.instanceId)).toEqual([]);
+    config.processes!.native.command = originalCommand;
+    config.ports!.native = originalPort;
+    config.hostnames!.native.hostname = "first.localhost";
+    const restarted = await orchestrator.up({ config, root, stateDir });
+    expect(restarted.routes[0].hostname).toBe(first.routes[0].hostname);
     config.hostnames!.native.hostname = "second.localhost";
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+    await mkdir(toolsDir);
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate) exit 0;; reload) exit 1;; esac\nexit 1\n", { mode: 0o700 });
+    try {
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
+    } finally { restorePath(originalPath); }
+    expect((await readReceipt(config, root, first.instanceId))?.state).toBe("ready");
+    expect((await readReceipt(config, root, first.instanceId))?.invocationId).toBe(restarted.invocationId);
+    expect(await fetch(`http://127.0.0.1:${restarted.allocations[0].port}/health`).then((response) => response.text())).toBe("ok");
+    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes[0].hostname).toBe(first.routes[0].hostname);
     const second = await orchestrator.up({ config, root, stateDir });
-    expect(second.invocationId).not.toBe(first.invocationId);
+    expect(second.invocationId).not.toBe(restarted.invocationId);
     expect(second.routes[0].hostname).toContain("second.");
     expect(second.routes[0].hostname).not.toBe(first.routes[0].hostname);
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
@@ -83,10 +117,18 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
     expect(third.routes[0].tls).toBe("internal");
     config.profiles.default.proxy = false;
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
+    try {
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
+    } finally { restorePath(originalPath); }
+    expect((await readReceipt(config, root, third.instanceId))?.invocationId).toBe(third.invocationId);
+    expect((await readReceipt(config, root, third.instanceId))?.state).toBe("ready");
+    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes[0].hostname).toBe(third.routes[0].hostname);
     const withoutProxy = await orchestrator.up({ config, root, stateDir });
     expect(withoutProxy.routes).toEqual([]);
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
   } finally {
+    restorePath(originalPath);
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
     await stopFixtureProxy(stateDir);
     await rm(root, { recursive: true, force: true });
@@ -94,6 +136,35 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
 }, 60_000);
 
 describe("real local startup fixtures", () => {
+  it.skipIf(process.env.DEVFN_REAL_COMPOSE !== "1")("reports a Compose replacement readiness failure after stopping the prior service", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "devfn-compose-replacement-"));
+    const stateDir = path.join(root, "state");
+    const orchestrator = new DevFnOrchestrator();
+    const original = validateDevFnConfig({ version: 1, project: { id: "compose-replacement" },
+      services: { api: { adapter: "compose", service: "api", health: { type: "command", command: ["sh", "-c", "exit 0"], timeoutMs: 3000 } } },
+      profiles: { default: { services: ["api"] } } });
+    let project: string | undefined;
+    try {
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sleep, '3600']\n");
+      const first = await orchestrator.up({ config: original, root, stateDir });
+      project = first.services[0].projectName;
+      // The build/source context changes before the failed replacement.
+      await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [sleep, '1800']\n");
+      const replacement = validateDevFnConfig({ ...original,
+        services: { api: { ...original.services!.api, health: { type: "command", command: ["sh", "-c", "exit 1"], timeoutMs: 1500 } } } });
+      await expect(orchestrator.up({ config: replacement, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_START_FAILED",
+        details: { priorInvocationId: first.invocationId, priorStopped: true } });
+      expect(await readReceipt(original, root, first.instanceId)).toMatchObject({ state: "failed" });
+      expect(await orchestrator.status({ config: original, root })).toMatchObject({ ok: false, state: "failed" });
+      const running = (await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", first.services[0].containerIds[0]]).then(({ stdout }) => stdout.trim(), () => "absent"));
+      expect(running).not.toBe("true");
+    } finally {
+      await orchestrator.down({ config: original, root, stateDir }).catch(() => undefined);
+      if (project) await execFileAsync("docker", ["network", "rm", `${project}_default`]).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 90_000);
+
   it("replaces a native process when an inherited ordinary allowlist value changes", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "devfn-native-env-drift-"));
     const stateDir = path.join(root, "state");
@@ -755,7 +826,10 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
         expect(await readFile(receipt.environmentOutputs[0], "utf8")).not.toContain("synthetic-sentinel");
         expect(await readFile(receipt.processes[0].logPath, "utf8")).not.toContain("synthetic-sentinel");
       }
-      if (withProxy) expect(receipt.urls.native).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname(undefined, "native", "endpoint-fixture", owner, ".test.localhost")}`);
+      if (withProxy) {
+        const port = withTls ? proxyListenerPorts().httpsPort : proxyListenerPorts().httpPort;
+        expect(receipt.urls.native).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname(undefined, "native", "endpoint-fixture", owner, ".test.localhost")}${port === (withTls ? 443 : 80) ? "" : `:${port}`}`);
+      }
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       config.profiles.default.environment = { MODE: "profile", PROFILE_ONLY: "second" };
@@ -773,7 +847,12 @@ for (const key of ["DEVFN_PORT_WEB", "DEVFN_PORT_EXTRA"]) {
       expect(JSON.stringify(receipt)).not.toContain(secret);
       expect(await readFile(receipt.processes[0].logPath, "utf8")).not.toContain(secret);
     } finally {
-      if (started) await orchestrator.down({ config, root, stateDir: path.join(root, "state") });
+      // A failed assertion can leave a mutated manifest. Never leak the
+      // detached fixture process when down cannot complete.
+      if (started) await orchestrator.down({ config, root, stateDir: path.join(root, "state") }).catch(async () => {
+        const leftover = await readReceipt(config, root, owner).catch(() => null);
+        for (const managed of leftover?.processes ?? []) await new ProcessSupervisor().stop(managed).catch(() => undefined);
+      });
       if (withProxy) await stopFixtureProxy(path.join(root, "state"));
     }
     } finally {
@@ -919,7 +998,10 @@ createServer((_request, response) => { response.writeHead(200); response.end("ok
         const log = await execFileAsync("docker", ["logs", service.containerIds[0]]);
         expect(log.stdout + log.stderr).not.toContain("synthetic-sentinel");
       }
-      if (withProxy) expect(receipt.urls.web).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname("web.localhost", "web", "compose-endpoint-fixture", owner)}`);
+      if (withProxy) {
+        const port = withTls ? proxyListenerPorts().httpsPort : proxyListenerPorts().httpPort;
+        expect(receipt.urls.web).toBe(`${withTls ? "https" : "http"}://${resolveLocalHostname("web.localhost", "web", "compose-endpoint-fixture", owner)}${port === (withTls ? 443 : 80) ? "" : `:${port}`}`);
+      }
       await expect(orchestrator.up({ config, root, stateDir: path.join(root, "state") })).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
       expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
       config.services!.web.env!.MODE = "service-next";

@@ -4,7 +4,8 @@ import { isCredentialKey, validateDevFnConfig, type DevFnConfig, type HealthChec
 import { createProcessEnvironment, resolveHttpReadinessUrl } from "@devfn/processes";
 import { composeProjectName, createComposeEnvironment } from "@devfn/compose";
 
-import { DevFnError, type LifecyclePlan } from "./types.js";
+import { domainAliases } from "./identity.js";
+import { DevFnError, type LifecyclePlan, type RoutingIdentity } from "./types.js";
 
 export interface EndpointResolutionInput {
   config: DevFnConfig;
@@ -14,6 +15,8 @@ export interface EndpointResolutionInput {
   ports: Readonly<Record<string, number>>;
   /** Effective policy suffix for selected local proxy hostnames. */
   hostnameSuffix?: string;
+  /** Resolved worktree identity for registered-domain aliases. */
+  routingIdentity?: RoutingIdentity;
   /** Effective Compose network names for each selected service. Required for sibling DNS wiring. */
   composeNetworks?: Readonly<Record<string, readonly string[]>>;
   /** Selected raw Compose interpolation references, before Compose substitutes missing values. */
@@ -943,24 +946,54 @@ function resolveNodeStartup(node: LifecyclePlan["nodes"][number], context: NodeR
     ...(healthUrls.has(node.name) ? { healthUrl: healthUrls.get(node.name) } : {}), ...commands };
 }
 
-function selectedProxyHostnames(input: EndpointResolutionInput, config: DevFnConfig, httpPorts: Set<string>): Set<string> {
-  const hostnames = new Set<string>();
+type SelectedProxyPath = { path: string; match: "exact" | "prefix"; stripPrefix: boolean };
+
+function selectedProxyHostnames(input: EndpointResolutionInput, config: DevFnConfig, httpPorts: Set<string>): Map<string, SelectedProxyPath[]> {
+  const hostnames = new Map<string, SelectedProxyPath[]>();
   if (!input.plan.proxy) return hostnames;
   for (const [name, hostname] of Object.entries(config.hostnames ?? {})) {
     if (hostname.profiles && !hostname.profiles.includes(input.plan.profile)) continue;
-    hostnames.add(resolveLocalHostname(hostname.hostname, name, config.project.id, input.ownerId, input.hostnameSuffix).toLowerCase());
-    if (hostname.hostname && !hostname.hostname.includes("{instance}")) {
-      hostnames.add(hostname.hostname.replaceAll("{project}", config.project.id).toLowerCase());
+    const aliases: string[] = [];
+    if (hostname.domain) {
+      if (!input.routingIdentity) invalid(`hostnames.${name}`, "registered route requires resolved worktree identity.");
+      try { aliases.push(...domainAliases(hostname.host ?? name, hostname.domain, input.routingIdentity)); }
+      catch (error) { invalid(`hostnames.${name}`, error instanceof Error ? error.message : String(error)); }
+    } else aliases.push(resolveLocalHostname(hostname.hostname, name, config.project.id, input.ownerId, input.hostnameSuffix));
+    if (!hostname.domain && hostname.hostname && !hostname.hostname.includes("{instance}")) {
+      aliases.push(hostname.hostname.replaceAll("{project}", config.project.id));
+    }
+    for (const alias of aliases) {
+      const key = alias.toLowerCase();
+      const paths = hostnames.get(key) ?? [];
+      paths.push({ path: hostname.path ?? "/", match: hostname.match ?? "prefix", stripPrefix: hostname.stripPrefix ?? false });
+      hostnames.set(key, paths);
     }
     httpPorts.add(hostname.target);
   }
   return hostnames;
 }
 
+function selectedProxyPath(routes: readonly SelectedProxyPath[], pathname: string): SelectedProxyPath | undefined {
+  const path = pathname.toLowerCase();
+  const matches = routes.filter((route) => {
+    const prefix = route.path.toLowerCase().replace(/\/$/, "") || "/";
+    return route.match === "exact" ? path === route.path.toLowerCase() :
+      prefix === "/" || path === prefix || path.startsWith(`${prefix}/`);
+  });
+  // Exact routes outrank prefixes; longer paths outrank shorter ones.
+  const rank = (route: SelectedProxyPath) => (route.match === "exact" ? 1 : 0);
+  matches.sort((a, b) => rank(b) - rank(a) || b.path.length - a.path.length);
+  return matches[0];
+}
+
 function leasedDirectHealthUrl(health: Extract<HealthCheck, { type: "http" }>, url: URL, input: EndpointResolutionInput,
-  selectedRouteHostnames: ReadonlySet<string>, httpPorts: Set<string>, httpSchemes: Map<string, string>): void {
+  selectedRouteHostnames: ReadonlyMap<string, SelectedProxyPath[]>, httpPorts: Set<string>, httpSchemes: Map<string, string>, field: string): void {
   if (!health.port) return;
   if (health.url && selectedRouteHostnames.has(new URL(health.url).hostname.toLowerCase().replace(/\.$/, ""))) {
+    const routes = selectedRouteHostnames.get(new URL(health.url).hostname.toLowerCase().replace(/\.$/, "")) ?? [];
+    if (selectedProxyPath(routes, url.pathname)?.stripPrefix) {
+      invalid(`${field}.url`, "readiness through a stripped proxy path is unavailable before startup; use the upstream direct path with the leased port.");
+    }
     url.protocol = "http:";
     // URL drops an explicit default HTTPS port before the scheme changes.
     url.port = String(input.ports[health.port]);
@@ -970,7 +1003,7 @@ function leasedDirectHealthUrl(health: Extract<HealthCheck, { type: "http" }>, u
 }
 
 function directHealthUrl(node: LifecyclePlan["nodes"][number], input: EndpointResolutionInput, config: DevFnConfig,
-  selectedRouteHostnames: ReadonlySet<string>, httpPorts: Set<string>, httpSchemes: Map<string, string>): string | undefined {
+  selectedRouteHostnames: ReadonlyMap<string, SelectedProxyPath[]>, httpPorts: Set<string>, httpSchemes: Map<string, string>): string | undefined {
   const health = node.kind === "process" ? config.processes?.[node.name]?.health : config.services?.[node.name]?.health;
   if (health?.type !== "http") return undefined;
   const field = `${node.kind === "process" ? "processes" : "services"}.${node.name}.health`;
@@ -982,7 +1015,7 @@ function directHealthUrl(node: LifecyclePlan["nodes"][number], input: EndpointRe
   rejectUrlCredentials(url.toString(), field);
   const selectedProxyHost = selectedRouteHostnames.has(url.hostname.toLowerCase().replace(/\.$/, ""));
   if (!health.port && selectedProxyHost) invalid(field, "URL-only readiness cannot wait for a selected proxy route before installation; use its leased port.");
-  leasedDirectHealthUrl(health, url, input, selectedRouteHostnames, httpPorts, httpSchemes);
+  leasedDirectHealthUrl(health, url, input, selectedRouteHostnames, httpPorts, httpSchemes, field);
   return url.toString();
 }
 

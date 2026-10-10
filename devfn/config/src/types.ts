@@ -61,9 +61,27 @@ export interface ProfileSpec {
   proxy?: boolean;
 }
 
+/**
+ * A proxy route. Validation accepts two variants: a .localhost route
+ * (optional `hostname` template and `tls`) or a registered-domain route
+ * (`domain`, optional `host`, TLS from the machine registration). `domain`
+ * excludes `hostname` and `tls`; `host` requires `domain`.
+ */
 export interface HostnameSpec {
   target: string;
+  /** .localhost hostname template using {project} and {instance}; excludes domain. */
   hostname?: string;
+  /** Machine-registered domain; a manifest cannot create the registration. */
+  domain?: string;
+  /** Registered-domain host label; defaults to the route key. Requires domain. */
+  host?: string;
+  /** Absolute URL path; defaults to "/". */
+  path?: string;
+  /** Defaults to "prefix". */
+  match?: "exact" | "prefix";
+  /** Strip the path prefix upstream; requires a non-root prefix path. Defaults to false. */
+  stripPrefix?: boolean;
+  /** .localhost routes only; defaults to "off". */
   tls?: "off" | "internal";
   profiles?: string[];
 }

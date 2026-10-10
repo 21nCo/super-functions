@@ -13,7 +13,7 @@ import {
   resolveDevFnManifestPath,
   trustProject,
 } from "@devfn/config";
-import { DevFnError, DevFnOrchestrator } from "@devfn/core";
+import { DevFnError, DevFnOrchestrator, readRegisteredDomains, recoverOrphanedProxyRoutes, registerDomain, resolveInstanceIdentity, unregisterDomain } from "@devfn/core";
 import { FilePortRegistry, renderPortInventory } from "@devfn/ports";
 import { defaultStateDir } from "@devfn/config";
 
@@ -29,6 +29,9 @@ interface ParsedArgs {
   output?: string;
   tail?: number;
   allowPublic: boolean;
+  tls?: string;
+  certificateFile?: string;
+  keyFile?: string;
 }
 
 export interface CliOptions { cwd?: string; env?: NodeJS.ProcessEnv; stdout?: (text: string) => void; stderr?: (text: string) => void }
@@ -45,8 +48,9 @@ Commands:
   status               Show processes, services, ports, and health
   logs [name]          Show process or Compose logs
   doctor               Diagnose runtimes, Docker, ports, leases, and proxy
-  ports [gc|report]    Inspect, reconcile, collect, or report port state
+  ports [gc|report]    Inspect, reconcile, collect (incl. orphaned routes), or report port state
   url [name]           Print resolved local URLs
+  domains [list|register|unregister]  Manage machine-owned development domains
 
 Options:
   --profile <name>     Select a named profile
@@ -58,12 +62,15 @@ Options:
   --state-dir <path>   Override machine state (primarily for testing)
   --output <path>      Write a ports report
   --tail <count>       Limit log lines
+  --tls <mode>         Domain TLS: internal or certificate
+  --cert <path>        Certificate PEM for certificate TLS
+  --key <path>         Private key PEM for certificate TLS
 `;
 
 function parse(argv: readonly string[]): ParsedArgs {
   const positionals: string[] = [];
   const values: Record<string, string | boolean> = {};
-  const takesValue = new Set(["--profile", "--config", "--state-dir", "--output", "--tail"]);
+  const takesValue = new Set(["--profile", "--config", "--state-dir", "--output", "--tail", "--tls", "--cert", "--key"]);
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (!token.startsWith("--")) { positionals.push(token); continue; }
@@ -89,6 +96,9 @@ function parse(argv: readonly string[]): ParsedArgs {
     ...(typeof values["--state-dir"] === "string" ? { stateDir: values["--state-dir"] } : {}),
     ...(typeof values["--output"] === "string" ? { output: values["--output"] } : {}),
     ...(tail === undefined ? {} : { tail }),
+    ...(typeof values["--tls"] === "string" ? { tls: values["--tls"] } : {}),
+    ...(typeof values["--cert"] === "string" ? { certificateFile: values["--cert"] } : {}),
+    ...(typeof values["--key"] === "string" ? { keyFile: values["--key"] } : {}),
   };
 }
 
@@ -140,7 +150,13 @@ type LoadedConfig = Awaited<ReturnType<typeof trustedConfig>>;
 async function portsCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
   const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
   const action = args.positionals[0];
-  if (action === "gc") { await registry.reconcile(); return { ok: true, removed: await registry.gc() }; }
+  if (action === "gc") {
+    // Orphaned routes go first so their target ports and listener claims can
+    // be collected in the same run.
+    const recoveredRoutes = await recoverOrphanedProxyRoutes(stateDir);
+    await registry.reconcile();
+    return { ok: true, removed: await registry.gc(), recoveredRoutes };
+  }
   if (action !== undefined && action !== "report") throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown ports action ${action}. Expected gc or report.`);
   const state = await registry.reconcile();
   if (action === undefined) return { ok: true, revision: state.revision, allocations: state.allocations.filter((item) => item.state !== "released") };
@@ -162,16 +178,33 @@ async function urlCommand(args: ParsedArgs, orchestrator: DevFnOrchestrator, loa
   return { ok: true, name, url };
 }
 
+async function domainsCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
+  const action = args.positionals[0] ?? "list";
+  const identity = await resolveInstanceIdentity(loaded.config.project.id, loaded.root);
+  if (action === "list") {
+    if (args.positionals.length > 1) throw new DevFnError("DEVFN_RUNTIME_INVALID", "domains list takes no arguments.");
+    return { ok: true, domains: (await readRegisteredDomains(stateDir)).filter((domain) => domain.projectId === identity.projectId && domain.repositoryIdentity === identity.repositoryIdentity) };
+  }
+  const domain = args.positionals[1];
+  if (!domain || args.positionals.length !== 2) throw new DevFnError("DEVFN_RUNTIME_INVALID", "domains register/unregister requires exactly one domain.");
+  if (action === "register") {
+    if (args.tls !== "internal" && args.tls !== "certificate") throw new DevFnError("DEVFN_RUNTIME_INVALID", "--tls must be internal or certificate; DNS-01 requires a validated adapter and is unavailable.");
+    const registered = await registerDomain(stateDir, { domain, projectId: identity.projectId, repositoryIdentity: identity.repositoryIdentity,
+      tls: args.tls, ...(args.certificateFile ? { certificateFile: path.resolve(cwd, args.certificateFile) } : {}), ...(args.keyFile ? { keyFile: path.resolve(cwd, args.keyFile) } : {}) });
+    return { ok: true, domain: registered };
+  }
+  if (action === "unregister") { await unregisterDomain(stateDir, domain, identity.projectId, identity.repositoryIdentity); return { ok: true, domain, removed: true }; }
+  throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown domains action ${action}.`);
+}
+
 async function executeCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
+  if (args.command === "domains") return await domainsCommand(args, cwd, stateDir, loaded);
   const orchestrator = new DevFnOrchestrator();
   const lifecycle = { config: loaded.config, root: loaded.root, stateDir };
   const handlers: Record<string, () => Promise<unknown>> = {
     up: async () => await orchestrator.up({ ...lifecycle, profile: args.profile, allowPublic: args.allowPublic }),
     down: async () => await orchestrator.down(lifecycle),
-    restart: async () => {
-      await orchestrator.down(lifecycle).catch((error) => { if (!(error instanceof DevFnError) || error.code !== "DEVFN_NOT_RUNNING") throw error; });
-      return await orchestrator.up({ ...lifecycle, profile: args.profile, allowPublic: args.allowPublic });
-    },
+    restart: async () => await orchestrator.up({ ...lifecycle, profile: args.profile, allowPublic: args.allowPublic, replace: true }),
     status: async () => await orchestrator.status(lifecycle),
     doctor: async () => await orchestrator.doctor({ ...lifecycle, profile: args.profile }),
     logs: async () => await orchestrator.logs({ config: loaded.config, root: loaded.root, name: args.positionals[0], tail: args.tail }),

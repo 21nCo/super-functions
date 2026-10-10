@@ -1,11 +1,74 @@
+import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
-import { discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
+import { classifyLegacyDarwinIdentity, classifyProcessIdentity, processBirthSignature, processIdentityStatus, discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
 
 describe("DevFn configuration", () => {
+  it("treats a recorded process as gone only when its PID is absent or a readable birth signature differs", () => {
+    expect(classifyProcessIdentity(false, "birth")).toBe("exited");
+    expect(classifyProcessIdentity(true, "birth", "birth")).toBe("running");
+    expect(classifyProcessIdentity(true, "birth", "other")).toBe("identity-mismatch");
+    expect(classifyProcessIdentity(true, "birth", undefined)).toBe("unverified");
+    expect(classifyProcessIdentity(true, undefined, "birth")).toBe("unverified");
+    // Signatures read in different formats cannot be compared.
+    expect(classifyProcessIdentity(true, "darwin:Fri Oct  9 22:05:33 2026", "darwin-utc:Fri Oct  9 22:05:33 2026")).toBe("unverified");
+  });
+
+  it.skipIf(process.platform !== "darwin")("reads the same birth signature whatever time zone and locale DevFn runs in", async () => {
+    const saved = { TZ: process.env.TZ, LC_ALL: process.env.LC_ALL };
+    const baseline = await processBirthSignature(process.pid);
+    try {
+      expect(baseline).toBeTruthy();
+      for (const [TZ, LC_ALL] of [["UTC", "C"], ["Pacific/Kiritimati", "fr_FR.UTF-8"], ["America/Los_Angeles", "ja_JP.UTF-8"]]) {
+        Object.assign(process.env, { TZ, LC_ALL });
+        expect(await processBirthSignature(process.pid)).toBe(baseline);
+        expect(await processIdentityStatus(process.pid, baseline)).toBe("running");
+      }
+    } finally {
+      for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+
+  it("decides a legacy darwin signature by the record's UTC time, never by caller-rendered text", () => {
+    const recordedAt = "2026-10-09T18:00:05.000Z";
+    // The recorded process started before its record was written.
+    expect(classifyLegacyDarwinIdentity("Fri Oct  9 18:00:00 2026", recordedAt)).toBe("running");
+    expect(classifyLegacyDarwinIdentity("Thu Oct  8 09:00:00 2026", recordedAt)).toBe("running");
+    // A PID reused by a process born an hour later renders as 18:00 in a
+    // caller one hour behind UTC, matching the legacy text; its pinned UTC
+    // start after the record proves it is another process.
+    expect(classifyLegacyDarwinIdentity("Fri Oct  9 19:00:00 2026", recordedAt)).toBe("identity-mismatch");
+    // Within the clock tolerance, unparseable readings and records without a time prove nothing.
+    expect(classifyLegacyDarwinIdentity("Fri Oct  9 18:00:06 2026", recordedAt)).toBe("unverified");
+    expect(classifyLegacyDarwinIdentity("ven.  9 oct 18:00:00 2026", recordedAt)).toBe("unverified");
+    expect(classifyLegacyDarwinIdentity("Fri Oct  9 18:00:00 2026", undefined)).toBe("unverified");
+    expect(classifyLegacyDarwinIdentity("Fri Oct  9 18:00:00 2026", "not a time")).toBe("unverified");
+    expect(classifyLegacyDarwinIdentity(undefined, recordedAt)).toBe("unverified");
+  });
+
+  it.skipIf(process.platform !== "darwin")("judges a live legacy signature by its record time whatever the caller's time zone", async () => {
+    const saved = process.env.TZ;
+    const lstart = async (TZ: string) => (await promisify(execFile)("ps", ["-o", "lstart=", "-p", String(process.pid)], { env: { ...process.env, TZ, LC_ALL: "C" } })).stdout.trim();
+    try {
+      // Recorded by an earlier release in a caller one hour behind UTC.
+      const legacy = `darwin:${await lstart("UTC+1")}`;
+      for (const TZ of ["UTC+1", "UTC", "Pacific/Kiritimati"]) {
+        process.env.TZ = TZ;
+        expect(await processIdentityStatus(process.pid, legacy, new Date().toISOString())).toBe("running");
+        // Equal text alone, without a record time, no longer identifies it.
+        expect(await processIdentityStatus(process.pid, legacy)).toBe("unverified");
+        // A record written before this process started belonged to another one.
+        expect(await processIdentityStatus(process.pid, legacy, new Date(Date.now() - 3_600_000 - process.uptime() * 1000).toISOString())).toBe("identity-mismatch");
+      }
+    } finally {
+      if (saved === undefined) delete process.env.TZ; else process.env.TZ = saved;
+    }
+  });
+
   it("rejects case-colliding allowlist and secret keys at schema validation", () => {
     const base = { version: 1, project: { id: "x" }, profiles: { default: {} } };
     expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: ["MODE", "mode"] } } }))
@@ -126,6 +189,13 @@ describe("DevFn configuration", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "bad_project" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { app: { target: "app", hostname: "{project}.localhost" } } })).toThrow(/invalid/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "{instance}" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { app: { target: "app", hostname: "{project}.localhost" } } })).toThrow(/invalid/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { bad_name: { target: "app" } } })).toThrow(/invalid/);
+  });
+
+  it("rejects registered host labels that cannot fit a worktree alias during config validation", () => {
+    const base = { version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} } };
+    expect(validateDevFnConfig({ ...base, hostnames: { app: { target: "app", domain: "dev.example.test", host: "a".repeat(40) } } }).hostnames?.app.host).toHaveLength(40);
+    expect(() => validateDevFnConfig({ ...base, hostnames: { app: { target: "app", domain: "dev.example.test", host: "a".repeat(41) } } }))
+      .toThrow(/host requires a registered domain and one DNS label of at most 40 characters/);
   });
 
   it("rejects lifecycle names that cannot be used as safe runtime filenames", () => {
@@ -351,7 +421,7 @@ describe("DevFn configuration", () => {
     const configPath = path.join(root, "devfn.config.json");
     const lockPath = path.join(stateDir, "trust.lock");
     await mkdir(lockPath, { recursive: true });
-    await writeFile(path.join(lockPath, "reused.ticket"), JSON.stringify({ token: "reused", number: 1, pid: process.pid, birthSignature: "different-process", createdAt: "2000-01-01T00:00:00.000Z" }));
+    await writeFile(path.join(lockPath, "reused.ticket"), JSON.stringify({ token: "reused", number: 1, pid: process.pid, birthSignature: `${(await processBirthSignature(process.pid))!.split(":")[0]}:different-process`, createdAt: "2000-01-01T00:00:00.000Z" }));
     await writeFile(configPath, "reused");
     await expect(trustProject(root, configPath, stateDir)).resolves.toBeUndefined();
   });

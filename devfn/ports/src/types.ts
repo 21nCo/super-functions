@@ -5,12 +5,24 @@ export type AllocationState = "planned" | "active" | "stale" | "released" | "ext
 export interface ProcessOwner {
   pid: number;
   birthSignature?: string;
+  /**
+   * The UTC time this owner was recorded, after its signature was read from
+   * the live process. It decides only legacy darwin: signatures.
+   */
+  recordedAt?: string;
 }
 
 export interface ContainerOwner {
   id: string;
   name?: string;
   dockerEnvironment?: Record<string, string>;
+}
+
+/** A process or container a lifecycle started, recorded when it started. */
+export interface LifecycleOwner {
+  node: string;
+  process?: ProcessOwner;
+  container?: ContainerOwner;
 }
 
 export interface PortAllocation {
@@ -38,10 +50,33 @@ export interface RegistryInvocation {
   projectId: string;
   instanceId: string;
   profile: string;
-  state: "planning" | "starting" | "ready" | "failed" | "stopped";
+  state: "planning" | "starting" | "ready" | "stopping" | "failed" | "stopped";
   createdAt: string;
   updatedAt: string;
   errorCode?: string;
+  proxyListenerPorts?: number[];
+  /** An ended invocation keeps its listener claim until conclusive evidence retires it. */
+  proxyClaimRetained?: true;
+  replacingInvocationId?: string;
+  /** Set by reserve: every started node's owner identity is recorded here, so an empty list proves none started. */
+  ownerJournal?: true;
+  owners?: LifecycleOwner[];
+  /** Compose nodes whose launch began but whose owner identity is not recorded yet. */
+  launching?: string[];
+  /** What each launching Compose node may create or start, so teardown can find it without a recorded identity. */
+  composeLaunches?: Record<string, ComposeLaunchRecord>;
+}
+
+export interface ComposeLaunchRecord {
+  projectName: string;
+  composeService: string;
+  /** Pre-existing containers are reused, not recreated; those already running are never stopped. */
+  preExisting: boolean;
+  existingContainerIds: string[];
+  runningContainerIds: string[];
+  dockerEnvironment?: Record<string, string>;
+  /** The gated launcher, recorded before it may create or start anything. */
+  launcher?: ProcessOwner;
 }
 
 export interface RegistryState {
@@ -67,6 +102,9 @@ export interface ReservationInput {
   preferredRange?: [number, number];
   protectedPorts?: Set<number>;
   excludedPorts?: Set<number>;
+  proxyListenerPorts?: readonly number[];
+  /** The same instance's ready invocation whose leases will be replaced after validation. */
+  replacingInvocationId?: string;
 }
 
 export interface ListenerInfo {

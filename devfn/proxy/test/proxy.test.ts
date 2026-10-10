@@ -2,13 +2,50 @@ import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { withFileLock } from "@devfn/ports";
 import { processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController, proxyOwnerStatus, renderCaddyfile } from "../src/index.js";
+
+// Fixtures that need the fixed Caddy admin port 127.0.0.1:2019 free share one
+// machine-wide lock with other DevFn packages' fixtures that bind it.
+const withCaddyAdminPort = async <T>(action: () => Promise<T>): Promise<T> =>
+  await withFileLock(path.join(tmpdir(), "devfn-test-caddy-admin.lock"), action, { timeoutMs: 120_000 });
+
+/**
+ * A state directory owned by this live process, with a Caddy command stub
+ * that accepts every command first on PATH. cleanup() restores PATH and
+ * removes both directories.
+ */
+async function stubbedCaddyState(prefix: string): Promise<{ stateDir: string; cleanup: () => Promise<void> }> {
+  const stateDir = await mkdtemp(path.join(tmpdir(), prefix));
+  const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+  const originalPath = process.env.PATH;
+  const birthSignature = await processBirthSignature(process.pid);
+  if (!birthSignature) throw new Error("Test process has no birth signature.");
+  await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+  await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+  process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+  return {
+    stateDir,
+    cleanup: async () => {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(toolsDir, { recursive: true, force: true });
+    },
+  };
+}
+
+// A resolver that fails every lookup with ENOTFOUND, independent of the host's DNS.
+const unresolvable = (async () => { throw Object.assign(new Error("not found"), { code: "ENOTFOUND" }); }) as never;
 
 describe("Caddy route rendering", () => {
   it("renders explicit routes without a catch-all", () => {
     const output = renderCaddyfile([{ id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off", updatedAt: "now" }]);
     expect(output).toContain("http://app-i.localhost {\n  reverse_proxy 127.0.0.1:4100\n}");
+    expect(output).toContain("default_bind 127.0.0.1\n");
+    expect(renderCaddyfile([], true)).toContain("default_bind 127.0.0.1 [::1]");
+    expect(output).toContain("skip_install_trust");
+    expect(output).toContain("http:// {\n  respond 404\n}");
     expect(output).not.toContain(":80 {");
     expect(output).not.toContain("* {");
     expect(output).not.toContain(":443 {");
@@ -39,6 +76,102 @@ describe("Caddy route rendering", () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
     await writeFile(path.join(stateDir, "proxy-routes.json"), "{not-json");
     await expect(new CaddyProxyController(stateDir).routes()).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
+  });
+
+  it("reads mixed-case localhost routes through active and pending state while a sibling changes", async () => {
+    const { stateDir, cleanup } = await stubbedCaddyState("devfn-proxy-case-state-");
+    const retained = { id: "retained", instanceId: "first", hostname: "App.LOCALHOST", targetHost: "127.0.0.1",
+      targetPort: 4101, tls: "off" as const, updatedAt: "now" };
+    const sibling = { id: "sibling", instanceId: "second", hostname: "Other.localhost", targetHost: "127.0.0.1",
+      targetPort: 4102, tls: "off" as const, updatedAt: "now" };
+    try {
+      await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [retained] }));
+      const controller = new CaddyProxyController(stateDir);
+      expect(await controller.routes()).toEqual([retained]);
+      await expect(controller.upsert([{ ...sibling, id: "collision", hostname: "app.localhost" }]))
+        .rejects.toMatchObject({ code: "DEVFN_PROXY_OWNERSHIP_CONFLICT" });
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [retained, sibling] }));
+      expect(await controller.routes()).toEqual([retained, sibling]);
+      await controller.upsert([sibling]);
+      await controller.removeInstance("second");
+      expect(await controller.routes()).toEqual([retained]);
+      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes).toEqual([retained]);
+    } finally { await cleanup(); }
+  });
+
+  it("removes another instance and recovers its removal when a retained domain loses DNS", async () => {
+    const { stateDir, cleanup } = await stubbedCaddyState("devfn-proxy-domain-cleanup-");
+    const retained = { id: "a", instanceId: "a", hostname: "a.invalid.test", targetHost: "127.0.0.1", targetPort: 4101,
+      tls: "internal" as const, registeredDomain: "invalid.test", projectId: "fixture", repositoryIdentity: stateDir, updatedAt: "now" };
+    const removed = { id: "b", instanceId: "b", hostname: "b.localhost", targetHost: "127.0.0.1", targetPort: 4102,
+      tls: "off" as const, updatedAt: "now" };
+    try {
+      const controller = new CaddyProxyController(stateDir, unresolvable);
+      await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [retained, removed] }));
+      await controller.removeInstance("b");
+      expect(await controller.routes()).toEqual([retained]);
+      await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [retained, removed] }));
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [retained] }));
+      expect(await controller.routes()).toEqual([retained]);
+      await expect(controller.upsert([retained])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_UNREGISTERED" });
+      await controller.upsert([removed]);
+      const committedBefore = await controller.routes();
+      await writeFile(path.join(stateDir, "domains.json"), JSON.stringify({ version: 1, domains: [
+        { domain: "invalid.test", projectId: "fixture", repositoryIdentity: stateDir, tls: "internal" },
+      ] }));
+      const failedActivation = { ...retained, id: "new-domain", instanceId: "new", hostname: "new.invalid.test" };
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [...committedBefore, failedActivation] }));
+      expect(await controller.routes()).toEqual(committedBefore);
+      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: committedBefore });
+      expect(await controller.routes()).toEqual(committedBefore);
+      await controller.removeInstance("b");
+      expect(await controller.routes()).toEqual([retained]);
+      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: [retained] });
+      await expect(access(path.join(stateDir, "proxy-routes.pending.json"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(controller.upsert([failedActivation])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
+      expect(await controller.routes()).toEqual([retained]);
+    } finally { await cleanup(); }
+  });
+
+  it("releases the shared lock after a stalled domain lookup so a sibling can stop", async () => {
+    const { stateDir, cleanup } = await stubbedCaddyState("devfn-proxy-dns-lock-");
+    const sibling = { id: "sibling", instanceId: "sibling", hostname: "sibling.localhost", targetHost: "127.0.0.1", targetPort: 4101, tls: "off" as const };
+    const stalled = { id: "stalled", instanceId: "stalled", hostname: "stalled.dev.example.test", targetHost: "127.0.0.1", targetPort: 4102,
+      tls: "internal" as const, registeredDomain: "dev.example.test", projectId: "fixture", repositoryIdentity: stateDir };
+    try {
+      await writeFile(path.join(stateDir, "domains.json"), JSON.stringify({ version: 1, domains: [
+        { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: stateDir, tls: "internal" },
+      ] }));
+      let signalLookup!: () => void;
+      const lookupStarted = new Promise<void>((resolve) => { signalLookup = resolve; });
+      // Route activation holds the proxy lock through its bounded DNS
+      // check; a lookup that never answers must end at that bound and
+      // release the lock, or the sibling's cleanup never runs.
+      const controller = new CaddyProxyController(stateDir, (async () => { signalLookup(); return await new Promise(() => {}); }) as never, 50);
+      await controller.upsert([sibling]);
+      const activation = controller.upsert([stalled]);
+      await lookupStarted;
+      const siblingRemoval = controller.removeInstance("sibling");
+      await expect(activation).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
+      await expect(siblingRemoval).resolves.toBeUndefined();
+      expect(await controller.routes()).toEqual([]);
+    } finally { await cleanup(); }
+  });
+
+  it("an empty owner selection recovers pending state and removes only that owner's routes", async () => {
+    const { stateDir, cleanup } = await stubbedCaddyState("devfn-proxy-empty-");
+    const first = { id: "a", instanceId: "a", hostname: "a.localhost", targetHost: "127.0.0.1", targetPort: 4101, tls: "off" as const, updatedAt: "now" };
+    const sibling = { id: "b", instanceId: "b", hostname: "b.localhost", targetHost: "127.0.0.1", targetPort: 4102, tls: "off" as const, updatedAt: "now" };
+    try {
+      await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [first] }));
+      await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [first, sibling] }));
+      const controller = new CaddyProxyController(stateDir);
+      await expect(controller.upsert([], "a")).resolves.toEqual([]);
+      expect(await controller.routes()).toEqual([sibling]);
+      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: [sibling] });
+      await expect(access(path.join(stateDir, "proxy-routes.pending.json"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(controller.upsert([])).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
+    } finally { await cleanup(); }
   });
 
   it("replays and commits a valid route activation journal", async () => {
@@ -135,6 +268,27 @@ describe("Caddy route rendering", () => {
 
   it("distinguishes dead proxy owners from live PID reuse", async () => {
     await expect(proxyOwnerStatus({ pid: 2_147_483_647, birthSignature: "missing" })).resolves.toBe("dead");
-    await expect(proxyOwnerStatus({ pid: process.pid, birthSignature: "different-process" })).resolves.toBe("identity-mismatch");
+    await expect(proxyOwnerStatus({ pid: process.pid, birthSignature: `${(await processBirthSignature(process.pid))!.split(":")[0]}:different-process` })).resolves.toBe("identity-mismatch");
+    await expect(proxyOwnerStatus({ pid: process.pid })).resolves.toBe("unverified");
   });
+
+  it("clears a reused-PID owner on retry without signaling the unrelated process", async () => await withCaddyAdminPort(async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-reused-owner-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+    const originalPath = process.env.PATH;
+    const ownerPath = path.join(stateDir, "proxy-owner.json");
+    try {
+      await writeFile(ownerPath, JSON.stringify({ pid: process.pid, birthSignature: `${(await processBirthSignature(process.pid))!.split(":")[0]}:reused-pid` }));
+      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      await expect(new CaddyProxyController(stateDir).upsert([{
+        id: "retry", instanceId: "retry", hostname: "retry.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off",
+      }])).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
+      await expect(access(ownerPath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await processBirthSignature(process.pid)).toBeTruthy();
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
+    }
+  }), 150_000);
 });

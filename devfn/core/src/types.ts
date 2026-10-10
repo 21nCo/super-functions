@@ -16,6 +16,15 @@ export interface ProjectIdentity {
 }
 
 export interface InstanceIdentity extends ProjectIdentity { instanceId: string }
+export interface RoutingIdentity extends InstanceIdentity {
+  isPrimaryWorktree: boolean;
+  /**
+   * `<readable name of at most 42 characters>-<20 lowercase hex path digest>`.
+   * domainAliases keeps the final 21 characters (the hyphen and digest)
+   * intact and shortens only the readable name to fit one DNS label.
+   */
+  readableWorktreeLabel: string;
+}
 
 export interface LifecyclePlan {
   profile: string;
@@ -53,7 +62,7 @@ export interface LifecycleReceipt {
   error?: { code: string; message: string };
 }
 
-export interface UpOptions { config: DevFnConfig; root: string; profile?: string; stateDir?: string; allowPublic?: boolean }
+export interface UpOptions { config: DevFnConfig; root: string; profile?: string; stateDir?: string; allowPublic?: boolean; replace?: boolean }
 
 export class DevFnError extends Error {
   public constructor(
