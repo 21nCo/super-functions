@@ -1,26 +1,14 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { buildManifest, loadDocsConfig } from "@docsfn/core";
 import { FsContentProvider } from "@docsfn/provider-fs";
+import { loadLlmsSiteSource, writeLlmsArtifacts } from "../../../scripts/docs-site/llms.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const cwd = resolve(here, "..");
-const staticDir = resolve(cwd, "static");
-
-const config = await loadDocsConfig({ cwd });
-const provider = new FsContentProvider({
-  root: config.content.root || cwd,
-  docsDir: config.content.docsDir,
-  pagesDir: config.content.pagesDir,
-  blogDir: config.content.blogDir,
-  apiDir: config.content.apiDir,
-  assetsDir: config.content.assetsDir,
+const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const { config, manifest } = await loadLlmsSiteSource(cwd, {
+  buildManifest, loadDocsConfig, FsContentProvider,
 });
-
-const manifest = await buildManifest(provider, config);
 
 const siteTitle = manifest.site?.title ?? config.site?.name ?? "filefn";
 const siteDescription =
@@ -29,7 +17,7 @@ const siteDescription =
   "Self-hosted file uploads, storage, and processing for TypeScript, Python, and Swift.";
 const canonicalUrl =
   (config.site && (config.site.canonicalUrl || config.site.url)) ||
-  "https://docs.filefn.dev";
+  "https://filefn.com";
 
 const pages = Object.values(manifest.pages)
   .filter((page) => (page.id ?? "").startsWith("docs:"))
@@ -76,13 +64,4 @@ for (const page of docsPages) {
 }
 const llmsFullTxt = fullSections.join("\n");
 
-mkdirSync(staticDir, { recursive: true });
-writeFileSync(resolve(staticDir, "llms.txt"), llmsTxt, "utf8");
-writeFileSync(resolve(staticDir, "llms-full.txt"), llmsFullTxt, "utf8");
-
-console.log(
-  `Wrote ${resolve(staticDir, "llms.txt")} (${Buffer.byteLength(llmsTxt, "utf8")} bytes)`
-);
-console.log(
-  `Wrote ${resolve(staticDir, "llms-full.txt")} (${Buffer.byteLength(llmsFullTxt, "utf8")} bytes)`
-);
+writeLlmsArtifacts(resolve(cwd, "static"), { llmsTxt, llmsFullTxt });

@@ -1,12 +1,16 @@
 import type { DocsConfig } from "@docsfn/core";
 
+const deploymentOrigin = process.env.CLOUDFLARE_DOCS_DEPLOY === "1"
+  ? process.env.CLOUDFLARE_DOCS_PUBLIC_ORIGIN
+  : undefined;
+
 const config: DocsConfig = {
   schemaVersion: 1,
   site: {
     title: "filefn",
     description: "Self-hosted file uploads, storage, and processing for any stack. Multipart uploads, signed URLs, share links, OPFS offline, image/audio/video processing, and a typed SDK on every runtime.",
     basePath: "/docs",
-    canonicalUrl: "https://filefn.superfunctions.dev",
+    canonicalUrl: deploymentOrigin || "https://filefn.com",
     showFooter: false,
     editLink: {
       pattern: "https://github.com/21nCo/super-functions/edit/dev/filefn/docs/{path}",
@@ -26,7 +30,7 @@ const config: DocsConfig = {
     topNav: [
       { label: "Docs", href: "/docs" },
       { label: "API Reference", href: "/docs/api" },
-      { label: "Blog", href: "/blog" },
+      { label: "Blog", href: "/docs/blog" },
       {
         label: "GitHub",
         href: "https://github.com/21nCo/super-functions/tree/dev/filefn",
