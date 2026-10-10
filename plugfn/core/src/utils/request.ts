@@ -47,13 +47,21 @@ export class FetchHttpClient implements HttpClient {
 
       const body = this.serializeBody(method, data, headers, config?.bodyEncoding);
 
+      // Cloudflare Workers reject `redirect: "error"`, so enforce it over
+      // `manual`: a redirect is never followed and fails like native fetch.
+      const rejectRedirect = config?.redirect === 'error';
       const response = await fetch(finalUrl, {
         method,
         headers,
         body,
         signal: controller.signal,
-        redirect: config?.redirect,
+        redirect: rejectRedirect ? 'manual' : config?.redirect,
       });
+
+      if (rejectRedirect && isRedirectResponse(response)) {
+        await response.body?.cancel().catch(() => {});
+        throw new TypeError('Redirect blocked: request requires redirect "error"');
+      }
 
       const responseHeaders: Record<string, string> = {};
       response.headers.forEach((value, key) => {
@@ -274,6 +282,10 @@ function removeHeader(headers: Record<string, string>, name: string): void {
 function findHeaderKey(headers: Record<string, string>, name: string): string | undefined {
   const normalized = name.toLowerCase();
   return Object.keys(headers).find((key) => key.toLowerCase() === normalized);
+}
+
+function isRedirectResponse(response: Response): boolean {
+  return response.type === 'opaqueredirect' || [301, 302, 303, 307, 308].includes(response.status);
 }
 
 function isArrayBuffer(data: unknown): data is ArrayBuffer {
