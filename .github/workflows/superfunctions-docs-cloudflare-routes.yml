@@ -40,11 +40,38 @@ jobs:
         with:
           node-version: 22
 
-      - name: Sync Cloudflare docs routes
+      - name: Check 21n-dev Cloudflare credentials
+        if: github.event.inputs.environment == 'dev'
+        env:
+          CLOUDFLARE_ROUTES_TOKEN: ${{ secrets.CLOUDFLARE_DEV_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_DEV_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_ROUTES_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::CLOUDFLARE_DEV_API_TOKEN secret or CLOUDFLARE_DEV_ACCOUNT_ID variable is missing; refusing to sync dev routes."
+            exit 1
+          fi
+
+      # Dev docs routes live on the 21n.site zone in the 21n-dev account
+      # (<product>.21n.site/docs*). Zone ID is the 21n-dev copy of 21n.site
+      # (not secret); without it the script looks the zone up by name scoped
+      # to CLOUDFLARE_ACCOUNT_ID.
+      - name: Sync Cloudflare docs routes (dev)
+        if: github.event.inputs.environment == 'dev'
+        env:
+          CLOUDFLARE_ROUTES_TOKEN: ${{ secrets.CLOUDFLARE_DEV_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_DEV_ACCOUNT_ID }}
+          CLOUDFLARE_ZONE_ID_21N_SITE: 239fc6cebbd75b5401fe61f217f920bb
+          DOCS_PRODUCTS: ${{ github.event.inputs.product }}
+        run: node scripts/cloudflare-docs/sync-routes.mjs dev --products="$DOCS_PRODUCTS"
+
+      # Live routes stay on each product zone in the production account (unchanged).
+      - name: Sync Cloudflare docs routes (live)
+        if: github.event.inputs.environment == 'live'
         env:
           CLOUDFLARE_ROUTES_TOKEN: ${{ secrets.CLOUDFLARE_ROUTES_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ZONE_ID_DATAFN_DEV: ${{ vars.CLOUDFLARE_ZONE_ID_DATAFN_DEV }}
           CLOUDFLARE_ZONE_ID_FILEFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_FILEFN_COM }}
           CLOUDFLARE_ZONE_ID_SEARCHFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_SEARCHFN_COM }}
           CLOUDFLARE_ZONE_ID_AUTHFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_AUTHFN_COM }}
-        run: node scripts/cloudflare-docs/sync-routes.mjs ${{ github.event.inputs.environment }} --products=${{ github.event.inputs.product }}
+          DOCS_PRODUCTS: ${{ github.event.inputs.product }}
+        run: node scripts/cloudflare-docs/sync-routes.mjs live --products="$DOCS_PRODUCTS"

@@ -3,6 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import {
+  devAccountId,
   docsProducts,
   hasDocsPackage,
   normalizeEnvironment,
@@ -15,6 +16,19 @@ const environment = normalizeEnvironment(process.argv[2] ?? "dev");
 if (!environment) {
   console.error("Usage: node scripts/cloudflare-docs/deploy.mjs <dev|live> [--products=datafn,searchfn,authfn|all] [--dry-run] [--skip-build]");
   process.exit(1);
+}
+
+// Dev docs are pinned to the 21n-dev account (written into the generated
+// wrangler config). Refuse to run if the CI-provided account differs, so the
+// token and the pinned target can never point at different accounts.
+if (environment === "dev") {
+  const envAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  if (envAccountId && envAccountId !== devAccountId) {
+    console.error(
+      `CLOUDFLARE_ACCOUNT_ID does not match the pinned 21n-dev account (${devAccountId}); refusing to deploy dev docs.`,
+    );
+    process.exit(1);
+  }
 }
 
 const products = parseProducts(getArgValue("products") ?? "all", { existingOnly: false });
@@ -114,6 +128,7 @@ function writeWranglerConfig(docsDir, options) {
       directory: options.assetsDirectory,
     },
   };
+  if (environment === "dev") config.account_id = devAccountId;
   if (options.main) config.main = options.main;
   if (options.compatibilityFlags) config.compatibility_flags = options.compatibilityFlags;
 
