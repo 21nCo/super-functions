@@ -18,6 +18,19 @@ if (!environment) {
   process.exit(1);
 }
 
+// Dev docs are pinned to the 21n-dev account (written into the generated
+// wrangler config). Refuse to run if the CI-provided account differs, so the
+// token and the pinned target can never point at different accounts.
+if (environment === "dev") {
+  const envAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  if (envAccountId && envAccountId !== devAccountId) {
+    console.error(
+      `CLOUDFLARE_ACCOUNT_ID does not match the pinned 21n-dev account (${devAccountId}); refusing to deploy dev docs.`,
+    );
+    process.exit(1);
+  }
+}
+
 const products = parseProducts(getArgValue("products") ?? "all", { existingOnly: false });
 const dryRun = hasFlag("dry-run");
 const skipBuild = hasFlag("skip-build");

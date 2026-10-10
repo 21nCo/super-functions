@@ -12,6 +12,20 @@ if (!["preview", "production"].includes(environment)) {
   process.exit(1);
 }
 
+// Preview is pinned to the 21n-dev account in uifn/catalogs/wrangler.jsonc.
+// Refuse to deploy if the provided account differs from that pin.
+const previewAccountId = "c801efc2879825babdb9b2534199c4dd";
+if (
+  environment === "preview" &&
+  process.env.CLOUDFLARE_ACCOUNT_ID &&
+  process.env.CLOUDFLARE_ACCOUNT_ID !== previewAccountId
+) {
+  console.error(
+    `CLOUDFLARE_ACCOUNT_ID does not match the pinned 21n-dev preview account (${previewAccountId}); refusing to deploy.`,
+  );
+  process.exit(1);
+}
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const catalogsRoot = path.join(repoRoot, "uifn", "catalogs");
 const nodeBin = process.execPath;
