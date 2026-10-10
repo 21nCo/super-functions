@@ -310,7 +310,7 @@ it("keeps a lifecycle whose journaled container or interrupted Compose launch ma
 state="$(cat "${dockerState}")"
 case "$1" in
   inspect) case "$state" in running) echo true; exit 0;; gone|resolved) echo "Error: No such object: $4" >&2; exit 1;; esac;;
-  ps) case "$state" in resolved) echo launched-a; echo launched-b; exit 0;; esac;;
+  ps) case "$state" in resolved) printf 'launched-a\tdb\nlaunched-b\tdb\nsibling-lifecycle\tcache\n'; exit 0;; esac;;
   stop|rm) echo "$*" >> "${dockerLog}"; exit 0;;
 esac
 echo "Cannot connect to the Docker daemon" >&2
@@ -411,7 +411,7 @@ exit 0
     const stopped = await orchestrator.down({ config, root, stateDir });
     expect(stopped).toMatchObject({ state: "stopped", cleanup: { errors: [] } });
     expect(stopped.cleanup?.stoppedServices).toEqual(["db"]);
-    expect((await readFile(dockerLog, "utf8")).trim().split("\n")[0]).toMatch(/^ps -a -q --no-trunc --filter label=com.docker.compose.project=devfn-fixture/);
+    expect((await readFile(dockerLog, "utf8")).trim().split("\n")[0]).toMatch(/^ps -a --no-trunc --filter label=com.docker.compose.project=devfn-fixture/);
     expect(await routedInstances(stateDir)).toEqual([]);
   });
 }, 120_000);

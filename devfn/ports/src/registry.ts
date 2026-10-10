@@ -90,7 +90,7 @@ function configuredListenerPorts(config: unknown): Set<number> | undefined {
     const listen = (server as { listen?: unknown } | null)?.listen;
     if (!Array.isArray(listen)) return undefined;
     for (const address of listen) {
-      const match = typeof address === "string" ? address.match(/:(\d+)(?:-(\d+))?$/) : null;
+      const match = typeof address === "string" ? /:(\d+)(?:-(\d+))?$/.exec(address) : null;
       if (!match) return undefined;
       const first = Number(match[1]);
       const last = Number(match[2] ?? match[1]);
@@ -113,12 +113,15 @@ async function proxyClaimHasNoBoundListener(stateDir: string, ports: readonly nu
   // verified owner whose live configuration excludes it.
   const hosts = await isPortAvailable(0, "tcp", "::1") ? ["127.0.0.1", "::1"] : ["127.0.0.1"];
   let unproven = false;
+  // A refused connection alone is not proof: a firewall rule can refuse
+  // connections to a listening port. Every port must also bind; a denied
+  // privileged bind leaves the claim unproven.
   for (const port of ports) {
     for (const host of hosts) if (!await connectionRefused(port, host)) return false;
     for (const host of hosts) {
-      for (const protocol of port < 1024 ? ["udp"] as const : ["tcp", "udp"] as const) {
+      for (const protocol of ["tcp", "udp"] as const) {
         const bound = await bindProbe(port, protocol, host);
-        if (bound === "occupied") return false;
+        if (bound === "occupied" || bound === "unavailable") return false;
         if (bound === "denied") unproven = true;
       }
     }
@@ -156,10 +159,10 @@ async function proxyClaimRetirable(stateDir: string, instanceId: string, ports: 
   } catch { return false; }
 }
 
-const CLAIM_STATES: ReadonlyArray<RegistryInvocation["state"]> = ["planning", "starting", "ready", "stopping"];
+const CLAIM_STATES: ReadonlySet<RegistryInvocation["state"]> = new Set(["planning", "starting", "ready", "stopping"]);
 
 function holdsProxyClaim(invocation: RegistryInvocation): boolean {
-  return Boolean(invocation.proxyListenerPorts?.length) && (CLAIM_STATES.includes(invocation.state) || invocation.proxyClaimRetained === true);
+  return Boolean(invocation.proxyListenerPorts?.length) && (CLAIM_STATES.has(invocation.state) || invocation.proxyClaimRetained === true);
 }
 
 async function refreshAllocation(allocation: PortAllocation, now: string, available: (port: number, protocol: "tcp" | "udp", host: string) => Promise<boolean>): Promise<void> {
@@ -217,7 +220,8 @@ function addOwners(invocation: RegistryInvocation, owners: readonly LifecycleOwn
   for (const owner of owners) {
     if (known.has(ownerKey(owner))) continue;
     known.add(ownerKey(owner));
-    (invocation.owners ??= []).push(owner);
+    invocation.owners ??= [];
+    invocation.owners.push(owner);
   }
 }
 
@@ -252,10 +256,11 @@ async function processOwnerMayRun(owner: NonNullable<PortAllocation["process"]>)
   return status === "running" || status === "unverified";
 }
 
+/** An owner may name a process, a container or both; each must be verified dead. */
 async function ownerMayRun(owner: LifecycleOwner): Promise<boolean> {
-  if (owner.process) return await processOwnerMayRun(owner.process);
-  if (owner.container) return await inspectContainerRunning(owner.container) !== false;
-  return true;
+  if (!owner.process && !owner.container) return true;
+  if (owner.process && await processOwnerMayRun(owner.process)) return true;
+  return owner.container ? await inspectContainerRunning(owner.container) !== false : false;
 }
 
 /**
@@ -272,7 +277,7 @@ async function journalMayRun(state: RegistryState, invocation: RegistryInvocatio
   if (invocation.state === "stopped") return false;
   if (invocation.launching?.length) return true;
   const owners = [...(invocation.owners ?? []), ...state.allocations.filter((item) => item.invocationId === invocation.id).flatMap(allocationOwners)];
-  if (!owners.length && !invocation.ownerJournal) return CLAIM_STATES.includes(invocation.state);
+  if (!owners.length && !invocation.ownerJournal) return CLAIM_STATES.has(invocation.state);
   for (const owner of owners) if (await ownerMayRun(owner)) return true;
   return false;
 }
@@ -387,12 +392,10 @@ export class FilePortRegistry {
         occupied.add(occupancyKey(value, "tcp"));
         occupied.add(occupancyKey(value, "udp"));
       }
+      // Every routed port belongs to another instance's route, so even a
+      // lease this instance already holds on it cannot be renewed.
       const routedBy = await routedTargetPorts(path.dirname(this.filePath), input.instanceId);
-      for (const port of routedBy.keys()) {
-        if (!state.allocations.some((item) => item.invocationId === input.replacingInvocationId && item.state === "active" && item.port === port && item.protocol === "tcp")) {
-          occupied.add(occupancyKey(port, "tcp"));
-        } else routedBy.delete(port);
-      }
+      for (const port of routedBy.keys()) occupied.add(occupancyKey(port, "tcp"));
       const stable = new Map(
         state.allocations
           .filter((item) => item.projectId === input.projectId && item.instanceId === input.instanceId && item.state !== "externally-occupied")
@@ -587,7 +590,7 @@ export class FilePortRegistry {
         const owned = Boolean(readyReplacement) && state.allocations.some((item) => active(item) && item.invocationId === replacingInvocationId &&
           item.instanceId === exceptInstanceId && item.port === port && item.protocol === protocol && item.host === host);
         const router = protocol === "tcp" ? routedBy.get(port) : undefined;
-        if (router && !owned) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is still targeted by proxy routes of instance ${router}. ${routedPortAction(router)}`,
+        if (router) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is still targeted by proxy routes of instance ${router}. ${routedPortAction(router)}`,
           { port, service: request.name, instanceId: router, action: routedPortAction(router) });
         if (!owned && !await this.availabilityCheck(port, protocol, host)) {
           throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${port} for ${request.name} is occupied.`, { port, service: request.name });
@@ -627,8 +630,10 @@ export class FilePortRegistry {
     await this.transaction((state) => {
       const invocation = state.invocations.find((item) => item.id === invocationId);
       if (!invocation) throw new PortRegistryError("DEVFN_REGISTRY_INVALID", `Invocation ${invocationId} is not registered.`);
-      if (!invocation.launching?.includes(node)) (invocation.launching ??= []).push(node);
-      (invocation.composeLaunches ??= {})[node] = compose;
+      invocation.launching ??= [];
+      if (!invocation.launching.includes(node)) invocation.launching.push(node);
+      invocation.composeLaunches ??= {};
+      invocation.composeLaunches[node] = compose;
       invocation.updatedAt = new Date().toISOString();
     });
   }
@@ -706,7 +711,7 @@ export class FilePortRegistry {
       const covers = (invocation: RegistryInvocation, other: RegistryInvocation) => !released(other) && holdsProxyClaim(other) &&
         invocation.proxyListenerPorts!.every((port) => other.proxyListenerPorts?.includes(port));
       const covered = async (invocation: RegistryInvocation) =>
-        state.invocations.some((other) => covers(invocation, other) && other.instanceId === invocation.instanceId && CLAIM_STATES.includes(other.state)) ||
+        state.invocations.some((other) => covers(invocation, other) && other.instanceId === invocation.instanceId && CLAIM_STATES.has(other.state)) ||
         (state.invocations.some((other) => covers(invocation, other)) &&
           await withFileLock(path.join(stateDir, "proxy.lock"), async () => await noOwnedProxyRoutes(stateDir, invocation.instanceId)).catch(() => false));
       for (const invocation of state.invocations) {
@@ -739,7 +744,7 @@ export class FilePortRegistry {
   public async instanceMayRun(instanceId: string): Promise<boolean> {
     const state = await withRoutingLock(path.dirname(this.filePath), async () => await this.read());
     for (const invocation of state.invocations.filter((item) => item.instanceId === instanceId)) {
-      if (CLAIM_STATES.includes(invocation.state) && invocation.state !== "ready" && recentlyRefreshed(invocation)) return true;
+      if (CLAIM_STATES.has(invocation.state) && invocation.state !== "ready" && recentlyRefreshed(invocation)) return true;
       if (await journalMayRun(state, invocation)) return true;
     }
     return false;

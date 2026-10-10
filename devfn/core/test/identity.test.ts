@@ -72,6 +72,18 @@ describe("instance identity", () => {
     } finally { await rm(parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
   });
 
+  it.skipIf(process.platform === "win32")("keeps the canonical alias for a primary worktree whose path contains a newline", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "devfn-newline-"));
+    const root = path.join(parent, "primary\nworktree");
+    try {
+      await mkdir(root);
+      await execFileAsync("git", ["init", root]);
+      const identity = await resolveInstanceIdentity("fixture", root);
+      expect(identity.isPrimaryWorktree).toBe(true);
+      expect(domainAliases("app", "dev.example.test", identity)).toContain("app.dev.example.test");
+    } finally { await rm(parent, { recursive: true, force: true }); }
+  });
+
   it("does not change when the origin remote changes", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-identity-"));
     const otherRoot = await mkdtemp(path.join(tmpdir(), "devfn-identity-other-"));

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { checkReadinessNow, gatedLauncherStatus, processBirthSignature, runGatedCommand } from "@devfn/processes";
 import { describe, expect, it } from "vitest";
 import { ComposeController, composeProjectName, type ComposeLaunch, createComposeEnvironment, createComposeReadinessEnvironment, effectiveComposeServiceNetworks, fingerprintComposeSource, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
@@ -23,11 +24,20 @@ async function readBirthSignature(pid: number): Promise<string> {
   throw new Error(`No birth signature for ${pid}.`);
 }
 
+/** Poll a launcher's status until it satisfies the predicate, failing after a bounded wait. */
+async function waitForLauncherStatus(launcher: { pid: number; birthSignature?: string }, done: (status: string) => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    if (done(await gatedLauncherStatus(launcher))) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Launcher ${launcher.pid} did not reach the expected status.`);
+}
+
 function stubbed(run: NonNullable<ConstructorParameters<typeof ComposeController>[0]>): ComposeController {
   return new ComposeController(run, async (file, args, options) => {
     await options.onLaunched(ABSENT_LAUNCHER);
     return await run(file, args, options) as { stdout: string; stderr: string };
-  });
+  }, 0);
 }
 
 /**
@@ -930,14 +940,33 @@ describe("ComposeController", () => {
       return { stdout: "", stderr: "" };
     });
     const base = { name: "db", projectName: "devfn-owner", composeService: "db", dockerEnvironment: { DOCKER_HOST: "unix:///fixture.sock" } };
-    await docker("fresh-a\nfresh-b\n").stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] });
-    expect(calls[0]).toEqual(["ps", "-a", "-q", "--no-trunc", "--filter", "label=com.docker.compose.project=devfn-owner", "--filter", "label=com.docker.compose.service=db"]);
-    expect(calls.slice(1)).toEqual([["stop", "fresh-a", "fresh-b"], ["rm", "-f", "fresh-a", "fresh-b"]]);
+    const actions = () => calls.filter((args) => args[0] !== "ps");
+    // A sibling lifecycle sharing the project and service is never matched.
+    await docker("fresh-a\tdb\nsibling\tother\nfresh-b\tdb\n").stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] });
+    expect(calls[0]).toEqual(["ps", "-a", "--no-trunc", "--filter", "label=com.docker.compose.project=devfn-owner", "--filter", "label=com.docker.compose.service=db",
+      "--format", '{{.ID}}\t{{.Label "devfn.lifecycle"}}']);
+    expect(actions()).toEqual([["stop", "fresh-a", "fresh-b"], ["rm", "-f", "fresh-a", "fresh-b"]]);
 
     // A reused service keeps the container that ran before the launch.
     calls.length = 0;
-    await docker("ran-before\nstopped-before\nnew\n").stopLaunch({ ...base, preExisting: true, existingContainerIds: ["ran-before", "stopped-before"], runningContainerIds: ["ran-before"] });
-    expect(calls.slice(1)).toEqual([["stop", "stopped-before", "new"], ["rm", "-f", "new"]]);
+    await docker("ran-before\t\nstopped-before\t\nnew\tdb\n").stopLaunch({ ...base, preExisting: true, existingContainerIds: ["ran-before", "stopped-before"], runningContainerIds: ["ran-before"] });
+    expect(actions()).toEqual([["stop", "stopped-before", "new"], ["rm", "-f", "new"]]);
+
+    // A container Docker creates for a request the killed launcher already
+    // sent is found by a later scan and stopped too.
+    calls.length = 0;
+    const scans = ["early\tdb\n", "early\tdb\nlate\tdb\n"];
+    await stubbed(async (_file, args) => {
+      calls.push(args);
+      return { stdout: args[0] === "ps" ? scans.shift() ?? "early\tdb\nlate\tdb\n" : "", stderr: "" };
+    }).stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] });
+    expect(actions()).toEqual([["stop", "early"], ["rm", "-f", "early"], ["stop", "late"], ["rm", "-f", "late"]]);
+    expect(calls.filter((args) => args[0] === "ps")).toHaveLength(3);
+
+    // A launch that never stops creating containers is not resolved.
+    let created = 0;
+    await expect(stubbed(async (_file, args) => ({ stdout: args[0] === "ps" ? `${Array.from({ length: ++created }, (_, index) => `c${index}\tdb`).join("\n")}\n` : "", stderr: "" }))
+      .stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_STOP_FAILED" });
 
     // An unreachable Docker endpoint proves nothing about what the launch started.
     await expect(stubbed(async () => { throw new Error("Cannot connect to the Docker daemon"); })
@@ -955,14 +984,14 @@ describe("ComposeController", () => {
     try {
       expect(await gatedLauncherStatus(orphaned)).toBe("running");
       process.kill(orphaned.pid, "SIGKILL");
-      while (await gatedLauncherStatus(orphaned) === "running") await new Promise((resolve) => setTimeout(resolve, 20));
+      await waitForLauncherStatus(orphaned, (status) => status !== "running");
       expect(await gatedLauncherStatus(orphaned)).toBe("unverified");
       await expect(emptyScan.stopLaunch({ ...base, launcher: orphaned })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_STOP_FAILED" });
       expect(calls).toEqual([]);
     } finally { try { process.kill(-orphaned.pid, "SIGKILL"); } catch { /* already gone */ } }
-    while (await gatedLauncherStatus(orphaned) !== "gone") await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitForLauncherStatus(orphaned, (status) => status === "gone");
     await emptyScan.stopLaunch({ ...base, launcher: orphaned });
-    expect(calls.map((args) => args[0])).toEqual(["ps"]);
+    expect(calls.map((args) => args[0])).toEqual(["ps", "ps"]);
 
     // A verified launcher is stopped with everything it started before the scan.
     calls.length = 0;
@@ -970,9 +999,10 @@ describe("ComposeController", () => {
     try {
       await emptyScan.stopLaunch({ ...base, launcher: pending });
       expect(await gatedLauncherStatus(pending)).toBe("gone");
-      expect(calls.map((args) => args[0])).toEqual(["ps"]);
+      expect(calls.map((args) => args[0])).toEqual(["ps", "ps"]);
     } finally { try { process.kill(-pending.pid, "SIGKILL"); } catch { /* already gone */ } }
-  });
+    // Real process groups are started and stopped, with bounded waits of their own.
+  }, 60_000);
 });
 
 // The launcher wrapper exists only in the built processes package, so these
@@ -1018,6 +1048,39 @@ describe("gated Compose launcher", () => {
     expect(await gatedLauncherStatus(recorded!)).toBe("gone");
   });
 
+  it.skipIf(process.platform === "win32")("returns once a command exits although a process it left behind holds its output open, and stops that process", async () => {
+    let recorded: { pid: number; birthSignature?: string } | undefined;
+    // No timeout bounds this command; only the drain after its exit does.
+    const holder = "require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'inherit' }).unref(); process.stdout.write('done');";
+    const started = Date.now();
+    const output = await runGatedCommand(process.execPath, ["-e", holder], { onLaunched: async (launcher) => { recorded = launcher; } });
+    expect(output.stdout).toBe("done");
+    expect(Date.now() - started).toBeLessThan(15_000);
+    expect(await gatedLauncherStatus(recorded!)).toBe("gone");
+  }, 30_000);
+
+  it("never runs a wrapped command without its launch gate channel", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-ungated-"));
+    const marker = path.join(root, "ran");
+    try {
+      const wrapper = spawn(process.execPath, [fileURLToPath(new URL("../../processes/dist/wrapper.js", import.meta.url))], {
+        env: { ...process.env, DEVFN_WRAPPED_COMMAND: JSON.stringify([process.execPath, "-e", `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'x')`]), DEVFN_REDACT_KEYS: "[]" },
+        stdio: "ignore",
+      });
+      expect(await new Promise((resolve) => wrapper.once("exit", resolve))).toBe(1);
+      await delay(200);
+      await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("redacts declared secret values from a gated command's output", async () => {
+    const secret = "gated-secret-value-4417";
+    const output = await runGatedCommand(process.execPath, ["-e", "process.stdout.write(`token=${process.env.GATED_TOKEN}`); process.stderr.write(process.env.GATED_TOKEN)"],
+      { env: { ...process.env, GATED_TOKEN: secret }, redactKeys: ["GATED_TOKEN"], onLaunched: async () => undefined });
+    expect(output.stdout).toContain("token=");
+    expect(`${output.stdout}${output.stderr}`).not.toContain(secret);
+  });
+
   it.skipIf(process.platform === "win32")("stops a launcher as soon as its output passes the limit, keeping only the bounded output", async () => {
     let recorded: { pid: number; birthSignature?: string } | undefined;
     // The command would write forever; no timeout bounds it.
@@ -1043,7 +1106,7 @@ describe("gated Compose launcher", () => {
       const calls: string[][] = [];
       await stubbed(async (_file, args) => { calls.push(args); return { stdout: "", stderr: "" }; })
         .stopLaunch({ name: "db", projectName: "devfn-owner", composeService: "db", preExisting: false, existingContainerIds: [], runningContainerIds: [], launcher: reused });
-      expect(calls.map((args) => args[0])).toEqual(["ps"]);
+      expect(calls.map((args) => args[0])).toEqual(["ps", "ps"]);
       expect(unrelated.exitCode).toBeNull();
       expect(() => process.kill(unrelated.pid!, 0)).not.toThrow();
     } finally { try { process.kill(-unrelated.pid!, "SIGKILL"); } catch { /* already gone */ } }

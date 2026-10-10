@@ -4,7 +4,7 @@ export interface ProxyOwner { pid: number; birthSignature?: string; startedAt?: 
 
 export function parseProxyOwner(value: string): ProxyOwner {
   const owner: unknown = JSON.parse(value);
-  if (!owner || typeof owner !== "object" || !Number.isInteger((owner as ProxyOwner).pid) ||
+  if (!owner || typeof owner !== "object" || !Number.isSafeInteger((owner as ProxyOwner).pid) ||
     (owner as ProxyOwner).pid <= 0 ||
     ("birthSignature" in owner && (typeof owner.birthSignature !== "string" || owner.birthSignature.length === 0)) ||
     ("startedAt" in owner && typeof owner.startedAt !== "string")) {
@@ -15,5 +15,6 @@ export function parseProxyOwner(value: string): ProxyOwner {
 
 export async function proxyOwnerStatus(owner: ProxyOwner): Promise<"active" | "dead" | "identity-mismatch" | "unverified"> {
   const status = await processIdentityStatus(owner.pid, owner.birthSignature, owner.startedAt);
-  return status === "running" ? "active" : status === "exited" ? "dead" : status;
+  if (status === "running") return "active";
+  return status === "exited" ? "dead" : status;
 }

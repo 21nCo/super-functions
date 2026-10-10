@@ -956,7 +956,8 @@ function selectedProxyHostnames(input: EndpointResolutionInput, config: DevFnCon
     const aliases: string[] = [];
     if (hostname.domain) {
       if (!input.routingIdentity) invalid(`hostnames.${name}`, "registered route requires resolved worktree identity.");
-      aliases.push(...domainAliases(hostname.host ?? name, hostname.domain, input.routingIdentity));
+      try { aliases.push(...domainAliases(hostname.host ?? name, hostname.domain, input.routingIdentity)); }
+      catch (error) { invalid(`hostnames.${name}`, error instanceof Error ? error.message : String(error)); }
     } else aliases.push(resolveLocalHostname(hostname.hostname, name, config.project.id, input.ownerId, input.hostnameSuffix));
     if (!hostname.domain && hostname.hostname && !hostname.hostname.includes("{instance}")) {
       aliases.push(hostname.hostname.replaceAll("{project}", config.project.id));
@@ -979,7 +980,10 @@ function selectedProxyPath(routes: readonly SelectedProxyPath[], pathname: strin
     return route.match === "exact" ? path === route.path.toLowerCase() :
       prefix === "/" || path === prefix || path.startsWith(`${prefix}/`);
   });
-  return matches.sort((a, b) => a.match === b.match ? b.path.length - a.path.length : a.match === "exact" ? -1 : 1)[0];
+  // Exact routes outrank prefixes; longer paths outrank shorter ones.
+  const rank = (route: SelectedProxyPath) => (route.match === "exact" ? 1 : 0);
+  matches.sort((a, b) => rank(b) - rank(a) || b.path.length - a.path.length);
+  return matches[0];
 }
 
 function leasedDirectHealthUrl(health: Extract<HealthCheck, { type: "http" }>, url: URL, input: EndpointResolutionInput,

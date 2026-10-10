@@ -100,19 +100,45 @@ describe("registered local domains", () => {
       await registerDomain(stateDir, entry("first.example.test"), resolve);
       let signalLocked!: () => void;
       const locked = new Promise<void>((resolveLocked) => { signalLocked = resolveLocked; });
+      let settled = 0;
+      let settledWhileHeld = -1;
+      // The holder outlasts withFileLock's default 10-second wait, so both
+      // mutations must use the longer proxy lock budget.
       const holder = withFileLock(path.join(stateDir, "proxy.lock"), async () => {
         signalLocked();
         await new Promise((resolveWait) => setTimeout(resolveWait, 10_500));
+        settledWhileHeld = settled;
       });
       await locked;
       const register = registerDomain(stateDir, entry("second.example.test"), resolve);
       const unregister = unregisterDomain(stateDir, "first.example.test", "fixture", stateDir);
+      for (const mutation of [register, unregister]) mutation.then(() => { settled += 1; }, () => { settled += 1; });
       await holder;
+      expect(settledWhileHeld).toBe(0);
       await expect(register).resolves.toMatchObject({ domain: "second.example.test" });
       await expect(unregister).resolves.toBeUndefined();
       expect((await readRegisteredDomains(stateDir)).map((item) => item.domain)).toEqual(["second.example.test"]);
     } finally { await rm(stateDir, { recursive: true, force: true }); }
-  }, 15_000);
+  }, 60_000);
+
+  it("treats a stored registration with reordered fields as the same and unregisters a deleted repository", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-identity-"));
+    const repo = await mkdtemp(path.join(tmpdir(), "devfn-domain-repo-"));
+    const resolve = (async () => [{ address: "127.0.0.1", family: 4 }]) as never;
+    const entry = { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: repo, tls: "internal" as const };
+    try {
+      const registration = await registerDomain(stateDir, entry, resolve);
+      const { domain, projectId, repositoryIdentity, tls } = registration;
+      await writeFile(path.join(stateDir, "domains.json"), JSON.stringify({ version: 1, domains: [{ tls, repositoryIdentity, projectId, domain }] }));
+      await expect(registerDomain(stateDir, entry, resolve)).resolves.toMatchObject({ domain, repositoryIdentity });
+      await rm(repo, { recursive: true, force: true });
+      await unregisterDomain(stateDir, domain, projectId, repositoryIdentity);
+      expect(await readRegisteredDomains(stateDir)).toEqual([]);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
 
   it("requires a valid matching certificate that covers the generated host", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "devfn-cert-"));

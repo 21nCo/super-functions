@@ -40,7 +40,9 @@ describe("FilePortRegistry", () => {
       } finally { await rm(dir, { recursive: true, force: true }); }
     });
   }
-  it("retains an expired cross-protocol proxy claim when an IPv6 listener is hidden from OS inspection", async () => await withCaddyAdminPort(async () => {
+  it("retains an expired cross-protocol proxy claim when an IPv6 listener is hidden from OS inspection", async ({ skip }) => await withCaddyAdminPort(async () => {
+    // The claim retires at the end only when the admin port is provably free.
+    if (!await isPortAvailable(2019, "tcp", "127.0.0.1")) skip("127.0.0.1:2019 is in use, so listener absence cannot be proven on this host.");
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-ipv6-claim-"));
     const port = await allocateEphemeralPort();
     const registry = new FilePortRegistry(path.join(dir, "registry.json"));
@@ -270,6 +272,29 @@ describe("FilePortRegistry", () => {
         await rm(path.join(dir, name));
       }
       expect((await registry.reserve({ projectId: "app", instanceId: "sibling", invocationId: "unrouted", profile: "default", requests: request(true) }))[0].port).toBe(port);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("never renews a replacement's own lease on a port that another instance's route targets", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-routed-replacement-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), undefined, async () => true);
+    const port = await allocateEphemeralPort();
+    const request = [{ name: "api", spec: { preferred: port, exact: true } }];
+    try {
+      // The ready lifecycle already leases the port another instance's
+      // route still sends its traffic to.
+      await registry.reserve({ projectId: "app", instanceId: "same", invocationId: "ready", profile: "default", requests: request });
+      await registry.markActive("ready");
+      await registry.updateInvocation("ready", { state: "ready" });
+      await writeFile(path.join(dir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [{ id: "routed:app", instanceId: "routed",
+        hostname: "app.localhost", targetHost: "127.0.0.1", targetPort: port, tls: "off", updatedAt: new Date().toISOString() }] }));
+      await expect(registry.assertReplacementAvailable([], "same", request, async () => undefined, "ready"))
+        .rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { port, instanceId: "routed" } });
+      await expect(registry.reserve({ projectId: "app", instanceId: "same", invocationId: "replacement", profile: "default", replacingInvocationId: "ready", requests: request }))
+        .rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { port, instanceId: "routed" } });
+      const moved = await registry.reserve({ projectId: "app", instanceId: "same", invocationId: "moved", profile: "default", replacingInvocationId: "ready",
+        requests: [{ name: "api", spec: { preferred: port } }] });
+      expect(moved[0].port).not.toBe(port);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
@@ -650,6 +675,17 @@ esac
       await registry.gc();
       expect(await registry.instanceMayRun("one")).toBe(true);
 
+      // An owner recording both a process and a container is dead only when both are.
+      await registry.reserve({ projectId: "app", instanceId: "two", invocationId: "both", profile: "default", requests: [] });
+      await registry.updateInvocation("both", { state: "starting" });
+      await registry.recordOwners("both", "api", [{ process: { pid: 2_147_483_646, birthSignature: "linux:1" }, container: { id: "fixture-container" } }]);
+      await age();
+      for (const [docker, mayRun] of [["running", true], ["gone", false]] as const) {
+        await writeFile(dockerState, docker);
+        expect(await registry.instanceMayRun("two")).toBe(mayRun);
+      }
+      await writeFile(dockerState, "running");
+
       // A legacy invocation with no owner journal and no recorded owner proves nothing.
       const state = await registry.read();
       state.invocations.push({ id: "legacy", projectId: "app", instanceId: "legacy", profile: "default", state: "ready", createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z" });
@@ -752,8 +788,10 @@ esac
     const foreign = net.createServer();
     try {
       const child = spawn(process.execPath, ["-e", "setTimeout(() => undefined, 200)"], { stdio: "ignore" });
+      // Listen before the lookup, which can outlast the child.
+      const exited = new Promise((resolve) => child.once("exit", resolve));
       const birthSignature = await processBirthSignature(child.pid!);
-      await new Promise((resolve) => child.once("exit", resolve));
+      await exited;
       const appPort = await allocateEphemeralPort();
       let listenerPort = await allocateEphemeralPort();
       while (listenerPort === appPort) listenerPort = await allocateEphemeralPort();

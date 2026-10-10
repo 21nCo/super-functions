@@ -250,7 +250,7 @@ function hostnameSpec(value: unknown, field: string): HostnameSpec {
   // worktree suffix; a longer host cannot fit in one DNS label.
   if (host && (!domain || host.length > 40 || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(host))) fail(`${field}.host requires a registered domain and one DNS label of at most 40 characters.`, `${field}.host`);
   if (domain && hostname) fail(`${field} cannot set both hostname and domain.`, field);
-  if (domain && (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain) || domain.endsWith(".localhost"))) {
+  if (domain && (domain.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain) || domain.endsWith(".localhost"))) {
     fail(`${field}.domain must be a concrete registered domain.`, `${field}.domain`);
   }
   if (domain && input.tls !== undefined) fail(`${field}.tls is controlled by the machine domain registration; omit it from the manifest.`, `${field}.tls`);
@@ -442,7 +442,9 @@ export function validateDevFnPolicy(value: unknown): DevFnPolicy {
     return input.ports.map((item, index) => policyEntry(item, `ports[${index}]`));
   })();
   const hostnameSuffix = optionalString(input.hostnameSuffix, "hostnameSuffix");
-  if (hostnameSuffix && (!/^\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*localhost$/i.test(hostnameSuffix) || hostnameSuffix.length > 230)) fail("hostnameSuffix must be a valid dot-prefixed .localhost suffix.", "hostnameSuffix");
+  // The shortest generated hostname adds a one-character route key and a
+  // 23-character "-o-<20 hex>" owner component, within 253 characters.
+  if (hostnameSuffix && (!/^\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*localhost$/i.test(hostnameSuffix) || hostnameSuffix.length > 229)) fail("hostnameSuffix must be a valid dot-prefixed .localhost suffix.", "hostnameSuffix");
   return {
     version: 1,
     ...(range(input.fallbackRange, "fallbackRange") ? { fallbackRange: range(input.fallbackRange, "fallbackRange") } : {}),

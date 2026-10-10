@@ -178,22 +178,27 @@ async function urlCommand(args: ParsedArgs, orchestrator: DevFnOrchestrator, loa
   return { ok: true, name, url };
 }
 
-async function executeCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
-  if (args.command === "domains") {
-    const action = args.positionals[0] ?? "list";
-    const identity = await resolveInstanceIdentity(loaded.config.project.id, loaded.root);
-    if (action === "list") return { ok: true, domains: (await readRegisteredDomains(stateDir)).filter((domain) => domain.projectId === identity.projectId && domain.repositoryIdentity === identity.repositoryIdentity) };
-    const domain = args.positionals[1];
-    if (!domain || args.positionals.length !== 2) throw new DevFnError("DEVFN_RUNTIME_INVALID", "domains register/unregister requires exactly one domain.");
-    if (action === "register") {
-      if (args.tls !== "internal" && args.tls !== "certificate") throw new DevFnError("DEVFN_RUNTIME_INVALID", "--tls must be internal or certificate; DNS-01 requires a validated adapter and is unavailable.");
-      const registered = await registerDomain(stateDir, { domain, projectId: identity.projectId, repositoryIdentity: identity.repositoryIdentity,
-        tls: args.tls, ...(args.certificateFile ? { certificateFile: path.resolve(cwd, args.certificateFile) } : {}), ...(args.keyFile ? { keyFile: path.resolve(cwd, args.keyFile) } : {}) });
-      return { ok: true, domain: registered };
-    }
-    if (action === "unregister") { await unregisterDomain(stateDir, domain, identity.projectId, identity.repositoryIdentity); return { ok: true, domain, removed: true }; }
-    throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown domains action ${action}.`);
+async function domainsCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
+  const action = args.positionals[0] ?? "list";
+  const identity = await resolveInstanceIdentity(loaded.config.project.id, loaded.root);
+  if (action === "list") {
+    if (args.positionals.length > 1) throw new DevFnError("DEVFN_RUNTIME_INVALID", "domains list takes no arguments.");
+    return { ok: true, domains: (await readRegisteredDomains(stateDir)).filter((domain) => domain.projectId === identity.projectId && domain.repositoryIdentity === identity.repositoryIdentity) };
   }
+  const domain = args.positionals[1];
+  if (!domain || args.positionals.length !== 2) throw new DevFnError("DEVFN_RUNTIME_INVALID", "domains register/unregister requires exactly one domain.");
+  if (action === "register") {
+    if (args.tls !== "internal" && args.tls !== "certificate") throw new DevFnError("DEVFN_RUNTIME_INVALID", "--tls must be internal or certificate; DNS-01 requires a validated adapter and is unavailable.");
+    const registered = await registerDomain(stateDir, { domain, projectId: identity.projectId, repositoryIdentity: identity.repositoryIdentity,
+      tls: args.tls, ...(args.certificateFile ? { certificateFile: path.resolve(cwd, args.certificateFile) } : {}), ...(args.keyFile ? { keyFile: path.resolve(cwd, args.keyFile) } : {}) });
+    return { ok: true, domain: registered };
+  }
+  if (action === "unregister") { await unregisterDomain(stateDir, domain, identity.projectId, identity.repositoryIdentity); return { ok: true, domain, removed: true }; }
+  throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown domains action ${action}.`);
+}
+
+async function executeCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
+  if (args.command === "domains") return await domainsCommand(args, cwd, stateDir, loaded);
   const orchestrator = new DevFnOrchestrator();
   const lifecycle = { config: loaded.config, root: loaded.root, stateDir };
   const handlers: Record<string, () => Promise<unknown>> = {

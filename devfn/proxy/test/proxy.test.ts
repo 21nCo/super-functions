@@ -11,6 +11,33 @@ import { CaddyProxyController, proxyOwnerStatus, renderCaddyfile } from "../src/
 const withCaddyAdminPort = async <T>(action: () => Promise<T>): Promise<T> =>
   await withFileLock(path.join(tmpdir(), "devfn-test-caddy-admin.lock"), action, { timeoutMs: 120_000 });
 
+/**
+ * A state directory owned by this live process, with a Caddy command stub
+ * that accepts every command first on PATH. cleanup() restores PATH and
+ * removes both directories.
+ */
+async function stubbedCaddyState(prefix: string): Promise<{ stateDir: string; cleanup: () => Promise<void> }> {
+  const stateDir = await mkdtemp(path.join(tmpdir(), prefix));
+  const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+  const originalPath = process.env.PATH;
+  const birthSignature = await processBirthSignature(process.pid);
+  if (!birthSignature) throw new Error("Test process has no birth signature.");
+  await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+  await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+  process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+  return {
+    stateDir,
+    cleanup: async () => {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(toolsDir, { recursive: true, force: true });
+    },
+  };
+}
+
+// A resolver that never answers for a name, independent of the host's DNS.
+const unresolvable = (async () => { throw Object.assign(new Error("not found"), { code: "ENOTFOUND" }); }) as never;
+
 describe("Caddy route rendering", () => {
   it("renders explicit routes without a catch-all", () => {
     const output = renderCaddyfile([{ id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off", updatedAt: "now" }]);
@@ -52,19 +79,12 @@ describe("Caddy route rendering", () => {
   });
 
   it("reads mixed-case localhost routes through active and pending state while a sibling changes", async () => {
-    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-case-state-"));
-    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
-    const originalPath = process.env.PATH;
-    const birthSignature = await processBirthSignature(process.pid);
-    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const { stateDir, cleanup } = await stubbedCaddyState("devfn-proxy-case-state-");
     const retained = { id: "retained", instanceId: "first", hostname: "App.LOCALHOST", targetHost: "127.0.0.1",
       targetPort: 4101, tls: "off" as const, updatedAt: "now" };
     const sibling = { id: "sibling", instanceId: "second", hostname: "Other.localhost", targetHost: "127.0.0.1",
       targetPort: 4102, tls: "off" as const, updatedAt: "now" };
     try {
-      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
-      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
-      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
       await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [retained] }));
       const controller = new CaddyProxyController(stateDir);
       expect(await controller.routes()).toEqual([retained]);
@@ -76,27 +96,17 @@ describe("Caddy route rendering", () => {
       await controller.removeInstance("second");
       expect(await controller.routes()).toEqual([retained]);
       expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes).toEqual([retained]);
-    } finally {
-      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
-      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
-    }
+    } finally { await cleanup(); }
   });
 
   it("removes another instance and recovers its removal when a retained domain loses DNS", async () => {
-    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-domain-cleanup-"));
-    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
-    const originalPath = process.env.PATH;
-    const birthSignature = await processBirthSignature(process.pid);
-    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const { stateDir, cleanup } = await stubbedCaddyState("devfn-proxy-domain-cleanup-");
     const retained = { id: "a", instanceId: "a", hostname: "a.invalid.test", targetHost: "127.0.0.1", targetPort: 4101,
       tls: "internal" as const, registeredDomain: "invalid.test", projectId: "fixture", repositoryIdentity: stateDir, updatedAt: "now" };
     const removed = { id: "b", instanceId: "b", hostname: "b.localhost", targetHost: "127.0.0.1", targetPort: 4102,
       tls: "off" as const, updatedAt: "now" };
     try {
-      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
-      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
-      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
-      const controller = new CaddyProxyController(stateDir);
+      const controller = new CaddyProxyController(stateDir, unresolvable);
       await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [retained, removed] }));
       await controller.removeInstance("b");
       expect(await controller.routes()).toEqual([retained]);
@@ -120,30 +130,23 @@ describe("Caddy route rendering", () => {
       await expect(access(path.join(stateDir, "proxy-routes.pending.json"))).rejects.toMatchObject({ code: "ENOENT" });
       await expect(controller.upsert([failedActivation])).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
       expect(await controller.routes()).toEqual([retained]);
-    } finally {
-      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
-      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
-    }
+    } finally { await cleanup(); }
   });
 
   it("releases the shared lock after a stalled domain lookup so a sibling can stop", async () => {
-    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-dns-lock-"));
-    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
-    const originalPath = process.env.PATH;
-    const birthSignature = await processBirthSignature(process.pid);
-    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const { stateDir, cleanup } = await stubbedCaddyState("devfn-proxy-dns-lock-");
     const sibling = { id: "sibling", instanceId: "sibling", hostname: "sibling.localhost", targetHost: "127.0.0.1", targetPort: 4101, tls: "off" as const };
     const stalled = { id: "stalled", instanceId: "stalled", hostname: "stalled.dev.example.test", targetHost: "127.0.0.1", targetPort: 4102,
       tls: "internal" as const, registeredDomain: "dev.example.test", projectId: "fixture", repositoryIdentity: stateDir };
     try {
-      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
       await writeFile(path.join(stateDir, "domains.json"), JSON.stringify({ version: 1, domains: [
         { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: stateDir, tls: "internal" },
       ] }));
-      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
-      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
       let signalLookup!: () => void;
       const lookupStarted = new Promise<void>((resolve) => { signalLookup = resolve; });
+      // Route activation holds the proxy lock through its bounded DNS
+      // check; a lookup that never answers must end at that bound and
+      // release the lock, or the sibling's cleanup never runs.
       const controller = new CaddyProxyController(stateDir, (async () => { signalLookup(); return await new Promise(() => {}); }) as never, 50);
       await controller.upsert([sibling]);
       const activation = controller.upsert([stalled]);
@@ -152,36 +155,23 @@ describe("Caddy route rendering", () => {
       await expect(activation).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
       await expect(cleanup).resolves.toBeUndefined();
       expect(await controller.routes()).toEqual([]);
-    } finally {
-      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
-      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
-    }
+    } finally { await cleanup(); }
   });
 
   it("an empty owner selection recovers pending state and removes only that owner's routes", async () => {
-    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-empty-"));
-    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
-    const originalPath = process.env.PATH;
-    const birthSignature = await processBirthSignature(process.pid);
-    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const { stateDir, cleanup } = await stubbedCaddyState("devfn-proxy-empty-");
     const first = { id: "a", instanceId: "a", hostname: "a.localhost", targetHost: "127.0.0.1", targetPort: 4101, tls: "off" as const, updatedAt: "now" };
     const sibling = { id: "b", instanceId: "b", hostname: "b.localhost", targetHost: "127.0.0.1", targetPort: 4102, tls: "off" as const, updatedAt: "now" };
     try {
-      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
       await writeFile(path.join(stateDir, "proxy-routes.json"), JSON.stringify({ version: 1, routes: [first] }));
       await writeFile(path.join(stateDir, "proxy-routes.pending.json"), JSON.stringify({ version: 1, routes: [first, sibling] }));
-      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
-      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
       const controller = new CaddyProxyController(stateDir);
       await expect(controller.upsert([], "a")).resolves.toEqual([]);
       expect(await controller.routes()).toEqual([sibling]);
       expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: [sibling] });
       await expect(access(path.join(stateDir, "proxy-routes.pending.json"))).rejects.toMatchObject({ code: "ENOENT" });
       await expect(controller.upsert([])).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
-    } finally {
-      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
-      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
-    }
+    } finally { await cleanup(); }
   });
 
   it("replays and commits a valid route activation journal", async () => {

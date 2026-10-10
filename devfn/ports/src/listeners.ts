@@ -6,11 +6,18 @@ import type { ListenerInfo, ListenerScanResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
-export type BindProbe = "available" | "occupied" | "denied";
+export type BindProbe = "available" | "occupied" | "denied" | "unavailable";
 
-/** Bind one address once. "denied" (no privilege for the port) proves nothing about occupancy. */
+/**
+ * Bind one address once. "denied" (no privilege for the port) proves nothing
+ * about occupancy, and "unavailable" (any other failure, such as an address
+ * this host does not have) proves neither occupancy nor absence.
+ */
 export async function bindProbe(port: number, protocol: "tcp" | "udp" = "tcp", host = "127.0.0.1"): Promise<BindProbe> {
-  const outcome = (error: NodeJS.ErrnoException): BindProbe => error.code === "EACCES" || error.code === "EPERM" ? "denied" : "occupied";
+  const outcome = (error: NodeJS.ErrnoException): BindProbe => {
+    if (error.code === "EADDRINUSE") return "occupied";
+    return error.code === "EACCES" || error.code === "EPERM" ? "denied" : "unavailable";
+  };
   if (protocol === "udp") {
     const dgram = await import("node:dgram");
     return await new Promise<BindProbe>((resolve) => {
@@ -32,9 +39,11 @@ export async function isPortAvailable(port: number, protocol: "tcp" | "udp" = "t
 }
 
 /**
- * A refused TCP connection proves no socket listens on that address and port,
+ * A refused TCP connection shows no socket accepts on that address and port,
  * including wildcard listeners, without the privilege a bind would need and
- * even when the listener's owner is hidden from socket inspection.
+ * even when the listener's owner is hidden from socket inspection. A
+ * firewall rule can also refuse connections to a listening port, so callers
+ * that retire state need independent evidence too.
  */
 export async function connectionRefused(port: number, host = "127.0.0.1", timeoutMs = 500): Promise<boolean> {
   return await new Promise<boolean>((resolve) => {

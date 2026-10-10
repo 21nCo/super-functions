@@ -22,7 +22,22 @@ async function withListenerTools<T>(action: () => Promise<T>): Promise<T> {
   }
 }
 
+/** The JSON fields these tests read from a CLI result. */
+interface CliResult { error?: { message: string }; state?: string; invocationId?: string; allocations?: Array<{ port: number }> }
+
 describe("devfn CLI", () => {
+  it("rejects extra domains list arguments without reading machine state", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-domain-list-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-state-"));
+    try {
+      await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({ version: 1, project: { id: "fixture" }, profiles: { default: {} } }));
+      let output = "";
+      expect(await runCli(["domains", "list", "typo", "--trust", "--json", "--state-dir", stateDir],
+        { cwd, stdout: (text) => { output += text; }, stderr: () => undefined })).toBe(1);
+      expect(JSON.parse(output)).toMatchObject({ error: { code: "DEVFN_RUNTIME_INVALID", message: expect.stringContaining("no arguments") } });
+    } finally { await rm(cwd, { recursive: true, force: true }); await rm(stateDir, { recursive: true, force: true }); }
+  });
+
   it("rejects unavailable DNS-01 registration without changing machine state", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-domain-cli-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-state-"));
@@ -156,19 +171,19 @@ describe("devfn CLI", () => {
     const invoke = async (args: string[]) => {
       let stdout = "";
       const code = await runCli([...args, "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
-      return { code, value: JSON.parse(stdout) as Record<string, any> };
+      return { code, value: JSON.parse(stdout) as CliResult };
     };
     try {
       await writeFile(path.join(cwd, "server.mjs"), "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
       await writeFile(manifest, JSON.stringify(base));
       const first = await invoke(["up"]);
       expect(first.code, JSON.stringify(first.value)).toBe(0);
-      const port = first.value.allocations[0].port as number;
+      const port = first.value.allocations![0].port;
       await writeFile(manifest, JSON.stringify({ ...base, profiles: { default: { processes: ["app"], proxy: true } },
         hostnames: { app: { target: "app", domain: "unregistered.example.test" } } }));
       const failed = await invoke(["restart"]);
       expect(failed.code).toBe(1);
-      expect(failed.value.error.message).toContain("not registered");
+      expect(failed.value.error?.message).toContain("not registered");
       await writeFile(manifest, JSON.stringify(base));
       const status = await invoke(["status"]);
       expect(status.value.state).toBe("ready");
@@ -179,7 +194,7 @@ describe("devfn CLI", () => {
       expect(restarted.code, JSON.stringify(restarted.value)).toBe(0);
       expect(restarted.value.invocationId).not.toBe(first.value.invocationId);
       expect(restarted.value.state).toBe("ready");
-      expect(restarted.value.allocations[0].port).toBe(port);
+      expect(restarted.value.allocations?.[0].port).toBe(port);
     } finally {
       await writeFile(manifest, JSON.stringify(base));
       await invoke(["down"]).catch(() => undefined);

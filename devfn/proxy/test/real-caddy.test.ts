@@ -15,6 +15,11 @@ import { CaddyProxyController, proxyListenerPorts, renderCaddyfile, type ProxyRo
 const withCaddyAdminPort = async <T>(action: () => Promise<T>): Promise<T> =>
   await withFileLock(path.join(os.tmpdir(), "devfn-test-caddy-admin.lock"), action, { timeoutMs: 120_000 });
 
+/** Stop a DevFn-started Caddy: its process group on POSIX, the process on Windows. */
+function stopOwnerGroup(pid: number): void {
+  process.kill(process.platform === "win32" ? pid : -pid, "SIGTERM");
+}
+
 async function freePort(): Promise<number> {
   const server = net.createServer();
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -31,11 +36,21 @@ async function upstream(): Promise<{ server: http.Server; port: number }> {
   return { server, port: typeof address === "object" && address ? address.port : 0 };
 }
 
-async function request(port: number, host: string, requestPath: string, secure = false): Promise<{ status: number; body: string; certificate?: string; location?: string }> {
+/** Caddy's internal root, which verifies its internal TLS certificates; it exists once Caddy created its CA. */
+async function internalRoot(dataHome: string): Promise<string | undefined> {
+  return await readFile(path.join(dataHome, "caddy", "pki", "authorities", "local", "root.crt"), "utf8").catch(() => undefined);
+}
+
+/**
+ * Request through Caddy. With trusted roots the request uses TLS and verifies
+ * the served chain and hostname against only those roots.
+ */
+async function request(port: number, host: string, requestPath: string, trustedRoots?: string): Promise<{ status: number; body: string; certificate?: string; location?: string }> {
+  const secure = trustedRoots !== undefined;
   return await new Promise((resolve, reject) => {
     const client = secure ? https : http;
     const call = client.request({ hostname: "127.0.0.1", port, path: requestPath, method: "GET", headers: { Host: host },
-      ...(secure ? { servername: host, rejectUnauthorized: false } : {}) }, (response) => {
+      ...(secure ? { servername: host, ca: trustedRoots } : {}) }, (response) => {
       let body = "";
       const certificate = secure ? (response.socket as import("node:tls").TLSSocket).getPeerCertificate().subjectaltname : undefined;
       response.on("data", (chunk) => { body += String(chunk); });
@@ -90,14 +105,17 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("observes isolated Caddy exact, 
     expect(config).toContain(`https_port ${httpsPort}`);
     expect(await request(httpPort, "unselected.localhost", "/")).toMatchObject({ status: 404 });
     let tlsResponse: Awaited<ReturnType<typeof request>> | undefined;
+    const dataHome = path.join(stateDir, "data");
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      tlsResponse = await request(httpsPort, "secure.localhost", "/", true).catch(() => undefined);
+      const root = await internalRoot(dataHome);
+      tlsResponse = root ? await request(httpsPort, "secure.localhost", "/", root).catch(() => undefined) : undefined;
       if (tlsResponse) break;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     expect(tlsResponse, log.slice(-3000)).toMatchObject({ status: 200, body: "/", certificate: expect.stringContaining("secure.localhost") });
     expect(await request(httpPort, "explicit.dev.example.test", "/")).toMatchObject({ status: 308 });
-    expect(await request(httpsPort, "explicit.dev.example.test", "/", true)).toMatchObject({
+    // The explicit certificate is self-signed, so it is its own trusted root.
+    expect(await request(httpsPort, "explicit.dev.example.test", "/", await readFile(certificateFile, "utf8"))).toMatchObject({
       status: 200, body: "/", certificate: expect.stringContaining("explicit.dev.example.test"),
     });
   } finally {
@@ -134,19 +152,21 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("does not commit a fresh interna
     let live: Awaited<ReturnType<typeof request>> | undefined;
     // Caddy issues the internal certificate asynchronously after startup.
     for (let attempt = 0; attempt < 30 && !live; attempt += 1) {
-      live = await request(httpsPort, "secure.localhost", "/live", true).catch(() => undefined);
+      const root = await internalRoot(process.env.XDG_DATA_HOME!);
+      live = root ? await request(httpsPort, "secure.localhost", "/live", root).catch(() => undefined) : undefined;
       if (!live) await new Promise((resolve) => setTimeout(resolve, 100));
     }
     expect(live).toMatchObject({ status: 200, body: "/live" });
     const { pid } = JSON.parse(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")) as { pid: number };
-    process.kill(-pid, "SIGTERM");
+    stopOwnerGroup(pid);
     for (let attempt = 0; attempt < 50 && !await isPortAvailable(2019); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
     expect(await proxy.instanceRoutesLive("fixture", activated)).toBe(false);
   } finally {
     if (blocker.listening) await new Promise<void>((resolve) => blocker.close(() => resolve()));
-    try { process.kill(-(JSON.parse(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")) as { pid: number }).pid, "SIGTERM"); } catch { /* stopped */ }
+    try { stopOwnerGroup((JSON.parse(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")) as { pid: number }).pid); } catch { /* stopped */ }
     for (const [key, value] of Object.entries(original)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
     await new Promise<void>((resolve) => target.server.close(() => resolve()));
     await rm(stateDir, { recursive: true, force: true });
   }
-}), 150_000);
+// The admin-port lock may wait up to two minutes before the fixture's own work.
+}), 240_000);

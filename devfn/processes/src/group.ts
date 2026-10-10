@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 
 import { processExists, processGroupStatus, processIdentityStatus } from "./identity.js";
 import { ProcessError, type ProcessOwnerIdentity } from "./types.js";
@@ -18,8 +19,10 @@ export async function signalProcessGroup(pid: number, force: boolean): Promise<v
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
     return;
   }
+  // The system copy, never one found through PATH.
+  const taskkill = path.win32.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe");
   await new Promise<void>((resolve, reject) => {
-    const child = spawn("taskkill", ["/pid", String(pid), "/T", ...(force ? ["/F"] : [])], { stdio: "ignore", windowsHide: true });
+    const child = spawn(taskkill, ["/pid", String(pid), "/T", ...(force ? ["/F"] : [])], { stdio: "ignore", windowsHide: true });
     child.once("error", reject);
     child.once("exit", (code) => code === 0 || !processExists(pid) ? resolve() : reject(new Error(`taskkill exited with ${code}`)));
   });
@@ -53,8 +56,16 @@ export async function stopProcessGroup(owner: ProcessOwnerIdentity, label: strin
       : `PID ${owner.pid} may still be ${label}, but its identity cannot be verified; DevFn will not signal it.`, { pid: owner.pid });
   }
   try {
-    await signalProcessGroup(owner.pid, false);
+    // A graceful request can be refused (Windows console processes accept
+    // only a forced taskkill); the wait and forced stop below decide.
+    try { await signalProcessGroup(owner.pid, false); }
+    catch (error) { if (process.platform !== "win32") throw error; }
     if (await waitForProcessGroupExit(owner, timeoutMs)) return;
+    // Judge the group again right before forcing it. POSIX cannot signal a
+    // group atomically with that check; a group ID is not reused while any
+    // member remains, so only a group that empties in between is exposed.
+    const remaining = await processGroupStatus(owner.pid, owner.birthSignature, owner.startedAt);
+    if (remaining === "exited" || remaining === "identity-mismatch") return;
     if (process.platform !== "win32" || await processIdentityStatus(owner.pid, owner.birthSignature, owner.startedAt) === "running" || options.ownGroup?.leaderUnreaped()) await signalProcessGroup(owner.pid, true);
   } catch (error) {
     throw new ProcessError("DEVFN_PROCESS_STOP_FAILED", `Unable to stop ${label} (PID ${owner.pid}).`, { pid: owner.pid, cause: error instanceof Error ? error.message : String(error) });

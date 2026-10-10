@@ -6,15 +6,21 @@ import path from "node:path";
 import net from "node:net";
 import { expect, it, vi } from "vitest";
 
-const scan = vi.hoisted(() => ({ hidden: false, deniedUdpPort: 0 }));
+const scan = vi.hoisted(() => ({ hidden: false, deniedUdpPort: 0, freeUdpPort: 0, firewalledPort: 0 }));
 vi.mock("../src/listeners.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/listeners.js")>();
   return {
     ...actual,
     // An unprivileged process cannot bind a privileged UDP port, so that
     // bind proves nothing about a hidden HTTP/3 listener there.
-    bindProbe: async (port: number, protocol?: "tcp" | "udp", host?: string) => protocol === "udp" && port === scan.deniedUdpPort
-      ? "denied" as const : await actual.bindProbe(port, protocol, host),
+    bindProbe: async (port: number, protocol?: "tcp" | "udp", host?: string) => {
+      if (protocol === "udp" && port === scan.deniedUdpPort) return "denied" as const;
+      // A privileged user's UDP bind of a free privileged port.
+      if (protocol === "udp" && port === scan.freeUdpPort) return "available" as const;
+      return await actual.bindProbe(port, protocol, host);
+    },
+    // A firewall rule that refuses connections to a port with a listener.
+    connectionRefused: async (port: number, host?: string, timeoutMs?: number) => port === scan.firewalledPort || await actual.connectionRefused(port, host, timeoutMs),
     // A non-dumpable owner (setcap Caddy on Linux) is invisible to same-user
     // socket inspection even though inspection itself succeeds.
     scanListenerState: async (includeDocker?: boolean) => scan.hidden
@@ -133,13 +139,18 @@ it("keeps a privileged claim whose UDP bind is denied unless a verified owner's 
   }
 }), 150_000);
 
+// macOS lets unprivileged processes bind privileged ports on the wildcard
+// address only; unprivileged Linux cannot, so there these fixtures cannot
+// create the hidden privileged listener they need.
+const NO_PRIVILEGED_WILDCARD = "No privileged wildcard port is bindable by this user (unprivileged Linux); the hidden privileged listener cannot be created.";
+async function privilegedWildcardPort(): Promise<number | undefined> {
+  for (const candidate of [1023, 1022, 1021]) if (await isPortAvailable(candidate, "tcp", "0.0.0.0")) return candidate;
+  return undefined;
+}
+
 it("retains a privileged-port claim while a hidden listener still accepts", async ({ skip }) => {
-  // macOS lets unprivileged processes bind privileged ports on the wildcard
-  // address only; unprivileged Linux cannot, so there the fixture cannot
-  // create the hidden listener it needs.
-  let port: number | undefined;
-  for (const candidate of [1023, 1022, 1021]) if (await isPortAvailable(candidate, "tcp", "0.0.0.0")) { port = candidate; break; }
-  if (port === undefined) skip("No privileged wildcard port is bindable by this user (unprivileged Linux); the hidden privileged listener cannot be created.");
+  const port = await privilegedWildcardPort();
+  if (port === undefined) skip(NO_PRIVILEGED_WILDCARD);
   const dir = await mkdtemp(path.join(tmpdir(), "devfn-hidden-privileged-claim-"));
   const listener = net.createServer((socket) => socket.destroy());
   scan.hidden = true;
@@ -154,6 +165,31 @@ it("retains a privileged-port claim while a hidden listener still accepts", asyn
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+it("retains a privileged-port claim when a firewall refuses connections to its hidden listener", async ({ skip }) => await withCaddyAdminPort(async () => {
+  const port = await privilegedWildcardPort();
+  if (port === undefined) skip(NO_PRIVILEGED_WILDCARD);
+  if (!await isPortAvailable(2019, "tcp", "127.0.0.1")) skip("127.0.0.1:2019 is in use, so listener absence cannot be proven on this host.");
+  const dir = await mkdtemp(path.join(tmpdir(), "devfn-firewalled-claim-"));
+  const listener = net.createServer((socket) => socket.destroy());
+  scan.hidden = true;
+  scan.freeUdpPort = port!;
+  scan.firewalledPort = port!;
+  try {
+    const registry = await abandonedClaim(dir, port!);
+    await listen(listener, port!, "0.0.0.0");
+    // Every TCP connection is refused and UDP binds, yet the TCP listener
+    // remains; a refused connection alone never retires the claim.
+    await expect(sibling(registry, port!, "firewalled")).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT", details: { instanceId: "abandoned" } });
+    expect((await registry.read()).invocations[0].state).toBe("starting");
+  } finally {
+    scan.hidden = false;
+    scan.freeUdpPort = 0;
+    scan.firewalledPort = 0;
+    if (listener.listening) await new Promise<void>((resolve) => listener.close(() => resolve()));
+    await rm(dir, { recursive: true, force: true });
+  }
+}), 150_000);
 
 it("retires a claim under a live verified owner only when its admin configuration has no listener on the port", async () => await withCaddyAdminPort(async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "devfn-owner-config-claim-"));

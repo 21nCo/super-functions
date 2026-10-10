@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
-import { chmod, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, chmod, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import http from "node:http";
 import path from "node:path";
@@ -9,7 +10,7 @@ import { promisify } from "node:util";
 
 import { connectionRefused, isPortAvailable, parsePersistedProxyRoutes, parseProxyOwner, proxyOwnerStatus, scanListenerState, withFileLock, withRoutingLock, type ProxyOwner } from "@devfn/ports";
 import { matchesProcessIdentity, processBirthSignature } from "@devfn/processes";
-import { domainContains, DomainError, readRegisteredDomains, verifyCertificate, verifyLocalDns } from "./domains.js";
+import { domainContains, DomainError, ipv6LoopbackAvailable, readRegisteredDomains, verifyCertificate, verifyLocalDns } from "./domains.js";
 export { DomainError, domainContains, normalizeDomain, readRegisteredDomains, registerDomain, unregisterDomain, verifyCertificate, verifyLocalDns, type RegisteredDomain } from "./domains.js";
 
 const execFileAsync = promisify(execFile);
@@ -17,6 +18,32 @@ const PROXY_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_LISTENER_PORTS = process.platform === "darwin" ? { httpPort: 8080, httpsPort: 8443 } : { httpPort: 80, httpsPort: 443 };
 
 export function proxyListenerPorts(): { httpPort: number; httpsPort: number } { return { ...DEFAULT_LISTENER_PORTS }; }
+
+/** Deterministic, locale-independent ordering of identifiers and hostnames. */
+const compareText = (a: string, b: string): number => {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+};
+
+/**
+ * Caddy as found in an absolute PATH directory. Relative entries such as "."
+ * are never searched, so the working directory cannot supply the binary.
+ */
+async function caddyCommand(): Promise<string> {
+  const name = process.platform === "win32" ? "caddy.exe" : "caddy";
+  for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!path.isAbsolute(directory)) continue;
+    const candidate = path.join(directory, name);
+    try {
+      await access(candidate, constants.X_OK);
+      if ((await stat(candidate)).isFile()) return candidate;
+    } catch { /* not in this directory */ }
+  }
+  throw Object.assign(new Error("caddy was not found in an absolute PATH directory."), { code: "ENOENT" });
+}
+
+/** A plain-HTTP Caddy site address; an empty host matches every host. */
+const plainHttpSite = (host: string): string => `http://${host}`;
 
 export interface ProxyRoute {
   id: string; instanceId: string; hostname: string; targetHost: string; targetPort: number;
@@ -86,40 +113,43 @@ export function renderCaddyfile(routes: readonly ProxyRoute[], ipv6Loopback = fa
     hostRoutes.push(route);
     hosts.set(route.hostname.toLowerCase(), hostRoutes);
   }
-  for (const [hostname, hostRoutes] of [...hosts].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+  const httpsPortSuffix = ports.httpsPort === 443 ? "" : `:${ports.httpsPort}`;
+  const redirect = (hostname: string) => [`${plainHttpSite(hostname)} {`, `  redir https://{host}${httpsPortSuffix}{uri} 308`, "}", ""];
+  const tlsLines = (route: ProxyRoute): string[] => {
+    if (route.tls === "internal") return ["  tls internal"];
+    return route.tls === "certificate" ? [`  tls ${JSON.stringify(route.certificateFile)} ${JSON.stringify(route.keyFile)}`] : [];
+  };
+  for (const [hostname, hostRoutes] of [...hosts].sort(([a], [b]) => compareText(a, b))) {
     const tls = hostRoutes[0];
-    const tlsLine = tls.tls === "internal" ? ["  tls internal"] : tls.tls === "certificate" ? [`  tls ${JSON.stringify(tls.certificateFile)} ${JSON.stringify(tls.keyFile)}`] : [];
+    const tlsLine = tlsLines(tls);
+    const site = tls.tls === "off" ? plainHttpSite(hostname) : hostname;
     if (hostRoutes.length === 1 && (tls.path ?? "/") === "/" && (tls.match ?? "prefix") === "prefix") {
       const targetHost = tls.targetHost === "::1" ? "[::1]" : tls.targetHost;
-      lines.push(`${tls.tls === "off" ? "http://" : ""}${hostname} {`, `  reverse_proxy ${targetHost}:${tls.targetPort}`, ...tlsLine, "}", "");
-      if (tls.tls !== "off") lines.push(`http://${hostname} {`, `  redir https://{host}${ports.httpsPort === 443 ? "" : `:${ports.httpsPort}`}{uri} 308`, "}", "");
+      lines.push(`${site} {`, `  reverse_proxy ${targetHost}:${tls.targetPort}`, ...tlsLine, "}", "");
+      if (tls.tls !== "off") lines.push(...redirect(hostname));
       continue;
     }
-    lines.push(`${tls.tls === "off" ? "http://" : ""}${hostname} {`, ...tlsLine, "  route {");
-    const ordered = [...hostRoutes].sort((a, b) => (a.match ?? "prefix") === (b.match ?? "prefix") ? (b.path ?? "/").length - (a.path ?? "/").length : (a.match ?? "prefix") === "exact" ? -1 : 1);
+    lines.push(`${site} {`, ...tlsLine, "  route {");
+    // Exact routes outrank prefixes; longer paths outrank shorter ones.
+    const exactRank = (route: ProxyRoute) => ((route.match ?? "prefix") === "exact" ? 1 : 0);
+    const ordered = [...hostRoutes].sort((a, b) => exactRank(b) - exactRank(a) || (b.path ?? "/").length - (a.path ?? "/").length);
+    const pathMatcher = (route: ProxyRoute): string => {
+      const routePath = route.path ?? "/";
+      if ((route.match ?? "prefix") === "exact") return routePath;
+      const prefix = routePath.replace(/\/$/, "");
+      return prefix ? `${prefix} ${prefix}/*` : "/*";
+    };
     ordered.forEach((route, index) => {
       const routePath = route.path ?? "/";
       const targetHost = route.targetHost === "::1" ? "[::1]" : route.targetHost;
-      const matcher = routePath === "/" && (route.match ?? "prefix") === "prefix" ? "/*" : (route.match ?? "prefix") === "exact" ? routePath : `${routePath.replace(/\/$/, "")} ${routePath.replace(/\/$/, "")}/*`;
+      const matcher = pathMatcher(route);
       lines.push(`    @route${index} path ${matcher}`, `    handle @route${index} {`, ...(route.stripPrefix ? [`      uri strip_prefix ${routePath.replace(/\/$/, "")}`] : []), `      reverse_proxy ${targetHost}:${route.targetPort}`, "    }");
     });
     lines.push("    handle {", "      respond 404", "    }", "  }", "}", "");
-    if (tls.tls !== "off") lines.push(`http://${hostname} {`, `  redir https://{host}${ports.httpsPort === 443 ? "" : `:${ports.httpsPort}`}{uri} 308`, "}", "");
+    if (tls.tls !== "off") lines.push(...redirect(hostname));
   }
-  if (hosts.size) lines.push("http:// {", "  respond 404", "}", "");
+  if (hosts.size) lines.push(`${plainHttpSite("")} {`, "  respond 404", "}", "");
   return lines.join("\n");
-}
-
-async function ipv6LoopbackAvailable(): Promise<boolean> {
-  const server = net.createServer();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "::1", resolve);
-    });
-    return true;
-  } catch { return false; }
-  finally { if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve())); }
 }
 
 /** TCP listener ports a rendered configuration binds: every site uses HTTP; TLS sites also use HTTPS. */
@@ -157,7 +187,7 @@ async function readAdminConfig(): Promise<unknown> {
 
 function canonicalJson(value: unknown): string {
   return JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item)
-    ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item);
+    ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => compareText(a, b))) : item);
 }
 
 export class CaddyProxyController {
@@ -231,7 +261,7 @@ export class CaddyProxyController {
   }
 
   public async available(): Promise<boolean> {
-    try { await execFileAsync("caddy", ["version"], { timeout: 5000 }); return true; } catch { return false; }
+    try { await execFileAsync(await caddyCommand(), ["version"], { timeout: 5000 }); return true; } catch { return false; }
   }
 
   private async readState(file: string): Promise<ProxyState | undefined> {
@@ -328,7 +358,7 @@ export class CaddyProxyController {
       const candidate = `${this.configPath}.preflight.${process.pid}.${randomUUID()}`;
       try {
         await writeFile(candidate, config, { mode: 0o600, flag: "wx" });
-        await execFileAsync("caddy", ["validate", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 });
+        await execFileAsync(await caddyCommand(), ["validate", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 });
       } catch (error) {
         throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Caddy rejected the proposed route configuration before replacement.",
           { cause: error instanceof Error ? error.message : String(error) });
@@ -340,7 +370,7 @@ export class CaddyProxyController {
     const live = await readAdminConfig();
     if (live === undefined) return false;
     try {
-      const adapted: unknown = JSON.parse((await execFileAsync("caddy", ["adapt", "--config", this.configPath, "--adapter", "caddyfile"], { timeout: 10_000 })).stdout);
+      const adapted: unknown = JSON.parse((await execFileAsync(await caddyCommand(), ["adapt", "--config", this.configPath, "--adapter", "caddyfile"], { timeout: 10_000 })).stdout);
       return canonicalJson(live) === canonicalJson(adapted);
     } catch { return false; }
   }
@@ -362,7 +392,7 @@ export class CaddyProxyController {
   private async instanceRoutesLiveLocked(instanceId: string, expected: readonly ProxyRoute[]): Promise<boolean> {
     const comparable = (routes: readonly ProxyRoute[]) => canonicalJson([...routes]
       .map(({ updatedAt: _updated, certificateDigest: _digest, ...route }) => route)
-      .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      .sort((a, b) => compareText(a.id, b.id)));
     try {
       const committed = await this.readState(this.statePath);
       const pending = await this.readState(this.pendingPath);
@@ -464,7 +494,7 @@ export class CaddyProxyController {
     for (const file of [this.statePath, this.pendingPath]) {
       for (const route of (await this.readState(file))?.routes ?? []) ids.add(route.instanceId);
     }
-    return [...ids].sort();
+    return [...ids].sort(compareText);
   }
 
   private async read(): Promise<ProxyState> {
@@ -509,6 +539,10 @@ export class CaddyProxyController {
       }
     }));
     if (!await this.available()) throw new ProxyError("DEVFN_PROXY_UNAVAILABLE", "Caddy is required for this profile but is unavailable.");
+    // One binary validates, reloads and runs this configuration.
+    let caddy: string;
+    try { caddy = await caddyCommand(); }
+    catch { throw new ProxyError("DEVFN_PROXY_UNAVAILABLE", "Caddy is required for this profile but is unavailable."); }
     for (const route of next.routes) {
       if (route.tls !== "certificate" || route.certificateDigest) continue;
       route.certificateDigest = await this.snapshotCertificate(route, changed.includes(route));
@@ -516,7 +550,7 @@ export class CaddyProxyController {
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
     const candidate = `${this.configPath}.candidate`;
     await writeFile(candidate, this.renderState(next, await ipv6LoopbackAvailable()), { encoding: "utf8", mode: 0o600 });
-    try { await execFileAsync("caddy", ["validate", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
+    try { await execFileAsync(caddy, ["validate", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
     catch (error) { await rm(candidate, { force: true }); throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Caddy rejected the generated route configuration.", { cause: error instanceof Error ? error.message : String(error) }); }
     let owner: ProxyOwner | null;
     try { owner = parseProxyOwner(await readFile(this.ownerPath, "utf8")); }
@@ -554,7 +588,7 @@ export class CaddyProxyController {
       await rename(pendingTemp, this.pendingPath);
     }
     if (owner) {
-      try { await execFileAsync("caddy", ["reload", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
+      try { await execFileAsync(caddy, ["reload", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
       catch (error) {
         await rm(candidate, { force: true });
         if (!recovering) await rm(this.pendingPath, { force: true });
@@ -590,7 +624,7 @@ export class CaddyProxyController {
       // confirmation listener and any connection Caddy opened to it.
       try {
         const pingbackAddress = pingback.address();
-        const child = spawn("caddy", ["run", "--config", candidate, "--adapter", "caddyfile", "--pingback", `127.0.0.1:${typeof pingbackAddress === "object" && pingbackAddress ? pingbackAddress.port : 0}`],
+        const child = spawn(caddy, ["run", "--config", candidate, "--adapter", "caddyfile", "--pingback", `127.0.0.1:${typeof pingbackAddress === "object" && pingbackAddress ? pingbackAddress.port : 0}`],
           { detached: process.platform !== "win32", stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
         child.stdin?.once("error", () => undefined);
         child.stdin?.end(nonce);

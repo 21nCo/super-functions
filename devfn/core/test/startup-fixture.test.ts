@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import { DevFnOrchestrator, readReceipt, resolveInstanceIdentity, resolveLocalHostname, writeReceipt } from "../src/index.js";
 
+const restorePath = (value: string | undefined) => { if (value === undefined) delete process.env.PATH; else process.env.PATH = value; };
 const execFileAsync = promisify(execFile);
 
 async function stopFixtureProxy(stateDir: string): Promise<void> {
@@ -94,7 +95,7 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
     try {
       process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
       await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
-    } finally { process.env.PATH = originalPath; }
+    } finally { restorePath(originalPath); }
     expect((await readReceipt(config, root, first.instanceId))?.state).toBe("ready");
     expect((await readReceipt(config, root, first.instanceId))?.invocationId).toBe(restarted.invocationId);
     expect(await fetch(`http://127.0.0.1:${restarted.allocations[0].port}/health`).then((response) => response.text())).toBe("ok");
@@ -119,7 +120,7 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
     try {
       process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
       await expect(orchestrator.up({ config, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
-    } finally { process.env.PATH = originalPath; }
+    } finally { restorePath(originalPath); }
     expect((await readReceipt(config, root, third.instanceId))?.invocationId).toBe(third.invocationId);
     expect((await readReceipt(config, root, third.instanceId))?.state).toBe("ready");
     expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")).routes[0].hostname).toBe(third.routes[0].hostname);
@@ -127,7 +128,7 @@ it.skipIf(process.env.DEVFN_REAL_PROXY !== "1")("replaces selected proxy routes 
     expect(withoutProxy.routes).toEqual([]);
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
   } finally {
-    process.env.PATH = originalPath;
+    restorePath(originalPath);
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
     await stopFixtureProxy(stateDir);
     await rm(root, { recursive: true, force: true });

@@ -15,6 +15,10 @@ it("keeps arbitrary domains out of manifest hostnames and restricts domain refer
   expect(registered.hostnames?.app.tls).toBeUndefined();
   expect(() => validateDevFnConfig(registered)).not.toThrow();
   expect(() => validateDevFnConfig(config({ domain: "example.test", host: "app.example" }))).toThrow(/one DNS label/);
+  expect(() => validateDevFnConfig(config({ domain: "example.localhost" }))).toThrow(/concrete registered domain/);
+  // A domain name longer than DNS allows fails like any other invalid name.
+  const oversized = `${Array.from({ length: 4 }, () => "a".repeat(63)).join(".")}.test`;
+  expect(() => validateDevFnConfig(config({ domain: oversized }))).toThrow(/concrete registered domain/);
 });
 
 it("rejects ambiguous URL paths and deceptive localhost policy suffixes", () => {
@@ -24,6 +28,13 @@ it("rejects ambiguous URL paths and deceptive localhost policy suffixes", () => 
   expect(validateDevFnPolicy({ version: 1, hostnameSuffix: ".Corp.localhost" }).hostnameSuffix).toBe(".Corp.localhost");
   expect(validateDevFnPolicy({ version: 1, hostnameSuffix: ".LOCALHOST" }).hostnameSuffix).toBe(".LOCALHOST");
   expect(() => validateDevFnPolicy({ version: 1, hostnameSuffix: ".Corp.localhost.evil.test" })).toThrow(/localhost/);
+  // The longest suffix still fits the shortest generated hostname.
+  const suffix = (length: number) => `.${"a".repeat(length - 11)}.localhost`;
+  expect(validateDevFnPolicy({ version: 1, hostnameSuffix: suffix(60) }).hostnameSuffix).toHaveLength(60);
+  const longest = `.${Array.from({ length: 3 }, () => "a".repeat(63)).join(".")}.${"b".repeat(26)}.localhost`;
+  expect(longest).toHaveLength(229);
+  expect(validateDevFnPolicy({ version: 1, hostnameSuffix: longest }).hostnameSuffix).toBe(longest);
+  expect(() => validateDevFnPolicy({ version: 1, hostnameSuffix: `.${Array.from({ length: 3 }, () => "a".repeat(63)).join(".")}.${"b".repeat(27)}.localhost` })).toThrow(/hostnameSuffix/);
 });
 
 it("validates inferred registered-domain labels while loading the manifest", () => {

@@ -27,27 +27,51 @@ import { ProcessSupervisor, processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController } from "@devfn/proxy";
 import { DevFnOrchestrator, readReceipt, recoverOrphanedProxyRoutes, resolveInstanceIdentity } from "../src/index.js";
 
-it("reports degraded for a dead Caddy owner, a lost listener or an interrupted route switch, and up repairs the switch", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-readiness-"));
+const CADDY_STUB = "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n";
+const SERVER = "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n";
+
+const processConfig = (proxy: boolean) => validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
+  processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
+    health: { type: "http", port: "app", timeoutMs: 20_000 } } },
+  profiles: { default: { processes: ["app"], proxy } }, ...(proxy ? { hostnames: { app: { target: "app" } } } : {}) });
+
+/**
+ * A state directory whose Caddy is a command stub on PATH and whose proxy
+ * owner is this live test process. restore() puts PATH back; the caller
+ * removes root.
+ */
+async function stubbedProxy(prefix: string) {
+  const root = await mkdtemp(path.join(tmpdir(), prefix));
   const stateDir = path.join(root, "state");
   const toolsDir = path.join(root, "tools");
+  const caddy = path.join(toolsDir, "caddy");
+  const ownerFile = path.join(stateDir, "proxy-owner.json");
   const originalPath = process.env.PATH;
-  const orchestrator = new DevFnOrchestrator();
-  const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
-    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
-      health: { type: "http", port: "app", timeoutMs: 20_000 } } },
-    profiles: { default: { processes: ["app"], proxy: true } }, hostnames: { app: { target: "app" } } });
-  try {
-    await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
-    await writeFile(path.join(root, "server.mjs"),
-      "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
-    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
-    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
-    const birthSignature = await processBirthSignature(process.pid);
-    if (!birthSignature) throw new Error("Fixture process has no birth signature.");
-    const ownerFile = path.join(stateDir, "proxy-owner.json");
-    await writeFile(ownerFile, JSON.stringify({ pid: process.pid, birthSignature }));
+  await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
+  await writeFile(path.join(root, "server.mjs"), SERVER);
+  await writeFile(caddy, CADDY_STUB, { mode: 0o700 });
+  process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+  const birthSignature = await processBirthSignature(process.pid);
+  if (!birthSignature) throw new Error("Fixture process has no birth signature.");
+  await writeFile(ownerFile, JSON.stringify({ pid: process.pid, birthSignature }));
+  const restore = () => { if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath; };
+  return { root, stateDir, toolsDir, caddy, ownerFile, birthSignature, originalPath, restore };
+}
 
+/** The identity of a process that has exited. Its exit is awaited from spawn, so a quick exit is never missed. */
+async function exitedProcess(): Promise<{ pid: number; birthSignature: string }> {
+  const child = execFile(process.execPath, ["-e", "setTimeout(() => undefined, 200)"]);
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  const birthSignature = await processBirthSignature(child.pid!);
+  await exited;
+  return { pid: child.pid!, birthSignature: birthSignature ?? "gone" };
+}
+
+it("reports degraded for a dead Caddy owner, a lost listener or an interrupted route switch, and up repairs the switch", async () => {
+  const { root, stateDir, ownerFile, birthSignature, restore } = await stubbedProxy("devfn-proxy-readiness-");
+  const orchestrator = new DevFnOrchestrator();
+  const config = processConfig(true);
+  try {
     const first = await orchestrator.up({ config, root, stateDir });
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
     listeners.accepting = false;
@@ -66,41 +90,23 @@ it("reports degraded for a dead Caddy owner, a lost listener or an interrupted r
     expect(committed.routes.filter((route) => route.instanceId === first.instanceId).map((route) => route.targetPort)).toEqual([repaired.allocations[0].port]);
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready", urls: repaired.urls });
 
-    const exited = execFile(process.execPath, ["-e", "setTimeout(() => undefined, 200)"]);
-    const exitedSignature = await processBirthSignature(exited.pid!);
-    await new Promise((resolve) => exited.once("exit", resolve));
-    await writeFile(ownerFile, JSON.stringify({ pid: exited.pid, birthSignature: exitedSignature ?? "gone" }));
+    await writeFile(ownerFile, JSON.stringify(await exitedProcess()));
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: false, state: "degraded", urls: {} });
     await writeFile(ownerFile, JSON.stringify({ pid: process.pid, birthSignature }));
     expect((await orchestrator.down({ config, root, stateDir })).state).toBe("stopped");
   } finally {
     listeners.accepting = true;
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
-    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+    restore();
     await rm(root, { recursive: true, force: true });
   }
 }, 60_000);
 
 it("removes routes preactivated by an interrupted replacement when the profile no longer selects a proxy", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-reverted-"));
-  const stateDir = path.join(root, "state");
-  const toolsDir = path.join(root, "tools");
-  const originalPath = process.env.PATH;
+  const { root, stateDir, restore } = await stubbedProxy("devfn-proxy-reverted-");
   const orchestrator = new DevFnOrchestrator();
-  const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
-    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
-      health: { type: "http", port: "app", timeoutMs: 20_000 } } },
-    profiles: { default: { processes: ["app"], proxy: false } } });
+  const config = processConfig(false);
   try {
-    await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
-    await writeFile(path.join(root, "server.mjs"),
-      "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
-    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
-    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
-    const birthSignature = await processBirthSignature(process.pid);
-    if (!birthSignature) throw new Error("Fixture process has no birth signature.");
-    await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
-
     const first = await orchestrator.up({ config, root, stateDir });
     expect(first.routes).toEqual([]);
     // A replacement that selected a proxy committed its route, then stopped
@@ -115,31 +121,16 @@ it("removes routes preactivated by an interrupted replacement when the profile n
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready" });
   } finally {
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
-    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+    restore();
     await rm(root, { recursive: true, force: true });
   }
 }, 60_000);
 
 it("keeps the original error when a replacement's route activation fails without changing route state", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-unchanged-rollback-"));
-  const stateDir = path.join(root, "state");
-  const toolsDir = path.join(root, "tools");
-  const originalPath = process.env.PATH;
+  const { root, stateDir, caddy, restore } = await stubbedProxy("devfn-proxy-unchanged-rollback-");
   const orchestrator = new DevFnOrchestrator();
-  const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
-    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
-      health: { type: "http", port: "app", timeoutMs: 20_000 } } },
-    profiles: { default: { processes: ["app"], proxy: true } }, hostnames: { app: { target: "app" } } });
-  const caddy = path.join(toolsDir, "caddy");
+  const config = processConfig(true);
   try {
-    await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
-    await writeFile(path.join(root, "server.mjs"),
-      "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
-    await writeFile(caddy, "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
-    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
-    const birthSignature = await processBirthSignature(process.pid);
-    if (!birthSignature) throw new Error("Fixture process has no birth signature.");
-    await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
     const first = await orchestrator.up({ config, root, stateDir });
     const committed = await readFile(path.join(stateDir, "proxy-routes.json"), "utf8");
     // Caddy now rejects every candidate before a route journal is written.
@@ -150,34 +141,23 @@ it("keeps the original error when a replacement's route activation fails without
     const invocations = (await new FilePortRegistry(path.join(stateDir, "registry.json")).read()).invocations;
     expect(invocations.filter((item) => item.proxyClaimRetained)).toEqual([]);
     expect(invocations.find((item) => item.id === first.invocationId)?.state).toBe("ready");
-    await writeFile(caddy, "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
+    await writeFile(caddy, CADDY_STUB, { mode: 0o700 });
     expect(await orchestrator.status({ config, root })).toMatchObject({ ok: true, state: "ready", urls: first.urls });
   } finally {
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
-    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+    restore();
     await rm(root, { recursive: true, force: true });
   }
 }, 60_000);
 
 it("removes routes only for instances with conclusive no-lifecycle evidence", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-orphans-"));
-  const stateDir = path.join(root, "state");
-  const toolsDir = path.join(root, "tools");
-  const originalPath = process.env.PATH;
+  const { root, stateDir, birthSignature, restore } = await stubbedProxy("devfn-proxy-orphans-");
   try {
-    await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
-    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
-    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
-    const birthSignature = await processBirthSignature(process.pid);
-    if (!birthSignature) throw new Error("Fixture process has no birth signature.");
-    await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
-    const exited = execFile(process.execPath, ["-e", "setTimeout(() => undefined, 200)"]);
-    const exitedSignature = await processBirthSignature(exited.pid!);
-    await new Promise((resolve) => exited.once("exit", resolve));
+    const exited = await exitedProcess();
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
     const ports: Record<string, number> = {};
     for (const instanceId of ["dead", "live", "orphan", "running"]) ports[instanceId] = await allocateEphemeralPort();
-    for (const [instanceId, owner] of [["dead", { pid: exited.pid!, birthSignature: exitedSignature ?? "gone" }], ["live", { pid: process.pid, birthSignature }]] as const) {
+    for (const [instanceId, owner] of [["dead", exited], ["live", { pid: process.pid, birthSignature }]] as const) {
       await registry.reserve({ projectId: "app", instanceId, invocationId: instanceId, profile: "default", requests: [{ name: "api", spec: { preferred: ports[instanceId], exact: true } }] });
       await registry.markActive(instanceId, { api: { process: owner } });
     }
@@ -193,7 +173,7 @@ it("removes routes only for instances with conclusive no-lifecycle evidence", as
     expect(committed.routes.map((route) => route.instanceId).sort()).toEqual(["live", "running"]);
     expect((await sibling())[0].port).toBe(ports.orphan);
   } finally {
-    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+    restore();
     await rm(root, { recursive: true, force: true });
   }
 }, 60_000);
@@ -208,7 +188,7 @@ it.skipIf(process.platform !== "darwin")("keeps the routes of an instance whose 
   const live = execFile(process.execPath, ["-e", "setInterval(() => undefined, 1000)"]);
   try {
     await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
-    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
+    await writeFile(path.join(toolsDir, "caddy"), CADDY_STUB, { mode: 0o700 });
     const birthSignature = await processBirthSignature(process.pid);
     if (!birthSignature) throw new Error("Fixture process has no birth signature.");
     await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
@@ -217,12 +197,10 @@ it.skipIf(process.platform !== "darwin")("keeps the routes of an instance whose 
       liveSignature = await processBirthSignature(live.pid!);
       if (!liveSignature) await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    const exited = execFile(process.execPath, ["-e", "setTimeout(() => undefined, 200)"]);
-    const exitedSignature = await processBirthSignature(exited.pid!);
-    await new Promise((resolve) => exited.once("exit", resolve));
+    const exited = await exitedProcess();
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
     const ports: Record<string, number> = {};
-    for (const [instanceId, owner] of [["dead", { pid: exited.pid!, birthSignature: exitedSignature ?? "gone" }], ["unverified", { pid: live.pid!, birthSignature: liveSignature! }]] as const) {
+    for (const [instanceId, owner] of [["dead", exited], ["unverified", { pid: live.pid!, birthSignature: liveSignature! }]] as const) {
       ports[instanceId] = await allocateEphemeralPort();
       await registry.reserve({ projectId: "app", instanceId, invocationId: instanceId, profile: "default", requests: [{ name: "api", spec: { preferred: ports[instanceId], exact: true } }] });
       await registry.markActive(instanceId, { api: { process: owner } });
@@ -281,10 +259,9 @@ for (const { kind, gated } of interruptions) {
     let receipt: Awaited<ReturnType<typeof readReceipt>>;
     try {
       await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
-      await writeFile(path.join(root, "server.mjs"),
-        "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
+      await writeFile(path.join(root, "server.mjs"), SERVER);
       await writeFile(path.join(root, "compose.yaml"), "services:\n  api:\n    image: busybox\n    command: [httpd, -f, -p, '80']\n");
-      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
+      await writeFile(path.join(toolsDir, "caddy"), CADDY_STUB, { mode: 0o700 });
       process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
       const birthSignature = await processBirthSignature(process.pid);
       if (!birthSignature) throw new Error("Fixture process has no birth signature.");
@@ -295,8 +272,10 @@ for (const { kind, gated } of interruptions) {
       let published!: () => void;
       const interrupted = new Promise<void>((resolve) => { published = resolve; });
       FilePortRegistry.prototype.markActive = async function () { published(); await new Promise(() => undefined); };
-      void new DevFnOrchestrator().up({ config, root, stateDir }).catch(() => undefined);
-      await interrupted;
+      // A start that fails before it publishes reports its own error here.
+      const up = new DevFnOrchestrator().up({ config, root, stateDir });
+      up.catch(() => undefined);
+      await Promise.race([interrupted, up.then(() => { throw new Error("The start was never interrupted."); })]);
       FilePortRegistry.prototype.markActive = markActive;
       receipt = await readReceipt(config, root, instanceId);
       expect(receipt?.state).toBe("starting");
@@ -329,24 +308,10 @@ for (const { kind, gated } of interruptions) {
 }
 
 it("recovers the routes of a ready lifecycle whose owner died after an earlier reconcile collected its leases", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "devfn-proxy-dead-ready-"));
-  const stateDir = path.join(root, "state");
-  const toolsDir = path.join(root, "tools");
-  const originalPath = process.env.PATH;
+  const { root, stateDir, restore } = await stubbedProxy("devfn-proxy-dead-ready-");
   const orchestrator = new DevFnOrchestrator();
-  const config = validateDevFnConfig({ version: 1, project: { id: "fixture" }, ports: { app: {} },
-    processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
-      health: { type: "http", port: "app", timeoutMs: 20_000 } } },
-    profiles: { default: { processes: ["app"], proxy: true } }, hostnames: { app: { target: "app" } } });
+  const config = processConfig(true);
   try {
-    await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
-    await writeFile(path.join(root, "server.mjs"),
-      "import { createServer } from 'node:http'; createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
-    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\ncase \"$1\" in version|validate|reload) exit 0;; esac\nexit 1\n", { mode: 0o700 });
-    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
-    const birthSignature = await processBirthSignature(process.pid);
-    if (!birthSignature) throw new Error("Fixture process has no birth signature.");
-    await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
     const ready = await orchestrator.up({ config, root, stateDir });
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
     await registry.reconcile();
@@ -360,7 +325,7 @@ it("recovers the routes of a ready lifecycle whose owner died after an earlier r
     expect(await routedInstances(stateDir)).toEqual([]);
   } finally {
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
-    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+    restore();
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }, 60_000);

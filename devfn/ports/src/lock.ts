@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { processBirthSignature, processIdentityStatus } from "@devfn/processes";
@@ -10,14 +10,19 @@ import { PortRegistryError } from "./types.js";
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const heldRoutingLocks = new AsyncLocalStorage<ReadonlySet<string>>();
 
+const ROUTING_LOCK_TIMEOUT_MS = 180_000;
+// A verified-dead holder's lock is recovered well within a waiter's budget.
+const ROUTING_LOCK_STALE_MS = 60_000;
+
 /** Serialize lease and route mutations, including a replacement's teardown. */
 export async function withRoutingLock<T>(stateDir: string, action: () => Promise<T>): Promise<T> {
-  const lockPath = path.resolve(stateDir, "routing.lock");
-  if (heldRoutingLocks.getStore()?.has(lockPath)) return await action();
   await mkdir(stateDir, { recursive: true, mode: 0o700 });
+  // Any spelling of the directory names the same lock for re-entry.
+  const lockPath = path.join(await realpath(stateDir), "routing.lock");
+  if (heldRoutingLocks.getStore()?.has(lockPath)) return await action();
   return await withFileLock(lockPath, async () =>
     await heldRoutingLocks.run(new Set([...(heldRoutingLocks.getStore() ?? []), lockPath]), action),
-  { timeoutMs: 180_000 });
+  { timeoutMs: ROUTING_LOCK_TIMEOUT_MS, staleMs: ROUTING_LOCK_STALE_MS });
 }
 
 export async function withFileLock<T>(lockPath: string, action: () => Promise<T>, options: { timeoutMs?: number; staleMs?: number } = {}): Promise<T> {

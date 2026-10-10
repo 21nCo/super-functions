@@ -59,12 +59,22 @@ const originalEnv = { ...process.env };
 const route = (instanceId: string, id = `${instanceId}-app`): Omit<ProxyRoute, "updatedAt"> =>
   ({ id, instanceId, hostname: `${id}.localhost`, targetHost: "127.0.0.1", targetPort: 4100, tls: "off" });
 
-async function stopOwner(): Promise<void> {
-  try {
-    const { pid } = JSON.parse(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")) as { pid: number };
-    try { process.kill(-pid, "SIGTERM"); } catch { process.kill(pid, "SIGTERM"); }
-    for (let attempt = 0; attempt < 50 && await isPortAvailable(2019) === false; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
-  } catch { /* no owner was started */ }
+/** Whether the Caddy admin port is free within a bounded wait. */
+async function adminPortReleased(): Promise<boolean> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (await isPortAvailable(2019)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return await isPortAvailable(2019);
+}
+
+/** Stop the recorded owner, if any; resolves whether the admin port was released. */
+async function stopOwner(): Promise<boolean> {
+  let pid: number;
+  try { ({ pid } = JSON.parse(await readFile(path.join(stateDir, "proxy-owner.json"), "utf8")) as { pid: number }); }
+  catch { return await adminPortReleased(); }
+  try { process.kill(-pid, "SIGTERM"); } catch { try { process.kill(pid, "SIGTERM"); } catch { /* already exited */ } }
+  return await adminPortReleased();
 }
 
 async function setUp(): Promise<void> {
@@ -97,16 +107,19 @@ exit 1
 async function tearDown(): Promise<void> {
   scan.unattributable = false;
   faults.ownerWrite = false;
-  await stopOwner();
+  const released = await stopOwner();
   process.env = { ...originalEnv };
   await rm(stateDir, { recursive: true, force: true });
   await rm(toolsDir, { recursive: true, force: true });
+  // A Caddy a fixture leaked would hold the admin port for the next one.
+  expect(released).toBe(true);
 }
 
 // The controller's admin endpoint is fixed at 127.0.0.1:2019. Fixtures in
 // other DevFn packages that need it free take the same machine-wide lock.
 function adminTest(name: string, body: () => Promise<void>): void {
   it(name, async () => await withFileLock(path.join(tmpdir(), "devfn-test-caddy-admin.lock"), async () => {
+    expect.hasAssertions();
     await setUp();
     try { await body(); } finally { await tearDown(); }
   }, { timeoutMs: 120_000 }), 150_000);
@@ -198,7 +211,7 @@ adminTest("closes its startup confirmation listener when the owner record cannot
   expect(servers.length).toBeGreaterThan(0);
   expect(servers.filter((server) => server.listening)).toEqual([]);
   await expect(access(path.join(stateDir, "proxy-routes.json"))).rejects.toMatchObject({ code: "ENOENT" });
-  for (let attempt = 0; attempt < 50 && await isPortAvailable(2019) === false; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(await adminPortReleased()).toBe(true);
 });
 
 adminTest("returns a failed Caddy start only after the spawned Caddy and its listeners are gone", async () => {

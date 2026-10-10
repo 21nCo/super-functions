@@ -1,7 +1,6 @@
 import { createPrivateKey, createPublicKey, X509Certificate } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
-import net from "node:net";
+import net, { isIP } from "node:net";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -44,7 +43,8 @@ function loopback(address: string): boolean {
   return address === "127.0.0.1" || (isIP(address) === 6 && (address === "::1" || address.toLowerCase() === "0:0:0:0:0:0:0:1"));
 }
 
-async function ipv6LoopbackAvailable(): Promise<boolean> {
+/** Whether this host can bind the IPv6 loopback address. */
+export async function ipv6LoopbackAvailable(): Promise<boolean> {
   const server = net.createServer();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -128,6 +128,20 @@ async function writeDomains(stateDir: string, domains: RegisteredDomain[]): Prom
   } finally { await rm(temp, { force: true }); }
 }
 
+function sameRegistration(a: RegisteredDomain, b: RegisteredDomain): boolean {
+  return a.domain === b.domain && a.projectId === b.projectId && a.repositoryIdentity === b.repositoryIdentity &&
+    a.tls === b.tls && a.certificateFile === b.certificateFile && a.keyFile === b.keyFile;
+}
+
+/** A repository's canonical identity; a deleted or moved one keeps the path it was given. */
+async function repositoryIdentityOf(repositoryIdentity: string): Promise<string> {
+  try { return await realpath(repositoryIdentity); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return path.resolve(repositoryIdentity);
+    throw error;
+  }
+}
+
 export async function registerDomain(stateDir: string, entry: RegisteredDomain, resolve: typeof lookup = lookup): Promise<RegisteredDomain> {
   await mkdir(stateDir, { recursive: true, mode: 0o700 });
   const domain = normalizeDomain(entry.domain);
@@ -144,7 +158,7 @@ export async function registerDomain(stateDir: string, entry: RegisteredDomain, 
     const domains = await readRegisteredDomains(stateDir);
     const existing = domains.find((item) => item.domain === domain);
     if (existing) {
-      if (JSON.stringify(existing) === JSON.stringify(canonical)) return existing;
+      if (sameRegistration(existing, canonical)) return existing;
       throw new DomainError("DEVFN_DOMAIN_IN_USE", `Domain ${domain} is already registered.`);
     }
     if (domains.some((item) => domainContains(item.domain, domain) || domainContains(domain, item.domain))) {
@@ -157,12 +171,12 @@ export async function registerDomain(stateDir: string, entry: RegisteredDomain, 
 
 export async function unregisterDomain(stateDir: string, domain: string, projectId: string, repositoryIdentity: string): Promise<void> {
   normalizeDomain(domain);
-  const canonicalRepositoryIdentity = await realpath(repositoryIdentity);
+  const canonicalRepositoryIdentity = await repositoryIdentityOf(repositoryIdentity);
   await mkdir(stateDir, { recursive: true, mode: 0o700 });
   await withRoutingLock(stateDir, async () => await withFileLock(path.join(stateDir, "proxy.lock"), async () => {
     const domains = await readRegisteredDomains(stateDir);
     const entry = domains.find((item) => item.domain === domain);
-    if (!entry || entry.projectId !== projectId || entry.repositoryIdentity !== canonicalRepositoryIdentity) throw new DomainError("DEVFN_DOMAIN_UNREGISTERED", `Domain ${domain} is not registered to this repository.`);
+    if (entry?.projectId !== projectId || entry.repositoryIdentity !== canonicalRepositoryIdentity) throw new DomainError("DEVFN_DOMAIN_UNREGISTERED", `Domain ${domain} is not registered to this repository.`);
     for (const file of ["proxy-routes.json", "proxy-routes.pending.json"]) {
       let routes: unknown;
       try { routes = JSON.parse(await readFile(path.join(stateDir, file), "utf8")); }

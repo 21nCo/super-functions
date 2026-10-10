@@ -54,7 +54,7 @@ describe("process identity", () => {
       const managed = { name: "app", pid: child.pid!, command: [], cwd: tmpdir(), logPath: "", startedAt: new Date().toISOString() };
       await expect(new ProcessSupervisor().stop(managed)).rejects.toMatchObject({ code: "DEVFN_PROCESS_IDENTITY_UNVERIFIED" });
       expect(await new ProcessSupervisor().status(managed)).toBe("unverified");
-      expect(child.exitCode).toBeNull();
+      expect(processExists(child.pid!)).toBe(true);
     } finally { child.kill("SIGKILL"); }
   });
 
