@@ -98,7 +98,11 @@ export async function processIdentityStatus(pid: number, signature?: string, rec
     const start = await darwinStartTime(pid, { ...process.env, ...PINNED_PS_ENVIRONMENT }).catch(() => undefined);
     return processExists(pid) ? classifyLegacyDarwinIdentity(start, recordedAt) : "exited";
   }
-  return classifyProcessIdentity(true, signature, signature ? await processBirthSignature(pid) : undefined);
+  const current = signature ? await processBirthSignature(pid) : undefined;
+  // A signature that cannot be read from a process that exited meanwhile is
+  // not an unverified owner.
+  if (signature && current === undefined && !processExists(pid)) return "exited";
+  return classifyProcessIdentity(true, signature, current);
 }
 
 export type ProcessGroupStatus = "running" | "unverified" | "exited" | "identity-mismatch";

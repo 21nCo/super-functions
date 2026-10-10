@@ -934,39 +934,70 @@ describe("ComposeController", () => {
 
 
     const calls: string[][] = [];
-    const docker = (found: string) => stubbed(async (_file, args) => {
-      calls.push(args);
-      if (args[0] === "ps") return { stdout: found, stderr: "" };
-      return { stdout: "", stderr: "" };
-    });
+    // A Docker daemon model: ps lists each container with its state, stop and
+    // rm act on it, and onScan lets a test finish a request the killed
+    // launcher already sent.
+    const docker = (initial: Array<[id: string, lifecycle: string, state: string]>, onScan?: (scan: number, containers: Map<string, { lifecycle: string; state: string }>) => void) => {
+      const containers = new Map(initial.map(([id, lifecycle, state]) => [id, { lifecycle, state }]));
+      let scan = 0;
+      return stubbed(async (_file, args) => {
+        calls.push(args);
+        if (args[0] === "ps") {
+          onScan?.(scan++, containers);
+          return { stdout: [...containers].map(([id, { lifecycle, state }]) => `${id}\t${lifecycle}\t${state}\n`).join(""), stderr: "" };
+        }
+        for (const id of args.slice(args[0] === "rm" ? 2 : 1)) {
+          if (args[0] === "stop" && containers.has(id)) containers.get(id)!.state = "exited";
+          if (args[0] === "rm") containers.delete(id);
+        }
+        return { stdout: "", stderr: "" };
+      });
+    };
     const base = { name: "db", projectName: "devfn-owner", composeService: "db", dockerEnvironment: { DOCKER_HOST: "unix:///fixture.sock" } };
     const actions = () => calls.filter((args) => args[0] !== "ps");
+    const scans = () => calls.filter((args) => args[0] === "ps").length;
     // A sibling lifecycle sharing the project and service is never matched.
-    await docker("fresh-a\tdb\nsibling\tother\nfresh-b\tdb\n").stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] });
+    await docker([["fresh-a", "db", "running"], ["sibling", "other", "running"], ["fresh-b", "db", "exited"]]).stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] });
     expect(calls[0]).toEqual(["ps", "-a", "--no-trunc", "--filter", "label=com.docker.compose.project=devfn-owner", "--filter", "label=com.docker.compose.service=db",
-      "--format", '{{.ID}}\t{{.Label "devfn.lifecycle"}}']);
+      "--format", '{{.ID}}\t{{.Label "devfn.lifecycle"}}\t{{.State}}']);
     expect(actions()).toEqual([["stop", "fresh-a", "fresh-b"], ["rm", "-f", "fresh-a", "fresh-b"]]);
+    expect(scans()).toBe(2);
 
-    // A reused service keeps the container that ran before the launch.
+    // A reused service keeps the container that ran before the launch, and
+    // stops one the launch started.
     calls.length = 0;
-    await docker("ran-before\t\nstopped-before\t\nnew\tdb\n").stopLaunch({ ...base, preExisting: true, existingContainerIds: ["ran-before", "stopped-before"], runningContainerIds: ["ran-before"] });
+    await docker([["ran-before", "", "running"], ["stopped-before", "", "running"], ["never-started", "", "exited"], ["new", "db", "created"]])
+      .stopLaunch({ ...base, preExisting: true, existingContainerIds: ["ran-before", "stopped-before", "never-started"], runningContainerIds: ["ran-before"] });
     expect(actions()).toEqual([["stop", "stopped-before", "new"], ["rm", "-f", "new"]]);
+
+    // A start request the killed launcher already sent restarts a container
+    // the first pass stopped: a later pass re-reads its state and stops it
+    // again, and the launch resolves only after a quiet pass.
+    calls.length = 0;
+    await docker([["stopped-before", "", "running"]], (scan, containers) => { if (scan === 1) containers.get("stopped-before")!.state = "running"; })
+      .stopLaunch({ ...base, preExisting: true, existingContainerIds: ["stopped-before"], runningContainerIds: [] });
+    expect(actions()).toEqual([["stop", "stopped-before"], ["stop", "stopped-before"]]);
+    expect(scans()).toBe(3);
 
     // A container Docker creates for a request the killed launcher already
     // sent is found by a later scan and stopped too.
     calls.length = 0;
-    const scans = ["early\tdb\n", "early\tdb\nlate\tdb\n"];
-    await stubbed(async (_file, args) => {
-      calls.push(args);
-      return { stdout: args[0] === "ps" ? scans.shift() ?? "early\tdb\nlate\tdb\n" : "", stderr: "" };
-    }).stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] });
+    await docker([["early", "db", "running"]], (scan, containers) => { if (scan === 1) containers.set("late", { lifecycle: "db", state: "running" }); })
+      .stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] });
     expect(actions()).toEqual([["stop", "early"], ["rm", "-f", "early"], ["stop", "late"], ["rm", "-f", "late"]]);
-    expect(calls.filter((args) => args[0] === "ps")).toHaveLength(3);
+    expect(scans()).toBe(3);
 
-    // A launch that never stops creating containers is not resolved.
+    // A launch that keeps starting what was stopped is not resolved.
+    calls.length = 0;
+    await expect(docker([["stopped-before", "", "running"]], (_scan, containers) => { containers.get("stopped-before")!.state = "running"; })
+      .stopLaunch({ ...base, preExisting: true, existingContainerIds: ["stopped-before"], runningContainerIds: [] })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_STOP_FAILED" });
+    // Neither is one that never stops creating containers.
     let created = 0;
-    await expect(stubbed(async (_file, args) => ({ stdout: args[0] === "ps" ? `${Array.from({ length: ++created }, (_, index) => `c${index}\tdb`).join("\n")}\n` : "", stderr: "" }))
+    await expect(docker([], (_scan, containers) => { containers.set(`c${created++}`, { lifecycle: "db", state: "running" }); })
       .stopLaunch({ ...base, preExisting: false, existingContainerIds: [], runningContainerIds: [] })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_STOP_FAILED" });
+    // A container in a state Docker does not report as stopped may be running.
+    await expect(docker([["stopped-before", "", ""]], (_scan, containers) => { containers.get("stopped-before")!.state = ""; })
+      .stopLaunch({ ...base, preExisting: true, existingContainerIds: ["stopped-before"], runningContainerIds: [] })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_STOP_FAILED" });
 
     // An unreachable Docker endpoint proves nothing about what the launch started.
     await expect(stubbed(async () => { throw new Error("Cannot connect to the Docker daemon"); })

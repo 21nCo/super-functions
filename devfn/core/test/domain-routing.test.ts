@@ -39,8 +39,9 @@ const withoutPhysicalProxyPreflight = async <T>(action: () => Promise<T>): Promi
   try { return await action(); } finally { preflight.mockRestore(); available.mockRestore(); }
 };
 
-const serverScript = (body: string) =>
-  `import { createServer } from 'node:http'; createServer((_request, response) => response.end(${JSON.stringify(body)})).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n`;
+// Fixture scripts name their files relative to themselves rather than
+// embedding paths or bodies in generated source.
+const serverScript = "import { readFileSync } from 'node:fs'; import { createServer } from 'node:http'; const body = readFileSync(new URL('body.txt', import.meta.url), 'utf8'); createServer((_request, response) => response.end(body)).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n";
 
 /** A one-process manifest whose server answers body over HTTP; the caller removes root. */
 async function processFixture(prefix: string, options: { body?: string; script?: string; timeoutMs?: number; proxy?: boolean } = {}) {
@@ -49,7 +50,8 @@ async function processFixture(prefix: string, options: { body?: string; script?:
     processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"],
       health: { type: "http", port: "app", timeoutMs: options.timeoutMs ?? 5000 } } },
     profiles: { default: { processes: ["app"], ...(options.proxy === undefined ? {} : { proxy: options.proxy }) } } });
-  await writeFile(path.join(root, "server.mjs"), options.script ?? serverScript(options.body ?? "ready"));
+  await writeFile(path.join(root, "body.txt"), options.body ?? "ready");
+  await writeFile(path.join(root, "server.mjs"), options.script ?? serverScript);
   return { root, stateDir: path.join(root, "state"), config, orchestrator: new DevFnOrchestrator() };
 }
 
@@ -66,8 +68,11 @@ async function waitForFile(file: string): Promise<void> {
 // until that work is released, so this bound is never reached by a correct
 // run, however loaded the host.
 const SIBLING_BOUND_MS = 20_000;
-const settledWithin = async (operation: Promise<unknown>): Promise<boolean> =>
-  await Promise.race([operation.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), SIBLING_BOUND_MS))]);
+const settledWithin = async (operation: Promise<unknown>): Promise<boolean> => {
+  let timer: NodeJS.Timeout | undefined;
+  try { return await Promise.race([operation.then(() => true), new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), SIBLING_BOUND_MS); })]); }
+  finally { clearTimeout(timer); }
+};
 
 it("protects Caddy listener ports for selected proxy routes while preserving no-proxy v0.1 ports", async () => await withCaddyAdminPort(async () => await withoutPhysicalProxyPreflight(async () => {
   const root = await mkdtemp(path.join(tmpdir(), "devfn-listener-reservation-"));
@@ -438,7 +443,7 @@ it("keeps replacement ports leased through sibling reconciliation while replacem
   const { root, stateDir, orchestrator, config: original } = await processFixture("devfn-reconcile-replacement-", { body: "old" });
   const marker = path.join(root, "replacement-started");
   try {
-    await writeFile(path.join(root, "failed.mjs"), `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'started'); setTimeout(() => process.exit(1), 1800);\n`);
+    await writeFile(path.join(root, "failed.mjs"), "import { writeFileSync } from 'node:fs'; writeFileSync(new URL('replacement-started', import.meta.url), 'started'); setTimeout(() => process.exit(1), 1800);\n");
     const first = await orchestrator.up({ config: original, root, stateDir });
     const replacement = validateDevFnConfig({ ...original,
       processes: { app: { ...original.processes!.app, command: [process.execPath, "failed.mjs"] } } });
@@ -542,15 +547,15 @@ it("lets a sibling reserve a port while another worktree waits for readiness", a
   const root = await mkdtemp(path.join(tmpdir(), "devfn-slow-readiness-"));
   const stateDir = path.join(root, "state");
   const marker = path.join(root, "starting");
+  const release = path.join(root, "release");
   const siblingRoot = path.join(root, "sibling");
   const config = validateDevFnConfig({ version: 1, project: { id: "slow" }, ports: { app: {} },
-    processes: { app: { adapter: "command", command: [process.execPath, "slow.mjs", marker], ports: ["app"],
+    processes: { app: { adapter: "command", command: [process.execPath, "slow.mjs", marker, release], ports: ["app"],
       health: { type: "http", port: "app", timeoutMs: 30_000 } } }, profiles: { default: { processes: ["app"] } } });
   const orchestrator = new DevFnOrchestrator();
   const siblingConfig = validateDevFnConfig({ version: 1, project: { id: "sibling" }, ports: { web: {} },
     processes: { web: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["web"],
       health: { type: "http", port: "web", timeoutMs: 5000 } } }, profiles: { default: { processes: ["web"] } } });
-  const release = path.join(root, "release");
   let pending: Promise<unknown> | undefined;
   try {
     await mkdir(siblingRoot);
@@ -559,7 +564,7 @@ it("lets a sibling reserve a port while another worktree waits for readiness", a
     const siblingReady = await orchestrator.up({ config: siblingConfig, root: siblingRoot, stateDir });
     // The process becomes ready only once the sibling operations finished.
     await writeFile(path.join(root, "slow.mjs"),
-      `import { existsSync, writeFileSync } from 'node:fs'; import { createServer } from 'node:http'; writeFileSync(process.argv[2], 'starting'); const wait = setInterval(() => { if (!existsSync(${JSON.stringify(release)})) return; clearInterval(wait); createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1'); }, 20);\n`);
+      "import { existsSync, writeFileSync } from 'node:fs'; import { createServer } from 'node:http'; writeFileSync(process.argv[2], 'starting'); const wait = setInterval(() => { if (!existsSync(process.argv[3])) return; clearInterval(wait); createServer((_request, response) => response.end('ready')).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1'); }, 20);\n");
     pending = orchestrator.up({ config, root, stateDir });
     await waitForFile(marker);
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
@@ -586,13 +591,14 @@ it("does not hold the shared routing lock during a prior health probe", async ()
   const probeStarted = path.join(root, "probe-started");
   const slow = path.join(root, "slow-health");
   const release = path.join(root, "release");
+  let pending: Promise<unknown> | undefined;
   try {
     // Once slow exists, each health response waits until release exists.
     await writeFile(path.join(root, "server.mjs"),
-      `import { existsSync, writeFileSync } from 'node:fs'; import { createServer } from 'node:http'; createServer((_request, response) => { if (!existsSync(${JSON.stringify(slow)})) { response.end('ok'); return; } writeFileSync(${JSON.stringify(probeStarted)}, 'started'); const wait = setInterval(() => { if (existsSync(${JSON.stringify(release)})) { clearInterval(wait); response.end('ok'); } }, 20); }).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n`);
+      "import { existsSync, writeFileSync } from 'node:fs'; import { createServer } from 'node:http'; const at = (name) => new URL(name, import.meta.url); createServer((_request, response) => { if (!existsSync(at('slow-health'))) { response.end('ok'); return; } writeFileSync(at('probe-started'), 'started'); const wait = setInterval(() => { if (existsSync(at('release'))) { clearInterval(wait); response.end('ok'); } }, 20); }).listen(Number(process.env.DEVFN_PORT_APP), '127.0.0.1');\n");
     const first = await orchestrator.up({ config, root, stateDir });
     await writeFile(slow, "1");
-    const pending = orchestrator.up({ config, root, stateDir });
+    pending = orchestrator.up({ config, root, stateDir });
     await waitForFile(probeStarted);
     const siblingPort = await allocateEphemeralPort();
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
@@ -603,6 +609,8 @@ it("does not hold the shared routing lock during a prior health probe", async ()
     await expect(pending).rejects.toMatchObject({ code: "DEVFN_ALREADY_RUNNING" });
     expect((await readReceipt(config, root, first.instanceId))?.state).toBe("ready");
   } finally {
+    await writeFile(release, "1").catch(() => undefined);
+    await pending?.catch(() => undefined);
     await orchestrator.down({ config, root, stateDir }).catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }

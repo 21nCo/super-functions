@@ -47,14 +47,21 @@ async function stubbedProxy(prefix: string) {
   const caddy = path.join(toolsDir, "caddy");
   const ownerFile = path.join(stateDir, "proxy-owner.json");
   const originalPath = process.env.PATH;
-  await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
-  await writeFile(path.join(root, "server.mjs"), SERVER);
-  await writeFile(caddy, CADDY_STUB, { mode: 0o700 });
-  process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
-  const birthSignature = await processBirthSignature(process.pid);
-  if (!birthSignature) throw new Error("Fixture process has no birth signature.");
-  await writeFile(ownerFile, JSON.stringify({ pid: process.pid, birthSignature }));
   const restore = () => { if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath; };
+  let birthSignature: string | undefined;
+  try {
+    await Promise.all([mkdir(stateDir), mkdir(toolsDir)]);
+    await writeFile(path.join(root, "server.mjs"), SERVER);
+    await writeFile(caddy, CADDY_STUB, { mode: 0o700 });
+    process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+    birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Fixture process has no birth signature.");
+    await writeFile(ownerFile, JSON.stringify({ pid: process.pid, birthSignature }));
+  } catch (error) {
+    restore();
+    await rm(root, { recursive: true, force: true });
+    throw error;
+  }
   return { root, stateDir, toolsDir, caddy, ownerFile, birthSignature, originalPath, restore };
 }
 

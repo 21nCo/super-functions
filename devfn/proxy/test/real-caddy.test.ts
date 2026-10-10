@@ -29,8 +29,12 @@ async function freePort(): Promise<number> {
   return port;
 }
 
+/** An upstream that answers with the path it received, as plain text. */
 async function upstream(): Promise<{ server: http.Server; port: number }> {
-  const server = http.createServer((request, response) => { response.end(request.url); });
+  const server = http.createServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff" });
+    response.end(request.url);
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   return { server, port: typeof address === "object" && address ? address.port : 0 };

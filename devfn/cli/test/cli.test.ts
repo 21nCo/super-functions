@@ -30,6 +30,8 @@ describe("devfn CLI", () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-domain-list-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-domain-state-"));
     try {
+      // Reading this malformed registry would fail with another error.
+      await writeFile(path.join(stateDir, "domains.json"), "{");
       await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({ version: 1, project: { id: "fixture" }, profiles: { default: {} } }));
       let output = "";
       expect(await runCli(["domains", "list", "typo", "--trust", "--json", "--state-dir", stateDir],

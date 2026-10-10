@@ -20,7 +20,8 @@ export async function signalProcessGroup(pid: number, force: boolean): Promise<v
     return;
   }
   // The system copy, never one found through PATH.
-  const taskkill = path.win32.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe");
+  const systemRoot = process.env.SystemRoot;
+  const taskkill = path.win32.join(systemRoot && path.win32.isAbsolute(systemRoot) ? systemRoot : "C:\\Windows", "System32", "taskkill.exe");
   await new Promise<void>((resolve, reject) => {
     const child = spawn(taskkill, ["/pid", String(pid), "/T", ...(force ? ["/F"] : [])], { stdio: "ignore", windowsHide: true });
     child.once("error", reject);

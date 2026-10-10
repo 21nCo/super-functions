@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { processBirthSignature, processIdentityStatus } from "@devfn/processes";
@@ -31,21 +31,23 @@ export async function withFileLock<T>(lockPath: string, action: () => Promise<T>
   const token = randomUUID();
   const ownerBirth = await processBirthSignature(process.pid);
   const deadline = Date.now() + timeoutMs;
-  while (true) {
-    try {
-      await mkdir(lockPath);
-      const ownerTemp = `${lockPath}/owner.${token}.tmp`;
-      try {
-        await writeFile(ownerTemp, JSON.stringify({ token, pid: process.pid, birthSignature: ownerBirth, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
-        await rename(ownerTemp, `${lockPath}/owner.json`);
-      } catch (error) {
-        await rm(lockPath, { recursive: true, force: true });
-        throw error;
-      }
-      break;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST") throw error;
+  // The lock directory appears only by renaming a staged directory that
+  // already holds its owner record, so a lock is never ownerless while its
+  // creator runs, and a creator never removes a lock it does not hold. An
+  // ownerless lock is left only by an earlier release.
+  const staged = `${lockPath}.acquire.${token}`;
+  await mkdir(staged, { mode: 0o700 });
+  try {
+    await writeFile(path.join(staged, "owner.json"), JSON.stringify({ token, pid: process.pid, birthSignature: ownerBirth, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
+  } catch (error) {
+    await rm(staged, { recursive: true, force: true });
+    throw error;
+  }
+  let acquired = false;
+  try {
+    while (true) {
+      acquired = await claimStagedLock(staged, lockPath);
+      if (acquired) break;
       let recover = false;
       let observedToken = "ownerless";
       try {
@@ -72,6 +74,8 @@ export async function withFileLock<T>(lockPath: string, action: () => Promise<T>
       if (Date.now() >= deadline) throw new PortRegistryError("DEVFN_REGISTRY_LOCK_TIMEOUT", `Timed out acquiring registry lock ${lockPath}.`);
       await delay(20 + Math.floor(Math.random() * 20));
     }
+  } finally {
+    if (!acquired) await rm(staged, { recursive: true, force: true });
   }
   try { return await action(); }
   finally {
@@ -79,5 +83,26 @@ export async function withFileLock<T>(lockPath: string, action: () => Promise<T>
       const owner = JSON.parse(await readFile(`${lockPath}/owner.json`, "utf8")) as { token?: string };
       if (owner.token === token) await rm(lockPath, { recursive: true, force: true });
     } catch { /* Never remove a lock whose ownership cannot be proven. */ }
+  }
+}
+
+/** Rename a staged lock into place unless a lock already exists. */
+async function claimStagedLock(staged: string, lockPath: string): Promise<boolean> {
+  // POSIX rename replaces an empty directory, which may be an earlier
+  // release's lock between its mkdir and owner write, so an existing lock is
+  // never renamed over.
+  try {
+    await lstat(lockPath);
+    return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  try {
+    await rename(staged, lockPath);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EEXIST" || code === "ENOTEMPTY" || (code === "EPERM" && process.platform === "win32")) return false;
+    throw error;
   }
 }

@@ -35,7 +35,7 @@ async function stubbedCaddyState(prefix: string): Promise<{ stateDir: string; cl
   };
 }
 
-// A resolver that never answers for a name, independent of the host's DNS.
+// A resolver that fails every lookup with ENOTFOUND, independent of the host's DNS.
 const unresolvable = (async () => { throw Object.assign(new Error("not found"), { code: "ENOTFOUND" }); }) as never;
 
 describe("Caddy route rendering", () => {
@@ -151,9 +151,9 @@ describe("Caddy route rendering", () => {
       await controller.upsert([sibling]);
       const activation = controller.upsert([stalled]);
       await lookupStarted;
-      const cleanup = controller.removeInstance("sibling");
+      const siblingRemoval = controller.removeInstance("sibling");
       await expect(activation).rejects.toMatchObject({ code: "DEVFN_DOMAIN_DNS_INVALID" });
-      await expect(cleanup).resolves.toBeUndefined();
+      await expect(siblingRemoval).resolves.toBeUndefined();
       expect(await controller.routes()).toEqual([]);
     } finally { await cleanup(); }
   });

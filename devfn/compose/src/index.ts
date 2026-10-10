@@ -16,6 +16,9 @@ const COMPOSE_SOURCE_BUDGET_MS = 20_000;
 // Scans of an interrupted launch's containers before new ones count as a
 // launch that never settles.
 const LAUNCH_SCAN_PASSES = 5;
+// Docker states in which a container runs nothing; any other or unknown state
+// may be running.
+const STOPPED_CONTAINER_STATES = new Set(["created", "exited", "dead"]);
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const INHERITED_COMPOSE_ENV_KEYS = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "XDG_RUNTIME_DIR", "SystemRoot", "ComSpec", "PATHEXT"] as const;
 
@@ -1626,9 +1629,11 @@ export class ComposeController {
    * recorded launch would leave them. The label scan is conclusive only once
    * nothing more can be created: a recorded launcher must be stopped by its
    * verified identity and every process it started gone; an unrecorded
-   * launcher never ran. Docker may still finish a request a killed launcher
-   * already sent, so the scan repeats after a settle period until it finds
-   * nothing new.
+   * launcher never ran. Docker may still finish a create or start request a
+   * killed launcher already sent, even for a container an earlier pass
+   * stopped, so every pass re-reads the state of every matching container and
+   * the launch resolves only after a settle period in which none it created
+   * remains and none it started is running.
    */
   public async stopLaunch(launch: ComposeLaunch): Promise<void> {
     if (launch.launcher) {
@@ -1640,33 +1645,31 @@ export class ComposeController {
     }
     const existing = new Set(launch.existingContainerIds);
     const running = new Set(launch.runningContainerIds);
-    const stopped = new Set<string>();
     for (let pass = 0; pass < LAUNCH_SCAN_PASSES; pass += 1) {
-      const scanned = (await this.launchContainers(launch)).filter(({ id }) => !stopped.has(id));
-      if (pass > 0 && scanned.length === 0) return;
+      const scanned = await this.launchContainers(launch);
       const created = scanned.filter(({ id, lifecycle }) => lifecycle === launch.name && !existing.has(id)).map(({ id }) => id);
-      const started = launch.preExisting ? scanned.filter(({ id }) => existing.has(id) && !running.has(id)).map(({ id }) => id)
+      const started = launch.preExisting ? scanned.filter(({ id, state }) => existing.has(id) && !running.has(id) && !STOPPED_CONTAINER_STATES.has(state)).map(({ id }) => id)
         : scanned.filter(({ lifecycle }) => lifecycle === launch.name).map(({ id }) => id);
+      if (pass > 0 && created.length === 0 && started.length === 0) return;
       await this.stop({
         name: launch.name, composeService: launch.composeService, projectName: launch.projectName, files: [], containerIds: [...new Set([...started, ...created])],
         preExisting: launch.preExisting, wasRunning: false, startedAt: new Date(0).toISOString(),
         startedContainerIds: started, createdContainerIds: launch.preExisting ? created : started,
         ...(launch.dockerEnvironment !== undefined ? { dockerEnvironment: launch.dockerEnvironment } : {}),
       });
-      for (const { id } of scanned) stopped.add(id);
       await delay(this.launchSettleMs);
     }
-    throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `Containers of the interrupted launch of Compose service ${launch.name} kept appearing; stop what creates them, then rerun devfn down.`);
+    throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `Containers of the interrupted launch of Compose service ${launch.name} kept appearing or starting; stop what creates or starts them, then rerun devfn down.`);
   }
 
-  private async launchContainers(launch: ComposeLaunch): Promise<Array<{ id: string; lifecycle: string }>> {
+  private async launchContainers(launch: ComposeLaunch): Promise<Array<{ id: string; lifecycle: string; state: string }>> {
     try {
       const { stdout } = await this.run("docker", ["ps", "-a", "--no-trunc", "--filter", `label=com.docker.compose.project=${launch.projectName}`,
-        "--filter", `label=com.docker.compose.service=${launch.composeService}`, "--format", '{{.ID}}\t{{.Label "devfn.lifecycle"}}'],
+        "--filter", `label=com.docker.compose.service=${launch.composeService}`, "--format", '{{.ID}}\t{{.Label "devfn.lifecycle"}}\t{{.State}}'],
       { env: directDockerEnvironment(launch.dockerEnvironment), timeout: 10_000, maxBuffer: 1024 * 1024 });
       return stdout.split("\n").filter((line) => line.trim()).map((line) => {
-        const [id, lifecycle = ""] = line.split("\t");
-        return { id: id.trim(), lifecycle: lifecycle.trim() };
+        const [id, lifecycle = "", state = ""] = line.split("\t");
+        return { id: id.trim(), lifecycle: lifecycle.trim(), state: state.trim() };
       });
     } catch (error) {
       throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `Unable to find what the interrupted launch of Compose service ${launch.name} started.`, { cause: error instanceof Error ? error.message : String(error) });

@@ -72,12 +72,15 @@ describe("instance identity", () => {
     } finally { await rm(parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
   });
 
-  it.skipIf(process.platform === "win32")("keeps the canonical alias for a primary worktree whose path contains a newline", async () => {
+  it.skipIf(process.platform === "win32")("keeps the canonical alias for a primary worktree whose path contains a newline", async ({ skip }) => {
     const parent = await mkdtemp(path.join(tmpdir(), "devfn-newline-"));
     const root = path.join(parent, "primary\nworktree");
     try {
       await mkdir(root);
       await execFileAsync("git", ["init", root]);
+      // Without NUL-delimited worktree output (Git before 2.36) the resolver
+      // withholds the alias for such a path, as documented.
+      if (!await execFileAsync("git", ["-C", root, "worktree", "list", "--porcelain", "-z"]).then(() => true, () => false)) skip("This Git cannot list worktrees NUL-delimited.");
       const identity = await resolveInstanceIdentity("fixture", root);
       expect(identity.isPrimaryWorktree).toBe(true);
       expect(domainAliases("app", "dev.example.test", identity)).toContain("app.dev.example.test");

@@ -206,7 +206,7 @@ it.skipIf(process.platform === "win32")("stops a native owner only once every pr
   try {
     const pidFile = path.join(root, "child.pid");
     managed = await supervisor.start({ name: "app", root, runtimeDir: path.join(root, "runtime"), ports: {},
-      spec: { adapter: "command", command: [process.execPath, "-e", `process.on("SIGTERM", () => undefined); require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => undefined, 1000);`] } });
+      spec: { adapter: "command", command: [process.execPath, "-e", 'process.on("SIGTERM", () => undefined); require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => undefined, 1000);', pidFile] } });
     expect(await waitFor(async () => Boolean(await readFile(pidFile, "utf8").catch(() => "")))).toBe(true);
     const application = Number(await readFile(pidFile, "utf8"));
     await supervisor.stop(managed, 500);
@@ -305,13 +305,17 @@ it("keeps a lifecycle whose journaled container or interrupted Compose launch ma
     const ready = await orchestrator.up({ config, root, stateDir });
     const dockerState = path.join(toolsDir, "docker-state");
     const dockerLog = path.join(toolsDir, "docker-log");
+    const removed = path.join(toolsDir, "docker-removed");
     await writeFile(dockerState, "running");
     await writeFile(path.join(toolsDir, "docker"), `#!/bin/sh
 state="$(cat "${dockerState}")"
 case "$1" in
-  inspect) case "$state" in running) echo true; exit 0;; gone|resolved) echo "Error: No such object: $4" >&2; exit 1;; esac;;
-  ps) case "$state" in resolved) printf 'launched-a\tdb\nlaunched-b\tdb\nsibling-lifecycle\tcache\n'; exit 0;; esac;;
-  stop|rm) echo "$*" >> "${dockerLog}"; exit 0;;
+  inspect) case "$state" in running) echo true; exit 0;; restarting|resolved) echo "Error: No such object: $4" >&2; exit 1;; esac;;
+  ps) case "$state" in
+    restarting) printf 'launched-a\tdb\trunning\n'; exit 0;;
+    resolved) [ -f "${removed}" ] || printf 'launched-a\tdb\trunning\nlaunched-b\tdb\texited\n'; printf 'sibling-lifecycle\tcache\trunning\n'; exit 0;;
+  esac;;
+  stop|rm) echo "$*" >> "${dockerLog}"; if [ "$1" = rm ] && [ "$state" = resolved ]; then : > "${removed}"; fi; exit 0;;
 esac
 echo "Cannot connect to the Docker daemon" >&2
 exit 1
@@ -329,6 +333,19 @@ exit 1
     expect(await registry.instanceMayRun(instanceId)).toBe(true);
     expect(await recoverOrphanedProxyRoutes(stateDir)).toEqual([]);
     expect(await routedInstances(stateDir)).toEqual([instanceId]);
+
+    // Docker keeps finishing start requests the killed launcher sent, so
+    // what the launch created runs again after every stop.
+    await writeFile(dockerState, "restarting");
+    const restarting = await orchestrator.down({ config, root, stateDir });
+    expect(restarting.state).toBe("degraded");
+    expect(restarting.cleanup?.errors.join("\n")).toMatch(/interrupted launch of Compose service db kept appearing or starting/);
+    expect(restarting.cleanup).toMatchObject({ removedProxy: false, releasedPorts: false });
+    await registry.gc();
+    expect((await registry.read()).invocations.find((item) => item.id === ready.invocationId)).toMatchObject({ state: "stopping", launching: ["db"] });
+    expect(await registry.instanceMayRun(instanceId)).toBe(true);
+    expect(await routedInstances(stateDir)).toEqual([instanceId]);
+    await rm(dockerLog);
 
     // The container is gone and Docker can list what the launch created.
     await writeFile(dockerState, "resolved");

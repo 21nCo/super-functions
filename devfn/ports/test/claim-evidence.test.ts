@@ -144,7 +144,7 @@ it("keeps a privileged claim whose UDP bind is denied unless a verified owner's 
 // create the hidden privileged listener they need.
 const NO_PRIVILEGED_WILDCARD = "No privileged wildcard port is bindable by this user (unprivileged Linux); the hidden privileged listener cannot be created.";
 async function privilegedWildcardPort(): Promise<number | undefined> {
-  for (const candidate of [1023, 1022, 1021]) if (await isPortAvailable(candidate, "tcp", "0.0.0.0")) return candidate;
+  for (let candidate = 1023; candidate > 900; candidate -= 1) if (await isPortAvailable(candidate, "tcp", "0.0.0.0")) return candidate;
   return undefined;
 }
 
