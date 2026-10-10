@@ -109,7 +109,13 @@ describe("replacement rollback of a certificate-backed route", () => {
     await replaceAndFail("removed", failure, true);
   }, 60_000);
 
-  async function replaceAndFail(sourceChange: "removed" | "rotated", failure: "a failed replacement record" | "a refused prior teardown", rollbackFails: boolean): Promise<void> {
+  // The rollback copy lives only in the replacing command, so a kill after
+  // preactivation loses it; recovery is degraded status, down, then a fresh up.
+  it.each(["removed", "rotated"] as const)("recovers a replacement interrupted before prior teardown after its source was %s", async (sourceChange) => {
+    await replaceAndFail(sourceChange, "an interruption before prior teardown", false);
+  }, 60_000);
+
+  async function replaceAndFail(sourceChange: "removed" | "rotated", failure: "a failed replacement record" | "a refused prior teardown" | "an interruption before prior teardown", rollbackFails: boolean): Promise<void> {
     const parent = await mkdtemp(path.join(tmpdir(), "devfn-cert-rollback-"));
     const root = path.join(parent, "repo");
     const stateDir = path.join(parent, "state");
@@ -143,6 +149,45 @@ server.listen(Number(process.env.DEVFN_PORT_APP), "127.0.0.1");\n`);
       if (sourceChange === "removed") await Promise.all([rm(certificateFile), rm(keyFile)]);
       else issue(identity, certificateFile, keyFile);
 
+      if (failure === "an interruption before prior teardown") {
+        // An in-process stand-in for a kill right after preactivation: the
+        // command records nothing more, restores no route and releases no lease.
+        vi.spyOn(FilePortRegistry.prototype, "updateInvocation").mockImplementation(async function (this: FilePortRegistry, id, update) {
+          if (id !== first.invocationId && update.state === "starting") throw new Error("killed");
+          await updateInvocation.call(this, id, update);
+        });
+        vi.spyOn(CaddyProxyController.prototype, "restoreInstanceRoutes").mockRejectedValue(new Error("killed"));
+        vi.spyOn(FilePortRegistry.prototype, "release").mockRejectedValue(new Error("killed"));
+        await orchestrator.up({ config: replacement, root, stateDir, replace: true }).catch(() => undefined);
+        vi.restoreAllMocks();
+        const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+        const interrupted = (await registry.read()).invocations.filter((item) => item.instanceId === first.instanceId && item.id !== first.invocationId);
+        expect(interrupted).toMatchObject([{ state: "planning" }]);
+        // The replacement's route is served while the prior lifecycle runs, and status says so.
+        const served = JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8")) as { routes: Array<{ hostname: string; certificateDigest?: string }> };
+        expect(served.routes.map((route) => route.hostname)).not.toEqual(first.routes.map((route) => route.hostname));
+        expect(await fetch(`http://127.0.0.1:${first.allocations[0].port}/`).then((response) => response.text())).toBe("old");
+        expect(await orchestrator.status({ config: original, root })).toMatchObject({ ok: false, state: "degraded" });
+        // down stops the prior lifecycle, removes every route of the instance and ends the interrupted invocation.
+        expect((await orchestrator.down({ config: original, root, stateDir })).state).toBe("stopped");
+        expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toMatchObject({ routes: [] });
+        await expect(fetch(`http://127.0.0.1:${first.allocations[0].port}/`)).rejects.toThrow();
+        const recovered = await registry.read();
+        expect(recovered.invocations.find((item) => item.id === interrupted[0].id)).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
+        expect(recovered.allocations.filter((item) => item.instanceId === first.instanceId && ["planned", "active"].includes(item.state))).toEqual([]);
+        // A removed certificate is reported, not served from a lost snapshot;
+        // once it is fixed, a fresh up serves the route again.
+        if (sourceChange === "removed") {
+          await expect(orchestrator.up({ config: original, root, stateDir })).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
+          issue(identity, certificateFile, keyFile);
+        }
+        const restarted = await orchestrator.up({ config: original, root, stateDir });
+        expect(restarted.state).toBe("ready");
+        expect(restarted.routes.map((route) => route.hostname)).toEqual(first.routes.map((route) => route.hostname));
+        expect(restarted.routes[0].certificateDigest).not.toBe(digest);
+        expect((await orchestrator.down({ config: original, root, stateDir })).state).toBe("stopped");
+        return;
+      }
       if (rollbackFails) vi.spyOn(CaddyProxyController.prototype, "restoreInstanceRoutes").mockRejectedValue(new Error("injected rollback failure"));
       if (rollbackFails) {
         if (failure === "a failed replacement record") {

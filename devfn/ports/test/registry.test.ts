@@ -543,6 +543,48 @@ describe("FilePortRegistry", () => {
     }
   });
 
+  it.skipIf(process.platform !== "darwin")("judges an earlier release's active lease by its activation time through reconcile and gc", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-legacy-lease-"));
+    const unrelated = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
+    const saved = process.env.TZ;
+    try {
+      await new Promise<void>((resolve) => unrelated.once("spawn", () => resolve()));
+      const lstart = async (TZ: string) => (await promisify(execFile)("ps", ["-o", "lstart=", "-p", String(unrelated.pid)], { env: { ...process.env, TZ, LC_ALL: "C" } })).stdout.trim();
+      const born = Date.parse(`${await lstart("UTC0")} UTC`);
+      // An earlier release recorded the owner in its caller's time zone, with
+      // no record time but the lease's activation updatedAt.
+      const birthSignature = `darwin:${await lstart("UTC+1")}`;
+      process.env.TZ = "UTC+1";
+      const [reusedPort, heldPort] = [await allocateEphemeralPort(), await allocateEphemeralPort()];
+      const lease = (instanceId: string, port: number, activatedAt: string) => ({ id: `${instanceId}-app`, projectId: "app", instanceId, service: "app", protocol: "tcp", host: "127.0.0.1", port,
+        invocationId: instanceId, state: "active", source: "exact", process: { pid: unrelated.pid, birthSignature }, createdAt: activatedAt, updatedAt: activatedAt });
+      const invocation = (id: string, at: string) => ({ id, projectId: "app", instanceId: id, profile: "default", state: "ready", createdAt: at, updatedAt: at });
+      // The reused lease was activated an hour before its PID's current process started.
+      const reusedAt = new Date(born - 3_600_000).toISOString();
+      const heldAt = new Date(born + 5_000).toISOString();
+      await writeFile(path.join(dir, "registry.json"), JSON.stringify({ version: 1, revision: 1,
+        allocations: [lease("reused", reusedPort, reusedAt), lease("held", heldPort, heldAt)], invocations: [invocation("reused", reusedAt), invocation("held", heldAt)] }));
+      const registry = new FilePortRegistry(path.join(dir, "registry.json"), undefined, async () => true);
+      const reconciled = await registry.reconcile();
+      expect(reconciled.allocations.find((item) => item.instanceId === "reused")).toMatchObject({ state: "stale" });
+      // The lease held by the process that recorded it stays active and keeps
+      // its activation time as the owner's record time.
+      expect(reconciled.allocations.find((item) => item.instanceId === "held")).toMatchObject({ state: "active", process: { recordedAt: heldAt } });
+      expect(await registry.instanceMayRun("reused")).toBe(false);
+      expect(await registry.instanceMayRun("held")).toBe(true);
+      await registry.gc();
+      expect((await registry.read()).allocations.map((item) => item.instanceId)).toEqual(["held"]);
+      const sibling = (port: number) => registry.reserve({ projectId: "other", instanceId: "sibling", invocationId: `sibling-${port}`, profile: "default",
+        requests: [{ name: "app", spec: { preferred: port, exact: true } }] });
+      expect((await sibling(reusedPort))[0]).toMatchObject({ port: reusedPort, source: "exact" });
+      await expect(sibling(heldPort)).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+    } finally {
+      if (saved === undefined) delete process.env.TZ; else process.env.TZ = saved;
+      try { process.kill(-unrelated.pid!, "SIGKILL"); } catch { /* already stopped */ }
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refreshes planned allocations with the lifecycle heartbeat", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
     const registry = new FilePortRegistry(path.join(dir, "registry.json"));

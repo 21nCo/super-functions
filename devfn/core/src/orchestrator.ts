@@ -429,8 +429,10 @@ async function stopJournaledOwners(receipt: LifecycleReceipt, registry: FilePort
   for (const owner of invocation.owners ?? []) {
     try {
       if (owner.process && !listedProcesses.has(`${owner.process.pid}:${owner.process.birthSignature ?? ""}`)) {
+        // The receipt began before this owner started, so only the owner's
+        // own record time can judge a legacy signature; without it, none.
         await stopVerifiedProcess({ name: owner.node, pid: owner.process.pid, ...(owner.process.birthSignature ? { birthSignature: owner.process.birthSignature } : {}),
-          command: [], cwd: receipt.root, logPath: "", startedAt: receipt.startedAt }, supervisor, result);
+          command: [], cwd: receipt.root, logPath: "", startedAt: owner.process.recordedAt ?? "" }, supervisor, result);
       } else if (owner.container && !listedContainers.has(owner.container.id) && await inspectContainerRunning(owner.container) !== false) {
         result.errors.push(`Container ${owner.container.id} of ${owner.node} is journaled for invocation ${receipt.invocationId} but not in its receipt and may still run; stop it, then rerun devfn down.`);
       }

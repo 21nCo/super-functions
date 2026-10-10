@@ -221,6 +221,20 @@ function addOwners(invocation: RegistryInvocation, owners: readonly LifecycleOwn
   }
 }
 
+/**
+ * An earlier release recorded a lease's process owner without a record time.
+ * Activation wrote updatedAt just after reading that owner's signature, and
+ * an active lease keeps it until its state changes, so while the lease is
+ * active updatedAt is that record time. It is copied onto the owner before
+ * any transition can change updatedAt; a lease that left active under an
+ * earlier release has no such time.
+ */
+function recordLeaseOwnerTimes(state: RegistryState): void {
+  for (const allocation of state.allocations) {
+    if (allocation.state === "active" && allocation.process && !allocation.process.recordedAt) allocation.process.recordedAt = allocation.updatedAt;
+  }
+}
+
 function allocationOwners(allocation: PortAllocation): LifecycleOwner[] {
   return [
     ...(allocation.process ? [{ node: allocation.service, process: allocation.process }] : []),
@@ -234,7 +248,7 @@ function allocationOwners(allocation: PortAllocation): LifecycleOwner[] {
  * nothing while processes it started remain in that group.
  */
 async function processOwnerMayRun(owner: NonNullable<PortAllocation["process"]>): Promise<boolean> {
-  const status = await processGroupStatus(owner.pid, owner.birthSignature);
+  const status = await processGroupStatus(owner.pid, owner.birthSignature, owner.recordedAt);
   return status === "running" || status === "unverified";
 }
 
@@ -315,6 +329,7 @@ export class FilePortRegistry {
     try {
       const state = JSON.parse(await readFile(this.filePath, "utf8")) as RegistryState;
       if (state.version !== 1 || !Array.isArray(state.allocations) || !Array.isArray(state.invocations)) throw new Error("Unsupported registry schema");
+      recordLeaseOwnerTimes(state);
       return state;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return structuredClone(EMPTY);
@@ -661,7 +676,7 @@ export class FilePortRegistry {
       for (const allocation of state.allocations.filter((item) => item.invocationId === invocationId && item.state === "planned")) {
         allocation.state = "active";
         allocation.updatedAt = now;
-        if (owners[allocation.service]?.process) allocation.process = owners[allocation.service].process;
+        if (owners[allocation.service]?.process) allocation.process = { ...owners[allocation.service].process!, recordedAt: owners[allocation.service].process!.recordedAt ?? now };
         if (owners[allocation.service]?.container) allocation.container = owners[allocation.service].container;
       }
       const invocation = state.invocations.find((item) => item.id === invocationId);

@@ -5,6 +5,11 @@ export type AllocationState = "planned" | "active" | "stale" | "released" | "ext
 export interface ProcessOwner {
   pid: number;
   birthSignature?: string;
+  /**
+   * The UTC time this owner was recorded, after its signature was read from
+   * the live process. It decides only legacy darwin: signatures.
+   */
+  recordedAt?: string;
 }
 
 export interface ContainerOwner {

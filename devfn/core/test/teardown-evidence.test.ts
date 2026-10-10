@@ -269,6 +269,36 @@ it("stops a journaled process owner its receipt does not list before reporting s
   });
 }, 120_000);
 
+it.skipIf(process.platform !== "darwin")("judges a journaled legacy owner its receipt does not list by the owner's own record time", async () => {
+  await withLifecycle("devfn-teardown-journal-legacy-", async ({ root, stateDir, registry }) => {
+    const orchestrator = new DevFnOrchestrator();
+    const ready = await orchestrator.up({ config, root, stateDir });
+    // Started after the receipt, so the receipt's start time cannot judge it.
+    const extra = spawn(process.execPath, ["-e", "setInterval(() => undefined, 1000)"], { detached: true, stdio: "ignore" });
+    extra.unref();
+    try {
+      await new Promise<void>((resolve) => extra.once("spawn", () => resolve()));
+      const lstart = (await promisify(execFile)("ps", ["-o", "lstart=", "-p", String(extra.pid)], { env: { ...process.env, TZ: "UTC+1", LC_ALL: "C" } })).stdout.trim();
+      const recordedAt = new Date().toISOString();
+      await registry.recordOwners(ready.invocationId, "worker", [{ process: { pid: extra.pid!, birthSignature: `darwin:${lstart}` } }]);
+      // Without a record time the legacy owner is unverified: never signalled, never assumed gone.
+      const blocked = await orchestrator.down({ config, root, stateDir });
+      expect(blocked.state).toBe("degraded");
+      expect(blocked.cleanup?.errors.join("\n")).toContain(`PID ${extra.pid}`);
+      expect(processExists(extra.pid!)).toBe(true);
+      const state = await registry.read();
+      for (const owner of state.invocations.find((item) => item.id === ready.invocationId)!.owners!) if (owner.process?.pid === extra.pid) owner.process.recordedAt = recordedAt;
+      await writeFile(registry.filePath, JSON.stringify(state));
+      const stopped = await orchestrator.down({ config, root, stateDir });
+      expect(stopped).toMatchObject({ state: "stopped", cleanup: { errors: [] } });
+      expect(stopped.cleanup?.stoppedProcesses).toContain("worker");
+      expect(await waitFor(() => !processExists(extra.pid!))).toBe(true);
+    } finally {
+      try { process.kill(-extra.pid!, "SIGKILL"); } catch { /* already gone */ }
+    }
+  });
+}, 120_000);
+
 it("keeps a lifecycle whose journaled container or interrupted Compose launch may still run until teardown resolves it", async () => {
   await withLifecycle("devfn-teardown-journal-compose-", async ({ root, stateDir, toolsDir, registry, instanceId }) => {
     const orchestrator = new DevFnOrchestrator();
