@@ -1,4 +1,4 @@
 {
   "title": "Server",
-  "pages": ["setup", "routes", "authorization", "validation", "rest-api", "websockets", "rate-limiting", "observability"]
+  "pages": ["setup", "routes", "authorization", "administration", "validation", "rest-api", "websockets", "rate-limiting", "observability"]
 }
