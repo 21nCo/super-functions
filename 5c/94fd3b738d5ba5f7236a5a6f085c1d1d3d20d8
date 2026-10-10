@@ -1,0 +1,55 @@
+devfn/cli/SECURITY.md
+  s_1900bb15a7199a::t_17a30602ff577f 8,16
+devfn/cli/test/cli.test.ts
+  s_1900bb15a7199a::t_75530bce0cf1f1 33-34
+devfn/compose/src/index.ts
+  s_1900bb15a7199a::t_ea0ac35fee276f 19-21,1632-1636,1649,1651,1653,1662,1665,1668,1671-1672
+devfn/compose/test/override.test.ts
+  s_1900bb15a7199a::t_4733102bbdefe8 937-955,958,960,962,964,966-967,969-970,973-981,985-986,988,990-994,996,998-1000
+devfn/config/src/process-identity.ts
+  s_1900bb15a7199a::t_e985df685c454c 101-105
+devfn/core/README.md
+  s_1900bb15a7199a::t_7563904a612e38 7
+devfn/core/test/domain-routing.test.ts
+  s_1900bb15a7199a::t_8e39276d586965 42-44,53-54,71-75,446,550,553,567,594,598,601,612-613
+devfn/core/test/identity.test.ts
+  s_1900bb15a7199a::t_be95a2a4306bf3 75,81-83
+devfn/core/test/proxy-readiness.test.ts
+  s_1900bb15a7199a::t_0cf11f9d9b2add 51-64
+devfn/core/test/teardown-evidence.test.ts
+  s_1900bb15a7199a::t_71f18acdd0e46d 209,308,313-318,337-349
+devfn/docs/configuration.md
+  s_1900bb15a7199a::t_57a1af37dc6234 83
+devfn/ports/README.md
+  s_1900bb15a7199a::t_968aa7a07e6b48 5
+devfn/ports/src/lock.ts
+  s_1900bb15a7199a::t_41312e620d26ef 3,34-50,77-78,88-108
+devfn/ports/test/claim-evidence.test.ts
+  s_1900bb15a7199a::t_e5bc56ce5a5931 147
+devfn/ports/test/lock.test.ts
+  s_1900bb15a7199a::t_6dac0c255997ac 1-71
+devfn/processes/README.md
+  s_1900bb15a7199a::t_ed40e76848e4fd 3-26
+devfn/processes/src/group.ts
+  s_1900bb15a7199a::t_013a41bd1c5767 23-24
+devfn/proxy/test/proxy.test.ts
+  s_1900bb15a7199a::t_42793046deb0cf 38,154,156
+devfn/proxy/test/real-caddy.test.ts
+  s_1900bb15a7199a::t_8a9a435574ebcb 32,34-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5c94fd3b738d5ba5f7236a5a6f085c1d1d3d20d8",
+  "prompts": {},
+  "sessions": {
+    "s_1900bb15a7199a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5e049926-ee38-44b5-a734-8c7117ee5ff7",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
