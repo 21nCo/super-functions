@@ -1,0 +1,19 @@
+plugfn/core/tests/http-client-redirect.test.ts
+  s_1900bb15a7199a::t_39337277a77ff3 43,45-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7798544da3c3c6859d02e657b090b4dcb5b5b7ee",
+  "prompts": {},
+  "sessions": {
+    "s_1900bb15a7199a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5e049926-ee38-44b5-a734-8c7117ee5ff7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
