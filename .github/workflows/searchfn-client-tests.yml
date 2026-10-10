@@ -28,10 +28,10 @@ on:
 
 jobs:
   test-node-18:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

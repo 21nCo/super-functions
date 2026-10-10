@@ -20,13 +20,13 @@ on:
 jobs:
   test-action:
     name: Tusk Test Runner
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       matrix:
         runnerIndex: ${{ fromJson(github.event.inputs.runnerIndexes) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           ref: ${{ github.event.inputs.commitSha }}
 
