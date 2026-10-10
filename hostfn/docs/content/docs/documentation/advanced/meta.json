@@ -1,4 +1,4 @@
 {
   "title": "Advanced",
-  "pages": ["rollback", "backups", "health-checks", "deployment-locks", "ssh", "file-sync", "troubleshooting"]
+  "pages": ["rollback", "backups", "health-checks", "deployment-locks", "administration", "ssh", "file-sync", "troubleshooting"]
 }
