@@ -1,0 +1,53 @@
+devfn/cli/SECURITY.md
+  s_ce12272281eb3b::t_3bd4514bdd2bc1 8,12
+devfn/config/src/index.ts
+  s_ce12272281eb3b::t_3eb6fb5011d98c 6
+devfn/config/src/process-identity.ts
+  s_ce12272281eb3b::t_1267703190d3a3 11-24,34,70-95,98-99,117-118,125-126
+devfn/config/src/trust.ts
+  s_ce12272281eb3b::t_00bbd7a5f1c59b 42
+devfn/config/test/config.test.ts
+  s_ce12272281eb3b::t_0c3dee854b79f4 8,36-69
+devfn/core/README.md
+  s_ce12272281eb3b::t_0e52bcd58d412b 5
+devfn/core/src/orchestrator.ts
+  s_ce12272281eb3b::t_d80261aaf12d54 11,550,553-555,568,570-572,600,602-605,622-624,626,630-631
+devfn/core/test/registered-domain-startup.test.ts
+  s_ce12272281eb3b::t_966b25871f7710 2,5,26-29,88-212
+devfn/ports/src/lock.ts
+  s_ce12272281eb3b::t_d573a99234c470 49
+devfn/ports/src/proxy-owner.ts
+  s_ce12272281eb3b::t_b2fcc245a3a009 3,9-10,17
+devfn/ports/test/registry.test.ts
+  s_ce12272281eb3b::t_77de9fd763067d 1,7,518-545
+devfn/processes/README.md
+  s_ce12272281eb3b::t_3a01a03df59736 3
+devfn/processes/src/group.ts
+  s_ce12272281eb3b::t_162b6c5c5b7799 10,47,49,58
+devfn/processes/src/supervisor.ts
+  s_ce12272281eb3b::t_257d0d0e1a1e00 127,140
+devfn/processes/src/types.ts
+  s_ce12272281eb3b::t_cd332396ddd6aa 19-20
+devfn/processes/test/supervisor.test.ts
+  s_ce12272281eb3b::t_e3191944e24fce 1,6,9,60-89
+devfn/proxy/src/index.ts
+  s_ce12272281eb3b::t_f7ee0e5ce42b20 31-45,191-203,207-208,407-460
+devfn/proxy/test/domain-routing.test.ts
+  s_ce12272281eb3b::t_9bda438be0fc0f 237-285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ed08c158ec97608005f9178248559e5dcd85592",
+  "prompts": {},
+  "sessions": {
+    "s_ce12272281eb3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d2376f8-4af3-4920-96da-dff6a042ab4c",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
