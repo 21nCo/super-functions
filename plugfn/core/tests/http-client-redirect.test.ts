@@ -40,8 +40,39 @@ describe('HTTP client redirect handling', () => {
 
     await expect(
       new FetchHttpClient().post('https://api.example.com/items', { a: 1 }, { redirect: 'error' })
-    ).rejects.toThrow(TypeError);
+    ).rejects.toThrow(new TypeError('Redirect blocked: request requires redirect "error"'));
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The rejection must come from the redirect response, not from workerd
+    // refusing `redirect: "error"` before the request is sent.
+    expect(fetchMock.mock.calls[0][1].redirect).toBe('manual');
+  });
+
+  it('cancels a redirect response body before rejecting', async () => {
+    const cancel = vi.fn();
+    const fetchMock = workerdFetch(() => new Response(new ReadableStream({ cancel }), {
+      status: 302,
+      headers: { location: 'https://attacker.example/steal' },
+    }));
+    globalThis.fetch = fetchMock as any;
+
+    await expect(
+      new FetchHttpClient().get('https://api.example.com/items', { redirect: 'error' })
+    ).rejects.toThrow(new TypeError('Redirect blocked: request requires redirect "error"'));
+    expect(fetchMock.mock.calls[0][1].redirect).toBe('manual');
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('still rejects the redirect when cancelling its body fails', async () => {
+    const cancel = vi.fn(() => Promise.reject(new Error('cancel failed')));
+    globalThis.fetch = workerdFetch(() => new Response(new ReadableStream({ cancel }), {
+      status: 307,
+      headers: { location: 'https://attacker.example/steal' },
+    })) as any;
+
+    await expect(
+      new FetchHttpClient().get('https://api.example.com/items', { redirect: 'error' })
+    ).rejects.toThrow(new TypeError('Redirect blocked: request requires redirect "error"'));
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an opaque redirect from browser fetch', async () => {
