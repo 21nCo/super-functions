@@ -1,0 +1,105 @@
+devfn/compose/src/index.ts
+  s_ce12272281eb3b::t_11aff281e6308e 16-19,1402-1407,1535,1623-1631,1641-1662,1664-1670
+devfn/config/src/schema.ts
+  s_ce12272281eb3b::t_80e098be68fdef 253,445-447
+devfn/config/src/types.ts
+  s_ce12272281eb3b::t_20045d674accda 64-69,72,76,78,80,82,84
+devfn/config/test/domain-routes.test.ts
+  s_ce12272281eb3b::t_65bfe44749a01b 18-21,31-37
+devfn/core/src/endpoints.ts
+  s_1900bb15a7199a::t_e0ae39058268d5 959-960,983-986
+devfn/core/src/identity.ts
+  s_ce12272281eb3b::t_09f044f2acf4e4 15-23,33-44,47,69
+devfn/core/src/types.ts
+  s_1900bb15a7199a::t_d0b80bbd20ee60 19-27
+devfn/core/test/domain-routing.test.ts
+  s_1900bb15a7199a::t_c68ed33e9afeb1 42-71,121-123,154,185,216,241,244,283,339,362,370,391,417,438,447,486,510,512-513,518,521,530-531,534,548,553-554,560,562-564,570-572,576-578,585-586,588,590,592,596,601-602
+devfn/core/test/endpoints.test.ts
+  s_1900bb15a7199a::t_408bdf8f0e641b 1631,1645-1663
+devfn/ports/README.md
+  s_ce12272281eb3b::t_031f26bb36c94b 5,7-8
+devfn/ports/test/registry.test.ts
+  s_ce12272281eb3b::t_9210807119a8d8 43-45,278-300,678-688,791-792,794
+devfn/processes/README.md
+  s_ce12272281eb3b::t_ceed6a0b3a4c32 3
+devfn/processes/src/gated.ts
+  s_ce12272281eb3b::t_e5b8138192378c 9-12,19-20,56-57,91,134-141,143-144,146
+devfn/processes/src/group.ts
+  s_ce12272281eb3b::t_ce3206b649a820 2,22-23,25,59-62,64-68
+devfn/processes/src/wrapper.ts
+  s_ce12272281eb3b::t_e0db419dc65818 19-22,24-31,33,37,41-43,45-46,49-50,53-54,57-74
+devfn/processes/test/supervisor.test.ts
+  s_ce12272281eb3b::t_23ddc96a18e8d5 57
+devfn/cli/README.md
+  s_ce12272281eb3b::t_4a1e42d92b88ec 17-18,20-21
+devfn/cli/SECURITY.md
+  s_ce12272281eb3b::t_844080c3303165 8,12-20
+devfn/cli/src/index.ts
+  s_ce12272281eb3b::t_b667958710f002 181-194,196-201
+devfn/cli/test/cli.test.ts
+  s_ce12272281eb3b::t_db965d3a2ca935 25-27,29-40,174,181,186,197
+devfn/compose/test/override.test.ts
+  s_ce12272281eb3b::t_cfc68339c1e0a9 6,27-35,40,943-948,952-969,987,992,994,1002,1004-1005,1051-1083,1109
+devfn/core/README.md
+  s_ce12272281eb3b::t_62408b7ecff184 5-9
+devfn/core/test/identity.test.ts
+  s_ce12272281eb3b::t_6866c72cfdf27f 75-86
+devfn/core/test/proxy-readiness.test.ts
+  s_ce12272281eb3b::t_0668a8a5695356 30-44,47-48,50-71,73,93,100,106,108,124,130,132,144,148,154,156,160,176,191,200,203,262,264,275-278,311,313,328
+devfn/core/test/startup-fixture.test.ts
+  s_ce12272281eb3b::t_ad92ce33073ed4 15,98,123,131
+devfn/core/test/teardown-evidence.test.ts
+  s_ce12272281eb3b::t_fc494c06e37a65 313,414
+devfn/docs/configuration.md
+  s_ce12272281eb3b::t_630356fa6a4aad 83,85
+devfn/ports/src/listeners.ts
+  s_ce12272281eb3b::t_ba844a5dafcd2b 9,11-15,17-20,42,44-46
+devfn/ports/src/lock.ts
+  s_ce12272281eb3b::t_af5dccc56f9fb5 3,13-16,20-22,25
+devfn/ports/src/proxy-owner.ts
+  s_ce12272281eb3b::t_49bf01986b322e 7,18-19
+devfn/ports/src/registry.ts
+  s_ce12272281eb3b::t_069449b8e6c2cd 93,116-118,122,124,162,165,223-224,259,261-263,280,395-396,398,593,633-636,714,747
+devfn/ports/test/claim-evidence.test.ts
+  s_ce12272281eb3b::t_9ba4f7280e0ef2 9,16-23,142-150,152-153,169-193
+devfn/ports/test/listeners.test.ts
+  s_ce12272281eb3b::t_8320901bb212d4 1-3,6,31-67
+devfn/proxy/README.md
+  s_ce12272281eb3b::t_a8e5333b88cec2 3-10
+devfn/proxy/src/domains.ts
+  s_ce12272281eb3b::t_eb83afaf8a8f24 3,46-47,131-144,161,174,179
+devfn/proxy/src/index.ts
+  s_ce12272281eb3b::t_c6b32ae3ff2cd3 2-3,13,22-47,116-122,124-125,128-129,132-141,145,149,151,190,264,361,373,395,497,542-545,553,591,627
+devfn/proxy/test/activation.test.ts
+  s_ce12272281eb3b::t_df2c198e84e589 62-77,110,114-115,122,214
+devfn/proxy/test/domain-routing.test.ts
+  s_ce12272281eb3b::t_2fab4b9954506d 103-106,110,115,117,122-141
+devfn/proxy/test/proxy.test.ts
+  s_ce12272281eb3b::t_e7fa4bb8d7f523 14-40,82,99,103,109,133,137,147-149,158,162,174
+devfn/proxy/test/real-caddy.test.ts
+  s_ce12272281eb3b::t_f7b92fef23a927 18-22,39-49,53,108,110-111,117-118,155-156,161,166,171-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c43abe13b2f9074d8ab08509c88b93c718fe858",
+  "prompts": {},
+  "sessions": {
+    "s_1900bb15a7199a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5e049926-ee38-44b5-a734-8c7117ee5ff7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    },
+    "s_ce12272281eb3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d2376f8-4af3-4920-96da-dff6a042ab4c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
