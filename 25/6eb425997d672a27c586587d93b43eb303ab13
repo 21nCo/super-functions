@@ -1,0 +1,21 @@
+scripts/cloudflare-docs/deploy.mjs
+  s_ce12272281eb3b::t_e22040e6da6f58 21-33
+scripts/deploy-uifn-catalogs.mjs
+  s_ce12272281eb3b::t_a092269af6ad15 15-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "256eb425997d672a27c586587d93b43eb303ab13",
+  "prompts": {},
+  "sessions": {
+    "s_ce12272281eb3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d2376f8-4af3-4920-96da-dff6a042ab4c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
