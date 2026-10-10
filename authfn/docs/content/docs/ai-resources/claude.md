@@ -62,7 +62,7 @@ For migration questions, invoke the appropriate `authfn.skills.*` skill.
 For one-off conversations, paste this into a Claude prompt:
 
 ```text
-Reference docs: https://authfn.superfunctions.dev/llms-full.txt
+Reference docs: https://authfn.com/docs/llms-full.txt
 
 Now help me…
 ```

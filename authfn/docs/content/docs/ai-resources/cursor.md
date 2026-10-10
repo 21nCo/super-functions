@@ -43,7 +43,7 @@ If you'd rather not run an MCP server, point Cursor at the static file:
 description: authfn
 ---
 
-When working with @authfn/*, fetch context from https://authfn.superfunctions.dev/llms-full.txt as needed.
+When working with @authfn/*, fetch context from https://authfn.com/docs/llms-full.txt as needed.
 ```
 
 ## Project-specific tweaks
