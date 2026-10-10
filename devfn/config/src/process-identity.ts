@@ -8,6 +8,20 @@ async function darwinStartTime(pid: number, env: NodeJS.ProcessEnv): Promise<str
   return stdout.trim() || undefined;
 }
 
+// ps renders the start time in the caller's time zone and locale; pin both
+// so every DevFn invocation reads the same process the same way.
+const PINNED_PS_ENVIRONMENT = { TZ: "UTC0", LC_ALL: "C" };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The start second, in epoch milliseconds, of a ps lstart reading taken in the pinned environment. */
+function parsePinnedStartTime(text: string): number | undefined {
+  const match = /^[A-Z][a-z]{2} ([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(text);
+  const month = match ? MONTHS.indexOf(match[1]) : -1;
+  if (!match || month < 0) return undefined;
+  const [, , day, hours, minutes, seconds, year] = match.map(Number);
+  return Date.UTC(year, month, day, hours, minutes, seconds);
+}
+
 export async function processBirthSignature(pid: number): Promise<string | undefined> {
   try {
     if (process.platform === "linux") {
@@ -17,9 +31,7 @@ export async function processBirthSignature(pid: number): Promise<string | undef
       return startTime ? `linux:${startTime}` : undefined;
     }
     if (process.platform === "darwin") {
-      // ps renders the start time in the caller's time zone and locale; pin
-      // both so every DevFn invocation reads the same process the same way.
-      const startTime = await darwinStartTime(pid, { ...process.env, TZ: "UTC0", LC_ALL: "C" });
+      const startTime = await darwinStartTime(pid, { ...process.env, ...PINNED_PS_ENVIRONMENT });
       return startTime ? `darwin-utc:${startTime}` : undefined;
     }
     if (process.platform === "win32") {
@@ -55,14 +67,36 @@ function signatureFormat(signature: string): string {
   return signature.includes(":") ? signature.slice(0, signature.indexOf(":")) : "";
 }
 
-export async function processIdentityStatus(pid: number, signature?: string): Promise<ProcessIdentityStatus> {
+/** Allowance for wall-clock adjustment between a process start and its record. */
+const RECORD_CLOCK_TOLERANCE_MS = 2_000;
+
+/**
+ * Judge a live PID against a legacy darwin: signature. Earlier releases
+ * rendered its start time in the recording caller's time zone and locale,
+ * so neither an equal nor a different reading proves anything here. The
+ * record's own UTC time decides instead: DevFn writes it only after reading
+ * the signature of a live owner, so a process that started after it is a
+ * different process reusing the PID, and one that started no later was
+ * alive under that PID when the record was written and so is its owner.
+ * Without a record time, or within the clock tolerance, nothing is proven.
+ */
+export function classifyLegacyDarwinIdentity(pinnedStartTime: string | undefined, recordedAt: string | undefined): ProcessIdentityStatus {
+  const start = pinnedStartTime === undefined ? undefined : parsePinnedStartTime(pinnedStartTime);
+  const recorded = typeof recordedAt === "string" ? Date.parse(recordedAt) : Number.NaN;
+  if (start === undefined || !Number.isFinite(recorded)) return "unverified";
+  if (start > recorded + RECORD_CLOCK_TOLERANCE_MS) return "identity-mismatch";
+  return start <= recorded ? "running" : "unverified";
+}
+
+/**
+ * recordedAt is the UTC time the identity was recorded, after it was read
+ * from the live process; it decides only legacy darwin: signatures.
+ */
+export async function processIdentityStatus(pid: number, signature?: string, recordedAt?: string): Promise<ProcessIdentityStatus> {
   if (!processExists(pid)) return "exited";
   if (signature && process.platform === "darwin" && signatureFormat(signature) === "darwin") {
-    // Earlier releases rendered the start time in the recording caller's time
-    // zone and locale: an equal reading in this caller's identifies the
-    // process, but a different one may be the same process read elsewhere.
-    const legacy = await darwinStartTime(pid, process.env).catch(() => undefined);
-    return legacy && `darwin:${legacy}` === signature ? "running" : "unverified";
+    const start = await darwinStartTime(pid, { ...process.env, ...PINNED_PS_ENVIRONMENT }).catch(() => undefined);
+    return processExists(pid) ? classifyLegacyDarwinIdentity(start, recordedAt) : "exited";
   }
   return classifyProcessIdentity(true, signature, signature ? await processBirthSignature(pid) : undefined);
 }
@@ -80,14 +114,14 @@ export type ProcessGroupStatus = "running" | "unverified" | "exited" | "identity
  * - only "exited" (leader and group gone) and "identity-mismatch" are death
  *   evidence. Windows has no process groups; only the leader is judged.
  */
-export async function processGroupStatus(pid: number, signature?: string): Promise<ProcessGroupStatus> {
-  const leader = await processIdentityStatus(pid, signature);
+export async function processGroupStatus(pid: number, signature?: string, recordedAt?: string): Promise<ProcessGroupStatus> {
+  const leader = await processIdentityStatus(pid, signature, recordedAt);
   if (leader !== "exited" || process.platform === "win32") return leader;
   try { process.kill(-pid, 0); return "unverified"; }
   catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH" ? "exited" : "unverified"; }
 }
 
 /** Whether the PID is verifiably the recorded process, as required before signalling it. */
-export async function matchesProcessIdentity(pid: number, signature?: string): Promise<boolean> {
-  return await processIdentityStatus(pid, signature) === "running";
+export async function matchesProcessIdentity(pid: number, signature?: string, recordedAt?: string): Promise<boolean> {
+  return await processIdentityStatus(pid, signature, recordedAt) === "running";
 }

@@ -46,7 +46,7 @@ export async function withFileLock<T>(lockPath: string, action: () => Promise<T>
       try {
         const observed = JSON.parse(await readFile(`${lockPath}/owner.json`, "utf8")) as { token?: string; pid?: number; birthSignature?: string; createdAt?: string };
         observedToken = observed.token ?? observedToken;
-        const owner = observed.pid ? await processIdentityStatus(observed.pid, observed.birthSignature) : "exited";
+        const owner = observed.pid ? await processIdentityStatus(observed.pid, observed.birthSignature, observed.createdAt) : "exited";
         const birthSignaturesSupported = process.platform === "linux" || process.platform === "darwin" || process.platform === "win32";
         const ownerMatches = owner === "running" || owner === "unverified";
         recover = birthSignaturesSupported && !ownerMatches && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;

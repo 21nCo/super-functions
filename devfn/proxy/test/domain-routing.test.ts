@@ -234,6 +234,55 @@ describe("registered local domains", () => {
   });
 });
 
+describe("certificate-backed route rollback", () => {
+  it("restores captured routes from their snapshot after activation pruned it and the source changed", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-cert-restore-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-cert-tools-"));
+    const originalPath = process.env.PATH;
+    const certificateFile = path.join(stateDir, "source.crt.pem");
+    const keyFile = path.join(stateDir, "source.key.pem");
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    const resolve = (async () => [{ address: "127.0.0.1", family: 4 }]) as never;
+    const issue = () => execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certificateFile,
+      "-days", "1", "-subj", "/CN=a.dev.example.test", "-addext", "subjectAltName=DNS:a.dev.example.test"], { stdio: "ignore" });
+    try {
+      issue();
+      const registration = await registerDomain(stateDir, { domain: "dev.example.test", projectId: "fixture", repositoryIdentity: stateDir,
+        tls: "certificate", certificateFile, keyFile }, resolve);
+      await writeFile(path.join(stateDir, "proxy-owner.json"), JSON.stringify({ pid: process.pid, birthSignature }));
+      await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      const controller = new CaddyProxyController(stateDir, resolve);
+      const served = { id: "a", instanceId: "a", hostname: "a.dev.example.test", targetHost: "127.0.0.1", targetPort: 4101,
+        tls: "certificate" as const, registeredDomain: "dev.example.test", projectId: "fixture", repositoryIdentity: registration.repositoryIdentity, certificateFile, keyFile };
+      const sibling = { id: "b", instanceId: "b", hostname: "b.localhost", targetHost: "127.0.0.1", targetPort: 4102, tls: "off" as const };
+      await controller.upsert([served]);
+      await controller.upsert([sibling]);
+      const committed = (await controller.routes()).find((route) => route.id === "a")!;
+      const captured = await controller.captureInstanceRoutes("a");
+      issue();
+      // A replacement for the same instance prunes the served snapshot.
+      await controller.upsert([{ id: "a-next", instanceId: "a", hostname: "a.localhost", targetHost: "127.0.0.1", targetPort: 4103, tls: "off" }]);
+      await expect(readFile(path.join(stateDir, "certificates", `${committed.certificateDigest}.key.pem`))).rejects.toMatchObject({ code: "ENOENT" });
+      await controller.restoreInstanceRoutes("a", captured);
+      expect(await controller.routes()).toEqual([sibling, committed].map((route) => expect.objectContaining({ ...route, ...(route.id === "a" ? { certificateDigest: committed.certificateDigest } : {}) })));
+      const config = await readFile(path.join(stateDir, "Caddyfile"), "utf8");
+      expect(config).toContain(path.join(stateDir, "certificates", `${committed.certificateDigest}.crt.pem`));
+      expect(config).toContain("b.localhost");
+      expect(config).not.toContain("a.localhost");
+      // Material that no longer matches its digest restores nothing.
+      await writeFile(path.join(stateDir, "certificates", `${committed.certificateDigest}.key.pem`), "tampered");
+      await expect(controller.captureInstanceRoutes("a")).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
+      const forged = { ...captured, certificates: { [committed.certificateDigest!]: { certificate: Buffer.from("x"), key: Buffer.from("y") } } };
+      await expect(controller.restoreInstanceRoutes("a", forged)).rejects.toMatchObject({ code: "DEVFN_DOMAIN_CERT_INVALID" });
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      await rm(stateDir, { recursive: true, force: true }); await rm(toolsDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("host/path Caddy configuration", () => {
   it("orders exact before prefix, preserves segment boundaries and strips only when requested", () => {
     const output = renderCaddyfile([route("prefix", "/api", "prefix", 4102, true), route("exact", "/api", "exact", 4101)]);

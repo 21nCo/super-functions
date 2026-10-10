@@ -39,7 +39,7 @@ async function staleTicket(filePath: string, ticket: TrustLockTicket | undefined
   const createdAt = ticket?.createdAt ? Date.parse(ticket.createdAt) : await stat(filePath).then((value) => value.mtimeMs).catch(() => Date.now());
   if (!Number.isFinite(createdAt) || Date.now() - createdAt <= staleMs) return false;
   if (!ticket?.pid) return true;
-  const owner = await processIdentityStatus(ticket.pid, ticket.birthSignature);
+  const owner = await processIdentityStatus(ticket.pid, ticket.birthSignature, ticket.createdAt);
   return owner === "exited" || owner === "identity-mismatch";
 }
 

@@ -124,7 +124,7 @@ export class ProcessSupervisor {
    * gone.
    */
   public async stop(managed: ManagedProcess, timeoutMs = managed.shutdownTimeoutMs ?? 10_000): Promise<void> {
-    if (await processGroupStatus(managed.pid, managed.birthSignature) === "identity-mismatch") {
+    if (await processGroupStatus(managed.pid, managed.birthSignature, managed.startedAt) === "identity-mismatch") {
       throw new ProcessError("DEVFN_PROCESS_OWNERSHIP_MISMATCH", `PID ${managed.pid} no longer matches the DevFn process identity.`, { name: managed.name, pid: managed.pid });
     }
     await stopProcessGroup(managed, managed.name, timeoutMs);
@@ -137,7 +137,7 @@ export class ProcessSupervisor {
    * still be it and must never be treated as stopped.
    */
   public async status(managed: ManagedProcess): Promise<"running" | "stopped" | "identity-mismatch" | "unverified"> {
-    const status = await processGroupStatus(managed.pid, managed.birthSignature);
+    const status = await processGroupStatus(managed.pid, managed.birthSignature, managed.startedAt);
     return status === "exited" ? "stopped" : status;
   }
 }

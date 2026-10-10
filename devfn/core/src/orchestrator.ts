@@ -8,7 +8,7 @@ import { ComposeController, composeProjectName, createComposeEnvironment, create
 import { defaultStateDir, isCredentialKey, loadDevFnPolicy, validateDevFnConfig, type DevFnConfig, type HealthCheck } from "@devfn/config";
 import { FilePortRegistry, inspectContainerRunning, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, withRoutingLock, type ListenerInfo, type ListenerScanResult, type PortAllocation, type RegistryInvocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, resolveAdapterCommand, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
-import { CaddyProxyController, proxyListenerPorts, readRegisteredDomains, renderCaddyfile, verifyCertificate, verifyLocalDns, type ProxyRoute } from "@devfn/proxy";
+import { CaddyProxyController, proxyListenerPorts, readRegisteredDomains, renderCaddyfile, verifyCertificate, verifyLocalDns, type ProxyRoute, type ProxyRouteSnapshot } from "@devfn/proxy";
 
 import { domainAliases, resolveInstanceIdentity } from "./identity.js";
 import { resolveEndpointTemplates, resolveLocalHostname } from "./endpoints.js";
@@ -547,10 +547,12 @@ export class DevFnOrchestrator {
     // An interrupted replacement can leave committed routes the prior receipt
     // never recorded, so the proxy's own state decides what to reconcile.
     let reconcileRoutes = false;
-    let priorRoutes: Awaited<ReturnType<typeof proxy.instanceRouteState>> | undefined;
+    let priorRoutes: ProxyRouteSnapshot | undefined;
     try {
       reconcileRoutes = oldReady !== undefined && (routes.length > 0 || oldReady.routes.length > 0 || await proxy.hasInstanceRoutes(identity.instanceId));
-      if (reconcileRoutes) priorRoutes = await proxy.instanceRouteState(identity.instanceId);
+      // Activation prunes certificate snapshots no committed route uses, so
+      // the prior routes' material is captured now for any rollback.
+      if (reconcileRoutes) priorRoutes = await proxy.captureInstanceRoutes(identity.instanceId);
     } catch (error) {
       await registry.release({ invocationId, errorCode: "DEVFN_PROXY_CONFIG_INVALID" });
       throw error;
@@ -563,8 +565,11 @@ export class DevFnOrchestrator {
       const before = new Set([priorRoutes.committed, priorRoutes.pending].filter(Boolean).map((value) => JSON.stringify(value)));
       const after = await proxy.instanceRouteState(identity.instanceId).catch(() => undefined);
       if (after && [after.committed, after.pending].filter(Boolean).every((value) => before.has(JSON.stringify(value)))) return;
-      await proxy.upsert(priorRoutes.committed, identity.instanceId);
+      await proxy.restoreInstanceRoutes(identity.instanceId, priorRoutes);
     };
+    const rollbackFailure = async (): Promise<string | undefined> => activatedRoutes
+      ? await restorePriorRoutes().then(() => undefined, (error: unknown) => `prior routes could not be restored: ${error instanceof Error ? error.message : String(error)}`)
+      : undefined;
     if (oldReady && reconcileRoutes) {
       try {
         // Caddy run/reload can fail after validate. Activate the final routes
@@ -592,8 +597,12 @@ export class DevFnOrchestrator {
     try {
       await registry.updateInvocation(invocationId, { state: "starting" });
     } catch (error) {
-      if (activatedRoutes) await restorePriorRoutes().catch(() => undefined);
+      const rollback = await rollbackFailure();
       await registry.release({ invocationId, errorCode: "DEVFN_RECEIPT_WRITE_FAILED" }).catch(() => undefined);
+      if (rollback) {
+        throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to record the replacement, and its ${rollback}`,
+          { cause: error instanceof Error ? error.message : String(error), priorInvocationId: oldReady?.invocationId, priorStopped: false, routesRestored: false });
+      }
       throw error;
     }
     return async () => {
@@ -610,15 +619,16 @@ export class DevFnOrchestrator {
         if (stopped.errors.length) {
           clearInterval(heartbeat);
           // Part of the prior lifecycle may still run, so it keeps its receipt,
-          // leases and routes for an explicit down.
-          if (activatedRoutes) await restorePriorRoutes().catch(() => undefined);
+          // leases and routes for an explicit down. A failed route rollback
+          // is reported as such, never as routes kept.
+          const rollback = await rollbackFailure();
           await registry.release({ invocationId, errorCode: "DEVFN_REPLACEMENT_STOP_FAILED" }).catch(() => undefined);
-          oldReady.cleanup = stopped;
+          oldReady.cleanup = rollback ? { ...stopped, errors: [...stopped.errors, rollback] } : stopped;
           oldReady.state = "degraded";
           oldReady.updatedAt = new Date().toISOString();
           await writeReceipt(oldReady).catch(() => undefined);
-          throw new DevFnError("DEVFN_RUNTIME_INVALID", "Unable to stop the prior lifecycle for replacement; run devfn down before retrying.",
-            { cleanup: stopped, priorInvocationId: oldReady.invocationId, priorStopped: false });
+          throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to stop the prior lifecycle for replacement${rollback ? `, and its ${rollback}` : ""}; run devfn down before retrying.`,
+            { cleanup: oldReady.cleanup, priorInvocationId: oldReady.invocationId, priorStopped: false, ...(activatedRoutes ? { routesRestored: !rollback } : {}) });
         }
       }
       try {

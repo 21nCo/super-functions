@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
-import { classifyProcessIdentity, processBirthSignature, processIdentityStatus, discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
+import { classifyLegacyDarwinIdentity, classifyProcessIdentity, processBirthSignature, processIdentityStatus, discoverProject, isCredentialKey, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
 
 describe("DevFn configuration", () => {
   it("treats a recorded process as gone only when its PID is absent or a readable birth signature differs", () => {
@@ -33,11 +33,40 @@ describe("DevFn configuration", () => {
     }
   });
 
-  it.skipIf(process.platform !== "darwin")("identifies a process by an equal legacy signature but never retires it on a different one", async () => {
-    // Earlier releases recorded ps lstart in the recording shell's time zone and locale.
-    const legacy = `darwin:${(await promisify(execFile)("ps", ["-o", "lstart=", "-p", String(process.pid)])).stdout.trim()}`;
-    expect(await processIdentityStatus(process.pid, legacy)).toBe("running");
-    expect(await processIdentityStatus(process.pid, "darwin:Thu Jan  1 00:00:00 1970")).toBe("unverified");
+  it("decides a legacy darwin signature by the record's UTC time, never by caller-rendered text", () => {
+    const recordedAt = "2026-10-09T18:00:05.000Z";
+    // The recorded process started before its record was written.
+    expect(classifyLegacyDarwinIdentity("Fri Oct  9 18:00:00 2026", recordedAt)).toBe("running");
+    expect(classifyLegacyDarwinIdentity("Thu Oct  8 09:00:00 2026", recordedAt)).toBe("running");
+    // A PID reused by a process born an hour later renders as 18:00 in a
+    // caller one hour behind UTC, matching the legacy text; its pinned UTC
+    // start after the record proves it is another process.
+    expect(classifyLegacyDarwinIdentity("Fri Oct  9 19:00:00 2026", recordedAt)).toBe("identity-mismatch");
+    // Within the clock tolerance, unparseable readings and records without a time prove nothing.
+    expect(classifyLegacyDarwinIdentity("Fri Oct  9 18:00:06 2026", recordedAt)).toBe("unverified");
+    expect(classifyLegacyDarwinIdentity("ven.  9 oct 18:00:00 2026", recordedAt)).toBe("unverified");
+    expect(classifyLegacyDarwinIdentity("Fri Oct  9 18:00:00 2026", undefined)).toBe("unverified");
+    expect(classifyLegacyDarwinIdentity("Fri Oct  9 18:00:00 2026", "not a time")).toBe("unverified");
+    expect(classifyLegacyDarwinIdentity(undefined, recordedAt)).toBe("unverified");
+  });
+
+  it.skipIf(process.platform !== "darwin")("judges a live legacy signature by its record time whatever the caller's time zone", async () => {
+    const saved = process.env.TZ;
+    const lstart = async (TZ: string) => (await promisify(execFile)("ps", ["-o", "lstart=", "-p", String(process.pid)], { env: { ...process.env, TZ, LC_ALL: "C" } })).stdout.trim();
+    try {
+      // Recorded by an earlier release in a caller one hour behind UTC.
+      const legacy = `darwin:${await lstart("UTC+1")}`;
+      for (const TZ of ["UTC+1", "UTC", "Pacific/Kiritimati"]) {
+        process.env.TZ = TZ;
+        expect(await processIdentityStatus(process.pid, legacy, new Date().toISOString())).toBe("running");
+        // Equal text alone, without a record time, no longer identifies it.
+        expect(await processIdentityStatus(process.pid, legacy)).toBe("unverified");
+        // A record written before this process started belonged to another one.
+        expect(await processIdentityStatus(process.pid, legacy, new Date(Date.now() - 3_600_000 - process.uptime() * 1000).toISOString())).toBe("identity-mismatch");
+      }
+    } finally {
+      if (saved === undefined) delete process.env.TZ; else process.env.TZ = saved;
+    }
   });
 
   it("rejects case-colliding allowlist and secret keys at schema validation", () => {

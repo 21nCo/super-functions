@@ -16,6 +16,8 @@ export interface ManagedProcess {
 export interface ProcessOwnerIdentity {
   pid: number;
   birthSignature?: string;
+  /** When DevFn recorded this identity, after reading it from the live process. */
+  startedAt?: string;
 }
 
 export interface StartProcessInput {

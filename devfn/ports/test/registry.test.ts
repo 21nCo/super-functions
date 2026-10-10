@@ -1,9 +1,10 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import dgram from "node:dgram";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import { processBirthSignature } from "@devfn/processes";
@@ -512,6 +513,34 @@ describe("FilePortRegistry", () => {
     await mkdir(lockPath);
     await new Promise((resolve) => setTimeout(resolve, 5));
     await expect(withFileLock(lockPath, async () => "acquired", { staleMs: 1, timeoutMs: 1000 })).resolves.toBe("acquired");
+  });
+
+  it.skipIf(process.platform !== "darwin")("recovers a stale legacy lock whose PID now belongs to a process started after it", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-lock-"));
+    const unrelated = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
+    const saved = process.env.TZ;
+    try {
+      await new Promise<void>((resolve) => unrelated.once("spawn", () => resolve()));
+      const lstart = async (TZ: string) => (await promisify(execFile)("ps", ["-o", "lstart=", "-p", String(unrelated.pid)], { env: { ...process.env, TZ, LC_ALL: "C" } })).stdout.trim();
+      const born = Date.parse(`${await lstart("UTC0")} UTC`);
+      const birthSignature = `darwin:${await lstart("UTC+1")}`;
+      process.env.TZ = "UTC+1";
+      // Its legacy text equals this caller's rendering, but the record predates the process.
+      const reusedLock = path.join(dir, "reused.lock");
+      await mkdir(reusedLock);
+      await writeFile(path.join(reusedLock, "owner.json"), JSON.stringify({ token: "old", pid: unrelated.pid, birthSignature, createdAt: new Date(born - 3_600_000 + 5_000).toISOString() }));
+      await expect(withFileLock(reusedLock, async () => "acquired", { staleMs: 1, timeoutMs: 2_000 })).resolves.toBe("acquired");
+      // An old lock held by the process that recorded it is never taken, in any time zone.
+      process.env.TZ = "UTC";
+      const heldLock = path.join(dir, "held.lock");
+      await mkdir(heldLock);
+      await writeFile(path.join(heldLock, "owner.json"), JSON.stringify({ token: "held", pid: unrelated.pid, birthSignature, createdAt: new Date(born + 5_000).toISOString() }));
+      await expect(withFileLock(heldLock, async () => "acquired", { staleMs: 1, timeoutMs: 300 })).rejects.toMatchObject({ code: "DEVFN_REGISTRY_LOCK_TIMEOUT" });
+    } finally {
+      if (saved === undefined) delete process.env.TZ; else process.env.TZ = saved;
+      try { process.kill(-unrelated.pid!, "SIGKILL"); } catch { /* already stopped */ }
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("refreshes planned allocations with the lifecycle heartbeat", async () => {

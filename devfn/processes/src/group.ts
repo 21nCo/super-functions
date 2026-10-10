@@ -7,7 +7,7 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Only an exited leader with an empty group, or a reused leader PID, proves nothing of a group remains. */
 export async function processGroupGone(owner: ProcessOwnerIdentity): Promise<boolean> {
-  const status = await processGroupStatus(owner.pid, owner.birthSignature);
+  const status = await processGroupStatus(owner.pid, owner.birthSignature, owner.startedAt);
   return status === "exited" || status === "identity-mismatch";
 }
 
@@ -44,9 +44,9 @@ export async function waitForProcessGroupExit(owner: ProcessOwnerIdentity, timeo
  * it started.
  */
 export async function stopProcessGroup(owner: ProcessOwnerIdentity, label: string, timeoutMs: number, options: { ownGroup?: { leaderUnreaped: () => boolean } } = {}): Promise<void> {
-  const status = await processGroupStatus(owner.pid, owner.birthSignature);
+  const status = await processGroupStatus(owner.pid, owner.birthSignature, owner.startedAt);
   if (status === "exited" || status === "identity-mismatch") return;
-  const leaderExited = await processIdentityStatus(owner.pid, owner.birthSignature) === "exited";
+  const leaderExited = await processIdentityStatus(owner.pid, owner.birthSignature, owner.startedAt) === "exited";
   if (status === "unverified" && !(options.ownGroup && (leaderExited || options.ownGroup.leaderUnreaped()))) {
     throw new ProcessError("DEVFN_PROCESS_IDENTITY_UNVERIFIED", leaderExited
       ? `${label} (PID ${owner.pid}) exited, but processes remain in its process group ${owner.pid}; DevFn cannot verify they are its own and will not signal them.`
@@ -55,7 +55,7 @@ export async function stopProcessGroup(owner: ProcessOwnerIdentity, label: strin
   try {
     await signalProcessGroup(owner.pid, false);
     if (await waitForProcessGroupExit(owner, timeoutMs)) return;
-    if (process.platform !== "win32" || await processIdentityStatus(owner.pid, owner.birthSignature) === "running" || options.ownGroup?.leaderUnreaped()) await signalProcessGroup(owner.pid, true);
+    if (process.platform !== "win32" || await processIdentityStatus(owner.pid, owner.birthSignature, owner.startedAt) === "running" || options.ownGroup?.leaderUnreaped()) await signalProcessGroup(owner.pid, true);
   } catch (error) {
     throw new ProcessError("DEVFN_PROCESS_STOP_FAILED", `Unable to stop ${label} (PID ${owner.pid}).`, { pid: owner.pid, cause: error instanceof Error ? error.message : String(error) });
   }

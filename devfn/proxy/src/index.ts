@@ -28,6 +28,21 @@ export interface ProxyRoute {
   certificateDigest?: string;
 }
 interface ProxyState { version: 1; routes: ProxyRoute[] }
+
+/**
+ * An instance's route state together with the private certificate material
+ * its committed routes are served with, so a later rollback restores exactly
+ * what was activated rather than whatever its source files hold by then.
+ */
+export interface ProxyRouteSnapshot {
+  committed: ProxyRoute[];
+  pending?: ProxyRoute[];
+  certificates: Record<string, { certificate: Buffer; key: Buffer }>;
+}
+
+function certificateDigestOf(certificate: Buffer, key: Buffer): string {
+  return createHash("sha256").update(certificate).update("\0").update(key).digest("hex");
+}
 export { proxyOwnerStatus } from "@devfn/ports";
 
 export class ProxyError extends Error {
@@ -173,20 +188,25 @@ export class CaddyProxyController {
       ? { ...route, ...this.certificatePaths(route.certificateDigest) } : route), ipv6Loopback);
   }
 
+  private async writeCertificateSnapshot(digest: string, certificate: Buffer, key: Buffer): Promise<void> {
+    const target = this.certificatePaths(digest);
+    await mkdir(this.certificateDir, { recursive: true, mode: 0o700 });
+    const directory = await lstat(this.certificateDir);
+    if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error("Certificate snapshot directory is not private.");
+    await chmod(this.certificateDir, 0o700);
+    for (const [destination, content] of [[target.certificateFile, certificate], [target.keyFile, key]] as const) {
+      const temp = `${destination}.${process.pid}.${randomUUID()}.tmp`;
+      try { await writeFile(temp, content, { mode: 0o600 }); await rename(temp, destination); }
+      finally { await rm(temp, { force: true }); }
+    }
+  }
+
   private async snapshotCertificate(route: ProxyRoute, validate: boolean): Promise<string> {
     try {
       const [certificate, key] = await Promise.all([readFile(route.certificateFile!), readFile(route.keyFile!)]);
-      const digest = createHash("sha256").update(certificate).update("\0").update(key).digest("hex");
+      const digest = certificateDigestOf(certificate, key);
+      await this.writeCertificateSnapshot(digest, certificate, key);
       const target = this.certificatePaths(digest);
-      await mkdir(this.certificateDir, { recursive: true, mode: 0o700 });
-      const directory = await lstat(this.certificateDir);
-      if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error("Certificate snapshot directory is not private.");
-      await chmod(this.certificateDir, 0o700);
-      for (const [destination, content] of [[target.certificateFile, certificate], [target.keyFile, key]] as const) {
-        const temp = `${destination}.${process.pid}.${randomUUID()}.tmp`;
-        try { await writeFile(temp, content, { mode: 0o600 }); await rename(temp, destination); }
-        finally { await rm(temp, { force: true }); }
-      }
       if (validate) await verifyCertificate(route.hostname, target.certificateFile, target.keyFile);
       return digest;
     } catch (error) {
@@ -382,6 +402,60 @@ export class CaddyProxyController {
     const [committed, pending] = await Promise.all([this.readState(this.statePath), this.readState(this.pendingPath)]);
     const own = (state: ProxyState | undefined) => state?.routes.filter((route) => route.instanceId === instanceId) ?? [];
     return { committed: own(committed), ...(pending ? { pending: own(pending) } : {}) };
+  }
+
+  /**
+   * Lock-free: this instance's route state and the snapshot material behind
+   * its committed certificate routes, for restoreInstanceRoutes. Material
+   * that is missing or no longer matches its digest is an error here, before
+   * anything depends on restoring it.
+   */
+  public async captureInstanceRoutes(instanceId: string): Promise<ProxyRouteSnapshot> {
+    const state = await this.instanceRouteState(instanceId);
+    const certificates: ProxyRouteSnapshot["certificates"] = {};
+    for (const route of state.committed) {
+      const digest = route.certificateDigest;
+      if (!digest || certificates[digest]) continue;
+      const files = this.certificatePaths(digest);
+      const [certificate, key] = await Promise.all([readFile(files.certificateFile), readFile(files.keyFile)])
+        .catch(() => { throw new DomainError("DEVFN_DOMAIN_CERT_INVALID", `The certificate snapshot serving ${route.hostname} is unavailable.`); });
+      if (certificateDigestOf(certificate, key) !== digest) throw new DomainError("DEVFN_DOMAIN_CERT_INVALID", `The certificate snapshot serving ${route.hostname} was modified.`);
+      certificates[digest] = { certificate, key };
+    }
+    return { ...state, certificates };
+  }
+
+  /**
+   * Roll this instance back to captured committed routes. They were already
+   * activated, so they are restored as they were: certificate routes keep
+   * their digests and are served from the captured material, never
+   * revalidated against source files that may since have changed or gone.
+   * Other instances' routes are left as they are.
+   */
+  public async restoreInstanceRoutes(instanceId: string, snapshot: ProxyRouteSnapshot): Promise<void> {
+    if (snapshot.committed.some((route) => route.instanceId !== instanceId)) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "One restore must name routes for one instance.");
+    for (const route of snapshot.committed) {
+      const material = route.certificateDigest ? snapshot.certificates[route.certificateDigest] : undefined;
+      if (route.certificateDigest && (!material || certificateDigestOf(material.certificate, material.key) !== route.certificateDigest)) {
+        throw new DomainError("DEVFN_DOMAIN_CERT_INVALID", `No captured certificate snapshot can restore ${route.hostname}.`);
+      }
+    }
+    await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
+    await withRoutingLock(this.stateDir, async () => await withFileLock(this.lockPath, async () => {
+      const state = await this.read();
+      if (snapshot.committed.some((route) => state.routes.some((saved) => saved.id === route.id && saved.instanceId !== instanceId))) {
+        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "A restored route ID is now owned by another instance.");
+      }
+      const siblings = state.routes.filter((route) => route.instanceId !== instanceId);
+      const restored = [...siblings, ...snapshot.committed.map((route) => ({ ...route }))];
+      renderCaddyfile(restored);
+      for (const [digest, material] of Object.entries(snapshot.certificates)) {
+        if (restored.some((route) => route.certificateDigest === digest)) await this.writeCertificateSnapshot(digest, material.certificate, material.key);
+      }
+      // Every restored route counts as unchanged, so apply re-renders and
+      // activates it without fresh registration, DNS or certificate checks.
+      await this.apply({ version: 1, routes: restored }, false, restored);
+    }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS }));
   }
 
   /** Lock-free: every instance named by committed or pending route state. */
