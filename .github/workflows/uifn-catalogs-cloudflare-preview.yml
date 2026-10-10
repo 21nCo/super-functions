@@ -16,6 +16,9 @@ on:
       - scripts/build-uifn-catalogs.mjs
       - scripts/deploy-uifn-catalogs.mjs
       - scripts/uifn-catalog-csp.mjs
+      - scripts/verify-uifn-catalog-snippets.mjs
+      - scripts/verify-uifn-catalog-performance.mjs
+      - scripts/ci-install-rollup-native.mjs
       - package.json
       - package-lock.json
       - .github/workflows/uifn-catalogs-cloudflare-preview.yml
@@ -27,6 +30,11 @@ on:
       - scripts/build-uifn-catalogs.mjs
       - scripts/deploy-uifn-catalogs.mjs
       - scripts/uifn-catalog-csp.mjs
+      - scripts/verify-uifn-catalog-snippets.mjs
+      - scripts/verify-uifn-catalog-performance.mjs
+      - scripts/ci-install-rollup-native.mjs
+      - package.json
+      - package-lock.json
       - .github/workflows/uifn-catalogs-cloudflare-preview.yml
   workflow_dispatch:
 
@@ -38,21 +46,42 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Build trusted esbuild native binding
+        run: npm rebuild esbuild
 
       - name: Ensure Rollup native package
         run: node scripts/ci-install-rollup-native.mjs
 
+      # build-uifn-catalogs.mjs runs verify-uifn-catalog-performance.mjs,
+      # which launches Playwright Chromium.
+      - name: Install Chromium for catalog performance check
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
       - name: Build catalogs
         run: node scripts/build-uifn-catalogs.mjs
+
+      - name: Check 21n-dev Cloudflare credentials
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEV_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_DEV_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::CLOUDFLARE_DEV_API_TOKEN secret or CLOUDFLARE_DEV_ACCOUNT_ID variable is missing; refusing to deploy."
+            exit 1
+          fi
 
       - name: Deploy preview Worker (21n-dev)
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev'

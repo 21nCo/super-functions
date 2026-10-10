@@ -108,12 +108,24 @@ jobs:
         run: node scripts/ci-install-rollup-native.mjs
 
       # Dev docs deploy to the 21n-dev Cloudflare account.
+      - name: Check 21n-dev Cloudflare credentials
+        if: needs.detect.outputs.environment == 'dev'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEV_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_DEV_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::CLOUDFLARE_DEV_API_TOKEN secret or CLOUDFLARE_DEV_ACCOUNT_ID variable is missing; refusing to deploy dev docs."
+            exit 1
+          fi
+
       - name: Deploy docs Worker (dev)
         if: needs.detect.outputs.environment == 'dev'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEV_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_DEV_ACCOUNT_ID }}
-        run: node scripts/cloudflare-docs/deploy.mjs dev --products=${{ matrix.product }}
+          DOCS_PRODUCT: ${{ matrix.product }}
+        run: node scripts/cloudflare-docs/deploy.mjs dev --products="$DOCS_PRODUCT"
 
       # Live docs deploy to the production account (unchanged).
       - name: Deploy docs Worker (live)
@@ -121,4 +133,5 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node scripts/cloudflare-docs/deploy.mjs live --products=${{ matrix.product }}
+          DOCS_PRODUCT: ${{ matrix.product }}
+        run: node scripts/cloudflare-docs/deploy.mjs live --products="$DOCS_PRODUCT"
