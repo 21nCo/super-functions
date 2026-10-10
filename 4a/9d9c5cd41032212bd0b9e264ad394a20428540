@@ -1,0 +1,33 @@
+.github/workflows/superfunctions-docs-cloudflare-deploy.yml
+  s_ce12272281eb3b::t_1a21bb29b1b37c 110-120,124
+.github/workflows/superfunctions-docs-cloudflare-routes.yml
+  s_ce12272281eb3b::t_9c1677ff770995 43-57,64
+.github/workflows/uifn-catalogs-cloudflare-preview.yml
+  s_ce12272281eb3b::t_93f19f236c97ce 1-62
+scripts/cloudflare-docs/config.mjs
+  s_ce12272281eb3b::t_7f44995ea43210 7-12,20,33,43,56,111,117-120
+scripts/cloudflare-docs/deploy.mjs
+  s_ce12272281eb3b::t_bd73d73c9726b6 6,118
+scripts/cloudflare-docs/sync-routes.mjs
+  s_ce12272281eb3b::t_aa12c43388bd86 76-80
+scripts/deploy-uifn-catalogs.mjs
+  s_ce12272281eb3b::t_bde48fc3176c39 45
+uifn/catalogs/wrangler.jsonc
+  s_ce12272281eb3b::t_c842a88351ed3b 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a9d9c5cd41032212bd0b9e264ad394a20428540",
+  "prompts": {},
+  "sessions": {
+    "s_ce12272281eb3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d2376f8-4af3-4920-96da-dff6a042ab4c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
