@@ -1,0 +1,35 @@
+devfn/cli/SECURITY.md
+  s_fd2012bf034554::t_c1ae10f108d78d 8,12
+devfn/core/README.md
+  s_fd2012bf034554::t_4d227843aa0b28 5
+devfn/core/src/orchestrator.ts
+  s_fd2012bf034554::t_9e1ace8db2f0ff 432-433,435
+devfn/core/test/registered-domain-startup.test.ts
+  s_fd2012bf034554::t_120acfafd06c41 112-118,152-190
+devfn/core/test/teardown-evidence.test.ts
+  s_fd2012bf034554::t_f0585a26a1a8ef 272-301
+devfn/ports/src/registry.ts
+  s_fd2012bf034554::t_a692c90f39140c 224-237,251,332,679
+devfn/ports/src/types.ts
+  s_fd2012bf034554::t_cbb5ea16c53b51 8-12
+devfn/ports/test/registry.test.ts
+  s_fd2012bf034554::t_439af4848cf104 543-584
+devfn/processes/README.md
+  s_fd2012bf034554::t_5d72183eebae44 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "30bffbbbc8c2f68b72f341901b76a87c75bf6329",
+  "prompts": {},
+  "sessions": {
+    "s_fd2012bf034554": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bba569bd-afce-4b37-bbb1-2a85837124dd",
+        "model": "unknown"
+      },
+      "human_author": "Aravind Samala <samalaaravind02@gmail.com>"
+    }
+  }
+}
